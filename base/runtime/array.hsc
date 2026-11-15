@@ -72,7 +72,7 @@ ARRAY_MINIMUM_CAPACITY : usize : 4
  * @return Its fields, at the same address as the array, so changing them changes the array; good for as long as
  *     array is.
  */
-resizable :: fn[T](array: ptr[mut T[..]]) -> ptr[mut ResizableArray] {
+resizable :: fn[T](array : ptr[mut T[..]]) -> ptr[mut ResizableArray] {
     return cast[ptr[mut ResizableArray]](cast[rawptr](array))
 }
 
@@ -87,7 +87,7 @@ resizable :: fn[T](array: ptr[mut T[..]]) -> ptr[mut ResizableArray] {
  * @param T The element type, given as a value, whose size the address is counted in.
  * @return The element's address, good until the array's memory moves or is freed: until it grows or is freed.
  */
-element_address :: fn[T](raw: ptr[ResizableArray], index: usize, T: type) -> ptr[mut T] {
+element_address :: fn[T](raw : ptr[ResizableArray], index : usize, T : type) -> ptr[mut T] {
     return cast[ptr[mut T]](raw.data + index * size_of(T))
 }
 
@@ -105,7 +105,7 @@ element_address :: fn[T](raw: ptr[ResizableArray], index: usize, T: type) -> ptr
  * @param location Where it was called, which the allocator and the assertion handler may report; the caller's own
  *     by default.
  */
-array_reserve :: fn[T](array: ptr[mut T[..]], new_capacity: usize, location := #caller_location) {
+array_reserve :: fn[T](array : ptr[mut T[..]], new_capacity : usize, location := #caller_location) {
     if array_try_reserve(array, new_capacity, location) != null {
         context.assertion_handler(location, "out of memory")
     }
@@ -128,7 +128,11 @@ array_reserve :: fn[T](array: ptr[mut T[..]], new_capacity: usize, location := #
  *     elements, count and capacity are then as they were, though an array that had no allocator yet keeps the
  *     context's from then on.
  */
-array_try_reserve :: fn[T](array: ptr[mut T[..]], new_capacity: usize, location := #caller_location) -> AllocatorError? {
+array_try_reserve :: fn[T](
+    array : ptr[mut T[..]],
+    new_capacity : usize,
+    location := #caller_location
+) -> AllocatorError? {
     raw :: resizable(array)
     if new_capacity <= raw.capacity {
         return null
@@ -159,7 +163,7 @@ array_try_reserve :: fn[T](array: ptr[mut T[..]], new_capacity: usize, location 
  * @param raw The array, only read; its count may be past its capacity, as a schema's reader leaves one.
  * @return The capacity, in elements.
  */
-grown_capacity :: fn(raw: ptr[ResizableArray]) -> usize {
+grown_capacity :: fn(raw : ptr[ResizableArray]) -> usize {
     doubled :: raw.capacity * 2
     wanted :: if doubled > ARRAY_MINIMUM_CAPACITY { doubled } else { ARRAY_MINIMUM_CAPACITY }
     return if wanted > raw.count { wanted } else { raw.count + 1 }
@@ -177,7 +181,7 @@ grown_capacity :: fn(raw: ptr[ResizableArray]) -> usize {
  * @param location Where it was called, which the allocator and the assertion handler may report; the caller's own
  *     by default.
  */
-array_add :: fn[T](array: ptr[mut T[..]], value #escaping : T, location := #caller_location) {
+array_add :: fn[T](array : ptr[mut T[..]], value #escaping : T, location := #caller_location) {
     raw :: resizable(array)
     // Past its capacity, an array owns none of its elements' memory, like one read back with a schema
     if raw.count >= raw.capacity {
@@ -197,7 +201,7 @@ array_add :: fn[T](array: ptr[mut T[..]], value #escaping : T, location := #call
  * @return Null when it was added, or the allocator's error, OutOfMemory when there wasn't the memory; the array is
  *     then as it was, without value.
  */
-array_try_add :: fn[T](array: ptr[mut T[..]], value #escaping : T, location := #caller_location) -> AllocatorError? {
+array_try_add :: fn[T](array : ptr[mut T[..]], value #escaping : T, location := #caller_location) -> AllocatorError? {
     raw :: resizable(array)
     if raw.count >= raw.capacity {
         error :: array_try_reserve(array, grown_capacity(raw), location)
@@ -222,7 +226,7 @@ array_try_add :: fn[T](array: ptr[mut T[..]], value #escaping : T, location := #
  * @return Null when they were all added, or the allocator's error, OutOfMemory when there wasn't the memory; target
  *     is then as it was, with none of them added.
  */
-array_try_copy :: fn[T](source: T[], target: ptr[mut T[..]], location := #caller_location) -> AllocatorError? {
+array_try_copy :: fn[T](source : T[], target : ptr[mut T[..]], location := #caller_location) -> AllocatorError? {
     raw :: resizable(target)
     if raw.count + source.count > raw.capacity {
         error :: array_try_reserve(target, raw.count + source.count, location)
@@ -248,7 +252,7 @@ array_try_copy :: fn[T](source: T[], target: ptr[mut T[..]], location := #caller
  * @param location Where it was called, which the allocator and the assertion handler may report; the caller's own
  *     by default.
  */
-array_copy :: fn[T](source: T[], target: ptr[mut T[..]], location := #caller_location) {
+array_copy :: fn[T](source : T[], target : ptr[mut T[..]], location := #caller_location) {
     raw :: resizable(target)
     if source.count == 0 {
         return void
@@ -270,7 +274,7 @@ array_copy :: fn[T](source: T[], target: ptr[mut T[..]], location := #caller_loc
  * @param value The value to find.
  * @return The index of the first element equal to value, or None when there's none, as for an empty array.
  */
-array_find :: fn[T: compiler.Equatable](array: T[], value: T) -> usize? {
+array_find :: fn[T : compiler.Equatable](array : T[], value : T) -> usize? {
     for element, index in array {
         if element == value {
             return index
@@ -290,7 +294,7 @@ array_find :: fn[T: compiler.Equatable](array: T[], value: T) -> usize? {
  * @param array The array. Addresses of its elements are no longer good afterwards.
  * @param location Where it was called, which the allocator may report; the caller's own by default.
  */
-array_free :: fn[T](array: ptr[mut T[..]], location := #caller_location) {
+array_free :: fn[T](array : ptr[mut T[..]], location := #caller_location) {
     raw :: resizable(array)
     if raw.capacity > 0 {
         // A #secret type's elements, zeroed first, as free_array does (alloc.hsc)
@@ -315,7 +319,7 @@ array_free :: fn[T](array: ptr[mut T[..]], location := #caller_location) {
  * @param location Where it was called, which the allocator may report; the caller's own by default.
  * @example runtime.array_release(files, close_file)
  */
-array_release :: fn[T](array #escaping : T[..], release: (fn(value: T)), location := #caller_location) {
+array_release :: fn[T](array #escaping : T[..], release : (fn(value : T)), location := #caller_location) {
     // Its own now, to take the elements out of
     items := array
     for &item in items {
@@ -333,7 +337,7 @@ array_release :: fn[T](array #escaping : T[..], release: (fn(value: T)), locatio
  * @tparam T The element type.
  * @param array The array, whose count becomes 0 and whose capacity stays.
  */
-array_reset :: fn[T](array: ptr[mut T[..]]) {
+array_reset :: fn[T](array : ptr[mut T[..]]) {
     resizable(array).count = 0
 }
 
@@ -349,15 +353,18 @@ array_reset :: fn[T](array: ptr[mut T[..]]) {
  *     which ends the program.
  * @param location Where it was called, which the assertion handler reports; the caller's own by default.
  */
-array_remove :: fn[T](array: ptr[mut T[..]], position: usize, location := #caller_location) {
+array_remove :: fn[T](array : ptr[mut T[..]], position : usize, location := #caller_location) {
     raw :: resizable(array)
     if position >= raw.count {
         context.assertion_handler(location, "array_remove past the end of the array")
     }
     after :: raw.count - position - 1
     if after > 0 {
-        intrinsics.mem_copy(cast[mut rawptr](element_address(raw, position, T)), cast[rawptr](element_address(raw, position + 1, T)),
-            after * size_of(T))
+        intrinsics.mem_copy(
+            cast[mut rawptr](element_address(raw, position, T)),
+            cast[rawptr](element_address(raw, position + 1, T)),
+            after * size_of(T)
+        )
     }
     raw.count -= 1
 }
@@ -373,7 +380,7 @@ array_remove :: fn[T](array: ptr[mut T[..]], position: usize, location := #calle
  *     which ends the program.
  * @param location Where it was called, which the assertion handler reports; the caller's own by default.
  */
-array_remove_fast :: fn[T](array: ptr[mut T[..]], position: usize, location := #caller_location) {
+array_remove_fast :: fn[T](array : ptr[mut T[..]], position : usize, location := #caller_location) {
     raw :: resizable(array)
     if position >= raw.count {
         context.assertion_handler(location, "array_remove_fast past the end of the array")
@@ -394,7 +401,7 @@ array_remove_fast :: fn[T](array: ptr[mut T[..]], position: usize, location := #
  * @param location Where it was called, which the assertion handler reports; the caller's own by default.
  * @return A copy of the last element.
  */
-peek :: fn[T](array: T[], location := #caller_location) -> T {
+peek :: fn[T](array : T[], location := #caller_location) -> T {
     if array.count == 0 {
         context.assertion_handler(location, "peek at an empty array")
     }
@@ -410,7 +417,7 @@ peek :: fn[T](array: T[], location := #caller_location) -> T {
  * @param location Where it was called, which the assertion handler reports; the caller's own by default.
  * @return The last element, now the caller's.
  */
-pop :: fn[T](array: ptr[mut T[..]], location := #caller_location) -> T {
+pop :: fn[T](array : ptr[mut T[..]], location := #caller_location) -> T {
     raw :: resizable(array)
     if raw.count == 0 {
         context.assertion_handler(location, "pop from an empty array")

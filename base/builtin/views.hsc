@@ -19,7 +19,7 @@ package builtin
  * @param count How many elements, not bytes: the view covers count × size_of(T) bytes. 0 gives an empty view.
  * @return A view of count elements of T starting at data, sharing that memory, not a copy.
  */
-view_of :: fn[T](data: ptr[T], count: usize) -> T[] {
+view_of :: fn[T](data : ptr[T], count : usize) -> T[] {
     return bit_cast[T[]](usize.[count, cast[usize](data)])
 }
 
@@ -33,7 +33,7 @@ view_of :: fn[T](data: ptr[T], count: usize) -> T[] {
  * @param count How many bytes, without any terminating 0. 0 gives an empty string.
  * @return The string of those bytes, sharing that memory, not a copy.
  */
-string_of :: fn(data: ptr[u8], count: usize) -> string {
+string_of :: fn(data : ptr[u8], count : usize) -> string {
     return bit_cast[string](usize.[count, cast[usize](data)])
 }
 
@@ -44,6 +44,6 @@ string_of :: fn(data: ptr[u8], count: usize) -> string {
  * @return A view of its count bytes: the same memory, good for as long as the string's memory is, which the compiler
  *     checks.
  */
-string_bytes :: fn(text: string) -> u8[] {
+string_bytes :: fn(text : string) -> u8[] {
     return bit_cast[u8[]](usize.[text.count, cast[usize](text.data)])
 }

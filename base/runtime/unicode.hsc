@@ -19,7 +19,7 @@ REPLACEMENT_CHARACTER : u32 : 0xfffd
  * @return The bytes they can need: 3 for each unit, since a pair of surrogates needs 4. It overflows only for a count
  *     no memory could hold.
  */
-utf8_capacity_for_utf16 :: fn(count: usize) -> usize {
+utf8_capacity_for_utf16 :: fn(count : usize) -> usize {
     return count * 3
 }
 
@@ -31,7 +31,7 @@ utf8_capacity_for_utf16 :: fn(count: usize) -> usize {
  * @param byte The byte, as a u32 so callers can compute it from a code point; only its low 8 bits are kept.
  * @return The index after it, index + 1, whether or not the byte fit.
  */
-put_byte :: fn(bytes: mut u8[], index: usize, byte: u32) -> usize {
+put_byte :: fn(bytes : mut u8[], index : usize, byte : u32) -> usize {
     if index < bytes.count {
         bytes[index] = cast[u8](byte)
     }
@@ -46,7 +46,7 @@ put_byte :: fn(bytes: mut u8[], index: usize, byte: u32) -> usize {
  * @param unit The unit, as a u32 so callers can compute it from a code point; only its low 16 bits are kept.
  * @return The index after it, index + 1, whether or not the unit fit.
  */
-put_unit :: fn(units: mut u16[], index: usize, unit: u32) -> usize {
+put_unit :: fn(units : mut u16[], index : usize, unit : u32) -> usize {
     if index < units.count {
         units[index] = cast[u16](unit)
     }
@@ -62,7 +62,7 @@ put_unit :: fn(units: mut u16[], index: usize, unit: u32) -> usize {
  *     and callers give U+FFFD in place of anything invalid.
  * @return The index after its last byte, 1 to 4 past index, whether or not they fit.
  */
-put_utf8 :: fn(bytes: mut u8[], index: usize, code_point: u32) -> usize {
+put_utf8 :: fn(bytes : mut u8[], index : usize, code_point : u32) -> usize {
     if code_point < 0x80 {
         return put_byte(bytes, index, code_point)
     }
@@ -91,7 +91,7 @@ put_utf8 :: fn(bytes: mut u8[], index: usize, code_point: u32) -> usize {
  *     result larger than its count means the conversion is incomplete; utf8_capacity_for_utf16 is always enough.
  * @return How many bytes the whole conversion takes, which can be more than bytes holds; 0 only for empty units.
  */
-utf16_to_utf8 :: fn(units: u16[], bytes: mut u8[]) -> usize {
+utf16_to_utf8 :: fn(units : u16[], bytes : mut u8[]) -> usize {
     written : usize = 0
     index : usize = 0
     loop {
@@ -130,7 +130,7 @@ utf16_to_utf8 :: fn(units: u16[], bytes: mut u8[]) -> usize {
  *     larger than its count means the conversion is incomplete; text.count units are always enough.
  * @return How many units the whole conversion takes, never more than text.count, and 0 only for empty text.
  */
-utf8_to_utf16 :: fn(text: string, units: mut u16[]) -> usize {
+utf8_to_utf16 :: fn(text : string, units : mut u16[]) -> usize {
     written : usize = 0
     index : usize = 0
     loop {
@@ -174,7 +174,8 @@ utf8_to_utf16 :: fn(text: string, units: mut u16[]) -> usize {
             code_point = (code_point << 6) | (continuation & 0x3f)
             index += 1
         }
-        if extra > 0 && code_point != REPLACEMENT_CHARACTER
+        if extra > 0
+            && code_point != REPLACEMENT_CHARACTER
             && (code_point < minimum || code_point > 0x10ffff || (code_point >= 0xd800 && code_point < 0xe000)) {
             code_point = REPLACEMENT_CHARACTER
         }

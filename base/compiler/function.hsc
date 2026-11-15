@@ -13,7 +13,10 @@ FunctionInfo :: struct {
     location : SourceCodeLocation,
     /** Marked #export, so part of the library's or program's public interface. */
     is_exported : bool,
-    /** Marked #test, so a test a runner finds (docs/testing.md); it's compiled into a program only if something calls it. */
+    /**
+     * Marked #test, so a test a runner finds (docs/testing.md); it's compiled into a program only if something calls
+     * it.
+     */
     is_test : bool,
     /**
      * For #test(CASES), the name its cases are given by, a constant array of its package's, each run as a test of its

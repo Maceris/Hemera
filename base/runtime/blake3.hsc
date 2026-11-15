@@ -20,7 +20,9 @@ HASH_BLAKE3_PARENT : u32 : 4
 HASH_BLAKE3_ROOT : u32 : 8
 
 /** BLAKE3's initial chaining value, the key when hashing unkeyed: SHA-256's first eight words. */
-HASH_BLAKE3_START :: u32.[0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19]
+HASH_BLAKE3_START :: u32.[
+    0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19
+]
 /** The order a block's message words are permuted into between rounds: word i of the next is word PERMUTATION[i]. */
 HASH_BLAKE3_PERMUTATION :: usize.[2, 6, 3, 10, 7, 0, 4, 13, 1, 11, 12, 5, 9, 14, 15, 8]
 
@@ -50,7 +52,7 @@ HashBlake3Output :: struct {
  * @param data The bytes, any number, none too; they're public: nothing here is careful with secrets.
  * @return The 32-byte digest, the same as std's crypto.blake3 gives for the same bytes.
  */
-hash_blake3 #no_context :: fn(data: u8[]) -> u8[32] {
+hash_blake3 #no_context :: fn(data : u8[]) -> u8[32] {
     chunks :: if data.count == 0 { cast[usize](1) } else { (data.count + HASH_BLAKE3_CHUNK - 1) / HASH_BLAKE3_CHUNK }
     // Enough for 2^54 chunks
     stack : HashBlake3Chain[54]
@@ -96,7 +98,7 @@ hash_blake3 #no_context :: fn(data: u8[]) -> u8[32] {
  * @return The chunk's last compression, with HASH_BLAKE3_CHUNK_END set, for hash_blake3_chaining_value, or for the
  *     root's compression when it's the only chunk.
  */
-hash_blake3_chunk #no_context :: fn(data: u8[], chunk: usize) -> HashBlake3Output {
+hash_blake3_chunk #no_context :: fn(data : u8[], chunk : usize) -> HashBlake3Output {
     start :: chunk * HASH_BLAKE3_CHUNK
     end :: if start + HASH_BLAKE3_CHUNK < data.count { start + HASH_BLAKE3_CHUNK } else { data.count }
     output := HashBlake3Output.{chain = HASH_BLAKE3_START, counter = cast[u64](chunk), flags = HASH_BLAKE3_CHUNK_START}
@@ -122,7 +124,7 @@ hash_blake3_chunk #no_context :: fn(data: u8[], chunk: usize) -> HashBlake3Outpu
  * @param right The chaining value of the right subtree, the later input.
  * @return The parent's compression, its block the two values together, for hash_blake3_chaining_value or the root's.
  */
-hash_blake3_parent #no_context :: fn(left: u32[8], right: u32[8]) -> HashBlake3Output {
+hash_blake3_parent #no_context :: fn(left : u32[8], right : u32[8]) -> HashBlake3Output {
     output := HashBlake3Output.{chain = HASH_BLAKE3_START, counter = 0, length = 64, flags = HASH_BLAKE3_PARENT}
     for i in 0..<8 {
         output.words[i] = left[i]
@@ -139,7 +141,7 @@ hash_blake3_parent #no_context :: fn(left: u32[8], right: u32[8]) -> HashBlake3O
  * @param length How many bytes the block has, 0 to 64; bytes past data's end are read as zeros.
  * @return The block's bytes as 16 little-endian words, zeros after them.
  */
-hash_blake3_words #no_context :: fn(data: u8[], at: usize, length: usize) -> u32[16] {
+hash_blake3_words #no_context :: fn(data : u8[], at : usize, length : usize) -> u32[16] {
     words : u32[16]
     for i in cast[usize](0)..<length {
         if at + i < data.count {
@@ -155,7 +157,7 @@ hash_blake3_words #no_context :: fn(data: u8[], at: usize, length: usize) -> u32
  * @param output What the compression is given.
  * @return The first eight words of the compression's output.
  */
-hash_blake3_chaining_value #no_context :: fn(output: HashBlake3Output) -> u32[8] {
+hash_blake3_chaining_value #no_context :: fn(output : HashBlake3Output) -> u32[8] {
     given := output
     words :: hash_blake3_compress(&given, given.counter, 0)
     chain : u32[8]
@@ -176,7 +178,7 @@ hash_blake3_chaining_value #no_context :: fn(output: HashBlake3Output) -> u32[8]
  * @param x The first message word mixed in.
  * @param y The second message word mixed in.
  */
-hash_blake3_mix #no_context :: fn(v: ptr[mut u32[16]], a: usize, b: usize, c: usize, d: usize, x: u32, y: u32) {
+hash_blake3_mix #no_context :: fn(v : ptr[mut u32[16]], a : usize, b : usize, c : usize, d : usize, x : u32, y : u32) {
     v[a % 16] = v[a % 16] + v[b % 16] + x
     v[d % 16] = intrinsics.rotate_right(v[d % 16] ~ v[a % 16], 16)
     v[c % 16] = v[c % 16] + v[d % 16]
@@ -196,7 +198,7 @@ hash_blake3_mix #no_context :: fn(v: ptr[mut u32[16]], a: usize, b: usize, c: us
  * @return All 16 words of the output: the first eight are the chaining value, or the root's digest as little-endian
  *     words.
  */
-hash_blake3_compress #no_context :: fn(output: ptr[HashBlake3Output], counter: u64, extra_flags: u32) -> u32[16] {
+hash_blake3_compress #no_context :: fn(output : ptr[HashBlake3Output], counter : u64, extra_flags : u32) -> u32[16] {
     v : u32[16]
     for i in 0..<8 {
         v[i] = output.chain[i]

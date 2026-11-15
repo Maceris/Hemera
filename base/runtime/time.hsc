@@ -13,12 +13,12 @@ Clock :: struct {
      * Nanoseconds since an unspecified start, never going back, for measuring time between two readings. It can't
      * report an error, so a clock that can't read it gives 0.
      */
-    monotonic : fn(data: mut rawptr) -> MonotonicTime,
+    monotonic : fn(data : mut rawptr) -> MonotonicTime,
     /**
      * The current date and time in UTC, which can jump when the system's time is set; Unavailable when the clock
      * can't be read, and NotSynchronized when it's readable but not yet set to a real time.
      */
-    wall : fn(data: mut rawptr) -> Result[Instant, ClockError],
+    wall : fn(data : mut rawptr) -> Result[Instant, ClockError],
 }
 
 /**
@@ -29,9 +29,9 @@ Clock :: struct {
  */
 Duration :: struct {
     /** The whole number of seconds in the duration, rounded down, so negative for a negative duration. */
-    seconds: i64,
+    seconds : i64,
     /** Fractional part of seconds as nanoseconds, ranging between 0 and 999,999,999. */
-    nanos: u32,
+    nanos : u32,
 }
 
 /** Why a clock's wall time couldn't be read. */
@@ -71,7 +71,7 @@ NANOSECONDS_PER_SECOND :: 1_000_000_000
  * @return The time from start to end, negative if end is earlier. The difference overflows, as i64 subtraction does,
  *     only for readings about 292 years apart.
  */
-duration_between :: fn(start, end: MonotonicTime) -> Duration {
+duration_between :: fn(start, end : MonotonicTime) -> Duration {
     difference := cast[i64](end) - cast[i64](start)
     seconds := difference / NANOSECONDS_PER_SECOND
     nanos := difference % NANOSECONDS_PER_SECOND
@@ -86,11 +86,7 @@ duration_between :: fn(start, end: MonotonicTime) -> Duration {
  * A clock with no time source, for MINIMAL_CONTEXT: the wall clock is always unavailable, and
  * monotonic time stays at 0, since it can't report an error.
  */
-NO_CLOCK :: Clock.{
-    data = null,
-    monotonic = no_clock_monotonic,
-    wall = no_clock_wall,
-}
+NO_CLOCK :: Clock.{data = null, monotonic = no_clock_monotonic, wall = no_clock_wall}
 
 /**
  * Read NO_CLOCK's monotonic time, which never advances.
@@ -98,7 +94,7 @@ NO_CLOCK :: Clock.{
  * @param data Ignored; NO_CLOCK has no state.
  * @return Always 0, since a monotonic clock can't report that it has no source.
  */
-no_clock_monotonic :: fn(data: mut rawptr) -> MonotonicTime {
+no_clock_monotonic :: fn(data : mut rawptr) -> MonotonicTime {
     return 0
 }
 
@@ -109,6 +105,6 @@ no_clock_monotonic :: fn(data: mut rawptr) -> MonotonicTime {
  * @return Never a time.
  * @error Unavailable Always, since there's no time source.
  */
-no_clock_wall :: fn(data: mut rawptr) -> Result[Instant, ClockError] {
+no_clock_wall :: fn(data : mut rawptr) -> Result[Instant, ClockError] {
     return .Error(.Unavailable)
 }

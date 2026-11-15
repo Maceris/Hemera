@@ -11,27 +11,19 @@ ThreadFunction :: fn(data #escaping : any) -> void
 // Windows' is in windows.hsc, and SlopOS's in slop_os_threads.hsc
 #if OS == .Mac {
     /** A thread's system-specific state, which Thread includes: none, since threads don't start here yet. */
-    ThreadSpecificOS :: struct {
-
-    }
+    ThreadSpecificOS :: struct {}
 }
 #else_if OS == .Linux && TARGET_ARCH != .x86_64 && TARGET_ARCH != .arm64 {
     /** A thread's system-specific state, which Thread includes: none, since threads don't start here yet. */
-    ThreadSpecificOS :: struct {
-
-    }
+    ThreadSpecificOS :: struct {}
 }
 #else_if OS == .None {
     /** A thread's system-specific state, which Thread includes: none, without an operating system. */
-    ThreadSpecificOS :: struct {
-
-    }
+    ThreadSpecificOS :: struct {}
 }
 #else_if OS == .UEFI {
     /** A thread's system-specific state, which Thread includes: none, since UEFI has no threads to start. */
-    ThreadSpecificOS :: struct {
-
-    }
+    ThreadSpecificOS :: struct {}
 }
 
 /** How a thread's stack is set up, see docs/multitasking.md (Stacks). */
@@ -97,9 +89,9 @@ Thread :: struct {
  * @return The new thread, owned by the caller until thread_join frees it; never null.
  */
 thread_create :: fn(
-    function: ThreadFunction,
+    function : ThreadFunction,
     data #escaping #crosses_threads : any? = null,
-    stack := DEFAULT_THREAD_STACK,
+    stack := DEFAULT_THREAD_STACK
 ) -> ptr[mut Thread] {
     result : ptr[mut Thread] = new(Thread)
     result.carrier = CarrierBlock.{}
@@ -140,7 +132,7 @@ thread_start :: fn(thread #escaping : ptr[mut Thread]) -> bool {
  * @param allocator The allocator that was current when thread_create made it.
  * @param loc The caller's location, given to the allocator.
  */
-thread_join :: fn(thread: ptr[mut Thread], allocator := context.allocator, loc := #caller_location) {
+thread_join :: fn(thread : ptr[mut Thread], allocator := context.allocator, loc := #caller_location) {
     os_thread_join(thread)
     free_array(thread.extensions, allocator, loc)
     free(thread, allocator, loc)

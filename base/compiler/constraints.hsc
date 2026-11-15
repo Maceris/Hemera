@@ -21,47 +21,47 @@ package compiler
  *
  * @param T The type to check.
  */
-require_equality : fn(T: type) : ---
+require_equality : fn(T : type) : ---
 
 /**
  * Require that <, <=, > and >= work on T: numbers and characters.
  *
  * @param T The type to check.
  */
-require_ordering : fn(T: type) : ---
+require_ordering : fn(T : type) : ---
 
 /**
  * Require that T is an integer, signed or unsigned.
  *
  * @param T The type to check.
  */
-require_integer : fn(T: type) : ---
+require_integer : fn(T : type) : ---
 /**
  * Require that T is a signed integer.
  *
  * @param T The type to check.
  */
-require_signed : fn(T: type) : ---
+require_signed : fn(T : type) : ---
 /**
  * Require that T is an unsigned integer.
  *
  * @param T The type to check.
  */
-require_unsigned : fn(T: type) : ---
+require_unsigned : fn(T : type) : ---
 
 /**
  * Require that T is a float.
  *
  * @param T The type to check.
  */
-require_float : fn(T: type) : ---
+require_float : fn(T : type) : ---
 
 /**
  * Require that T is a number: an integer or a float.
  *
  * @param T The type to check.
  */
-require_numeric : fn(T: type) : ---
+require_numeric : fn(T : type) : ---
 
 /**
  * Require that T has a field: a struct with a field called name, of field_type, or a view or array, whose count is
@@ -71,7 +71,7 @@ require_numeric : fn(T: type) : ---
  * @param name The field's name, compared exactly.
  * @param field_type The type the field has to be, exactly.
  */
-require_field : fn(T: type, name: string, field_type: type) : ---
+require_field : fn(T : type, name : string, field_type : type) : ---
 
 /**
  * Require that T is an array, view or dynamic array of element: it can be gone through with for, indexed, and has a
@@ -80,21 +80,21 @@ require_field : fn(T: type, name: string, field_type: type) : ---
  * @param T The type to check.
  * @param element The type its elements have to be.
  */
-require_view : fn(T: type, element: type) : ---
+require_view : fn(T : type, element : type) : ---
 
 /**
  * Require that T was given with mut, like SharedPtr[mut Buffer], so ptr[T] can change what it points to.
  *
  * @param T The generic parameter to check, as the generic was given it.
  */
-require_mutable : fn(T: type) : ---
+require_mutable : fn(T : type) : ---
 
 /**
  * Require that T isn't #owned, so a value of it can be copied and dropped (docs/memory.md, Owned Types).
  *
  * @param T The type to check.
  */
-require_copyable : fn(T: type) : ---
+require_copyable : fn(T : type) : ---
 
 /**
  * Require that condition holds, for anything the others don't cover, like a value parameter's range.
@@ -104,7 +104,7 @@ require_copyable : fn(T: type) : ---
  *     message.
  * @param params The values for the %s, in order.
  */
-require : fn(condition: bool, format_string: string, params: any...) : ---
+require : fn(condition : bool, format_string : string, params : any...) : ---
 
 /**
  * Require that at least one of its alternatives, each a constraint called with its arguments, is met:
@@ -122,7 +122,7 @@ require_any : fn() : ---
  * @param format_string The note, with each % filled in, like a log message.
  * @param params The values for the %s, in order.
  */
-note : fn(format_string: string, params: any...) : ---
+note : fn(format_string : string, params : any...) : ---
 
 /*
  * The constraints most generics need.
@@ -133,7 +133,7 @@ note : fn(format_string: string, params: any...) : ---
  *
  * @param T The type to check.
  */
-Equatable #constraint :: fn(T: type) {
+Equatable #constraint :: fn(T : type) {
     require_equality(T)
 }
 
@@ -142,7 +142,7 @@ Equatable #constraint :: fn(T: type) {
  *
  * @param T The type to check.
  */
-Ordered #constraint :: fn(T: type) {
+Ordered #constraint :: fn(T : type) {
     require_equality(T)
     require_ordering(T)
 }
@@ -152,7 +152,7 @@ Ordered #constraint :: fn(T: type) {
  *
  * @param T The type to check.
  */
-Integer #constraint :: fn(T: type) {
+Integer #constraint :: fn(T : type) {
     require_integer(T)
 }
 
@@ -161,7 +161,7 @@ Integer #constraint :: fn(T: type) {
  *
  * @param T The type to check.
  */
-Float #constraint :: fn(T: type) {
+Float #constraint :: fn(T : type) {
     require_float(T)
 }
 
@@ -170,7 +170,7 @@ Float #constraint :: fn(T: type) {
  *
  * @param T The type to check.
  */
-Numeric #constraint :: fn(T: type) {
+Numeric #constraint :: fn(T : type) {
     require_numeric(T)
 }
 
@@ -179,7 +179,7 @@ Numeric #constraint :: fn(T: type) {
  *
  * @param T The type to check.
  */
-Copyable #constraint :: fn(T: type) {
+Copyable #constraint :: fn(T : type) {
     require_copyable(T)
 }
 
@@ -188,7 +188,7 @@ Copyable #constraint :: fn(T: type) {
  *
  * @param T The generic parameter to check, as the generic was given it.
  */
-Mutable #constraint :: fn(T: type) {
+Mutable #constraint :: fn(T : type) {
     require_mutable(T)
 }
 
@@ -198,7 +198,7 @@ Mutable #constraint :: fn(T: type) {
  * @param C The collection type to check.
  * @param E The type its elements have to be.
  */
-ViewOf #constraint :: fn(C: type, E: type) {
+ViewOf #constraint :: fn(C : type, E : type) {
     require_view(C, E)
 }
 
@@ -207,7 +207,7 @@ ViewOf #constraint :: fn(C: type, E: type) {
  *
  * @param count The count, a compile-time value; 0 doesn't meet it.
  */
-AtLeastOne #constraint :: fn(count: usize) {
+AtLeastOne #constraint :: fn(count : usize) {
     require(count > 0, "% holds nothing; it needs to be at least 1", count)
 }
 
@@ -216,7 +216,7 @@ AtLeastOne #constraint :: fn(count: usize) {
  *
  * @param count The capacity, a compile-time value; 0 doesn't meet it, and 1 does.
  */
-PowerOfTwo #constraint :: fn(count: usize) {
+PowerOfTwo #constraint :: fn(count : usize) {
     require(count > 0 && count & (count - 1) == 0, "% isn't a power of two", count)
 }
 

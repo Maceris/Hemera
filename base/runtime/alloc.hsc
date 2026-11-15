@@ -21,11 +21,7 @@ import intrinsics from "base:intrinsics"
  * @param allocator The allocator it came from; the context's by default.
  * @param loc Where the free was called, which the allocator may report; the caller's own by default.
  */
-free :: fn[T](
-    pointer: ptr[T],
-    allocator := context.allocator,
-    loc := #caller_location,
-) {
+free :: fn[T](pointer : ptr[T], allocator := context.allocator, loc := #caller_location) {
     if is_secret_type(T) {
         intrinsics.secure_zero(cast[mut rawptr](cast[rawptr](pointer)), size_of(T))
     }
@@ -44,12 +40,7 @@ free :: fn[T](
  * @param allocator The allocator it came from; the context's by default.
  * @param loc Where the free was called, which the allocator may report; the caller's own by default.
  */
-free_aligned :: fn[T](
-    pointer: ptr[T],
-    alignment: usize,
-    allocator := context.allocator,
-    loc := #caller_location,
-) {
+free_aligned :: fn[T](pointer : ptr[T], alignment : usize, allocator := context.allocator, loc := #caller_location) {
     if is_secret_type(T) {
         intrinsics.secure_zero(cast[mut rawptr](cast[rawptr](pointer)), size_of(T))
     }
@@ -64,10 +55,7 @@ free_aligned :: fn[T](
  * @param allocator The allocator whose memory would all be given back; the context's by default.
  * @param loc Where it was called, which the assertion handler reports; the caller's own by default.
  */
-free_all :: fn[T](
-    allocator := context.allocator,
-    loc := #caller_location,
-) {
+free_all :: fn[T](allocator := context.allocator, loc := #caller_location) {
     todo("free_all")
 }
 
@@ -84,11 +72,7 @@ free_all :: fn[T](
  * @param allocator The allocator it came from; the context's by default.
  * @param loc Where the free was called, which the allocator may report; the caller's own by default.
  */
-free_array :: fn[T](
-    array: T[],
-    allocator := context.allocator,
-    loc := #caller_location,
-) {
+free_array :: fn[T](array : T[], allocator := context.allocator, loc := #caller_location) {
     free_array_aligned(array, align_of(T), allocator, loc)
 }
 
@@ -104,12 +88,7 @@ free_array :: fn[T](
  * @param allocator The allocator it came from; the context's by default.
  * @param loc Where the free was called, which the allocator may report; the caller's own by default.
  */
-free_array_aligned :: fn[T](
-    array: T[],
-    alignment: usize,
-    allocator := context.allocator,
-    loc := #caller_location,
-) {
+free_array_aligned :: fn[T](array : T[], alignment : usize, allocator := context.allocator, loc := #caller_location) {
     if array.count == 0 {
         return void
     }
@@ -132,11 +111,7 @@ free_array_aligned :: fn[T](
  *     default.
  * @return The new T, aligned to T's natural alignment, owned by the caller until it's given to free. Never null.
  */
-new :: fn[T](
-    T: type,
-    allocator := context.allocator,
-    loc := #caller_location,
-) -> ptr[mut T] {
+new :: fn[T](T : type, allocator := context.allocator, loc := #caller_location) -> ptr[mut T] {
     result, error :: new_aligned(T, align_of(T), allocator, loc)
     if error is_some {
         context.assertion_handler(loc, "out of memory")
@@ -160,10 +135,10 @@ new :: fn[T](
  * @return Null on success, or the allocator's error, OutOfMemory when there wasn't the memory.
  */
 new_aligned :: fn[T](
-    T: type,
-    alignment: usize,
+    T : type,
+    alignment : usize,
     allocator := context.allocator,
-    loc := #caller_location,
+    loc := #caller_location
 ) -> (ptr[mut T], AllocatorError?) {
     memory, error :: allocator.function(allocator.data, size_of(T), alignment, null, 0, loc)
     made :: cast[ptr[mut T]](memory.data)
@@ -192,10 +167,10 @@ new_aligned :: fn[T](
  * @return Null on success, or the allocator's error, OutOfMemory when there wasn't the memory.
  */
 new_array :: fn[T](
-    T: type,
-    count: usize,
+    T : type,
+    count : usize,
     allocator := context.allocator,
-    loc := #caller_location,
+    loc := #caller_location
 ) -> (mut T[], AllocatorError?) {
     return new_array_aligned(T, count, align_of(T), allocator, loc)
 }
@@ -219,11 +194,11 @@ new_array :: fn[T](
  * @return Null on success, or the allocator's error, OutOfMemory when there wasn't the memory.
  */
 new_array_aligned :: fn[T](
-    T: type,
-    count: usize,
-    alignment: usize,
+    T : type,
+    count : usize,
+    alignment : usize,
     allocator := context.allocator,
-    loc := #caller_location,
+    loc := #caller_location
 ) -> (mut T[], AllocatorError?) {
     empty : mut T[]
     if count == 0 {
@@ -258,12 +233,12 @@ new_array_aligned :: fn[T](
  * @return Null when size is 0, otherwise OutOfMemory.
  */
 failing_allocator_function : AllocatorFn : fn(
-    allocator_data: rawptr,
-    size: usize,
-    alignment: usize,
-    old_memory: rawptr,
-    old_size: usize,
-    location := #caller_location,
+    allocator_data : rawptr,
+    size : usize,
+    alignment : usize,
+    old_memory : rawptr,
+    old_size : usize,
+    location := #caller_location
 ) -> (mut u8[], AllocatorError?) {
     empty : mut u8[]
     if size == 0 {

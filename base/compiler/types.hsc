@@ -3,11 +3,11 @@ package compiler
 /** One dimension of an array type, as TypeInfoArray lists them. */
 ArrayDimensions :: struct {
     /** Whether this dimension is a static array, a dynamic array or a view. */
-    type: ArrayType,
+    type : ArrayType,
     /** How many elements a static array has; 0 for a dynamic array or a view, whose count is in the value. */
-    count: usize,
+    count : usize,
     /** A view whose elements can be changed through it, mut T[]. */
-    is_mutable: bool,
+    is_mutable : bool,
 }
 
 /** The kinds of array (docs/types.md, Arrays). */
@@ -33,48 +33,48 @@ Endianness :: enum {
 /** A parameter of a function type. */
 FunctionInput :: struct {
     /** Its type. */
-    type: ptr[TypeInfo],
+    type : ptr[TypeInfo],
     /** Its name; empty for a parameter written without one. */
-    name: string,
+    name : string,
     /** Whether it takes the rest of the arguments, as a parameter written with ... after its type does. */
-    is_varargs: bool,
+    is_varargs : bool,
     /** Marked #escaping, which is part of the function's type. */
-    is_escaping: bool,
+    is_escaping : bool,
 }
 
 /** A result of a function type. */
 FunctionOutput :: struct {
     /** Its type. */
-    type: ptr[TypeInfo],
+    type : ptr[TypeInfo],
 }
 
 /** One of a union's variants. */
 UnionVariant :: struct {
     /** Its name, like Some. */
-    name: string,
+    name : string,
     /**
      * The types of the variant's values, like int and string for Pair(int, string); none for a
      * variant without values.
      */
-    types: ptr[TypeInfo][],
+    types : ptr[TypeInfo][],
     /** Each value's byte offset from the start of the union, after the tag, in the same order. */
-    offsets: usize[],
+    offsets : usize[],
 }
 
 /** One of a struct's members. */
 StructMember :: struct {
     /** Its name. */
-    name: string,
+    name : string,
     /** Its type. */
-    member_type: ptr[TypeInfo],
+    member_type : ptr[TypeInfo],
     /** Byte offset from the start of the struct, 0 for every member of a #union. */
-    offset: usize,
+    offset : usize,
     /** The default value, if has_value. Not filled in at run time yet: an empty any. */
-    value: any,
+    value : any,
     /** Whether it has a default value. */
-    has_value: bool,
+    has_value : bool,
     /** Declared with using, so its own members are reached as the struct's. */
-    is_using: bool,
+    is_using : bool,
 }
 
 /** Which kind of type a TypeInfo describes, and so which struct to cast it to for the rest. */
@@ -127,58 +127,58 @@ TypeInfo :: struct {
     /** Which kind of type it is, and so which struct to cast the pointer to. */
     variant : TypeInfoVariant,
     /** The size of the type's values in bytes, as size_of gives. */
-    size: usize,
+    size : usize,
 }
 
 /** An alias's description. */
 TypeInfoAlias :: struct {
     using TypeInfo,
     /** The type it names. */
-    base_type: ptr[TypeInfo],
+    base_type : ptr[TypeInfo],
     /** The alias's name. */
-    name: string,
+    name : string,
     /** Declared distinct, so it's a type of its own rather than the type it names. */
-    is_distinct: bool,
+    is_distinct : bool,
 }
 
 /** An array's description, all its dimensions in one. */
 TypeInfoArray :: struct {
     using TypeInfo,
     /** The element type, the first one inside the dimensions that isn't an array. */
-    base_type: ptr[TypeInfo],
+    base_type : ptr[TypeInfo],
     /** Outermost first, the one indexed first. */
-    dimensions: ArrayDimensions[],
+    dimensions : ArrayDimensions[],
 }
 
 /** An enum's description. */
 TypeInfoEnum :: struct {
     using TypeInfo,
     /** The enum's name. */
-    name: string,
+    name : string,
     /** From #backed_by, uint if it wasn't given. */
-    backing_type: ptr[TypeInfo],
+    backing_type : ptr[TypeInfo],
     /** Each member's name, in declaration order. */
-    members: string[],
+    members : string[],
     /** The value of each member, in the same order as members. */
-    values: u128[],
+    values : u128[],
 }
 
 /** A float's description. */
 TypeInfoFloat :: struct {
     using TypeInfo,
     /** The byte order it's stored in. */
-    endianness: Endianness,
+    endianness : Endianness,
 }
 
 /** A function type's description. */
 TypeInfoFunction :: struct {
     using TypeInfo,
     /** Its parameters, in order. */
-    input: FunctionInput[],
+    input : FunctionInput[],
     /** Its results, in order; empty when it returns nothing. */
-    output: FunctionOutput[],
+    output : FunctionOutput[],
     /** Marked #never_returns. */
-    never_returns: bool,
+    never_returns : bool,
 }
 
 /**
@@ -188,90 +188,91 @@ TypeInfoFunction :: struct {
 TypeInfoInteger :: struct {
     using TypeInfo,
     /** Whether it holds negative numbers. */
-    is_signed: bool,
+    is_signed : bool,
     /** The byte order it's stored in. */
-    endianness: Endianness,
+    endianness : Endianness,
 }
 
 /** A pointer's description: ptr[T], rawptr or a relative pointer. */
 TypeInfoPointer :: struct {
     using TypeInfo,
     /** What it points to, none for rawptr. */
-    base_type: ptr[TypeInfo]?,
+    base_type : ptr[TypeInfo]?,
     /** A relative pointer, relptr8 to relptr64, holding an offset from its own address. */
-    is_relative: bool,
+    is_relative : bool,
     /** Whether what it points to can be changed through it: ptr[mut T] or mut rawptr. */
-    is_mutable: bool,
+    is_mutable : bool,
 }
 
 /** vector[T, n], or v128 to v512 (is_bits), which are lanes of u64 (docs/types.md, Vectors). */
 TypeInfoVector :: struct {
     using TypeInfo,
     /** Each lane's type. */
-    element_type: ptr[TypeInfo],
+    element_type : ptr[TypeInfo],
     /** How many lanes, a power of two. */
-    count: usize,
+    count : usize,
     /** v128, v256 or v512: bits of a vector register, without lanes of their own. */
-    is_bits: bool,
+    is_bits : bool,
 }
 
 /**
- * matrix[T, rows, columns], its elements stored column by column: element (r, c) is the (c × rows + r)th (docs/types.md,
+ * matrix[T, rows, columns], its elements stored column by column: element (r, c) is the (c × rows + r)th
+ * (docs/types.md,
  * Matrices).
  */
 TypeInfoMatrix :: struct {
     using TypeInfo,
     /** Each element's type, an integer or a float. */
-    element_type: ptr[TypeInfo],
+    element_type : ptr[TypeInfo],
     /** How many rows, 1 to 4. */
-    rows: usize,
+    rows : usize,
     /** How many columns, 1 to 4. */
-    columns: usize,
+    columns : usize,
 }
 
 /** A string type's description. */
 TypeInfoString :: struct {
     using TypeInfo,
     /** A cstring: a pointer to null-terminated text, rather than a count and a pointer. */
-    is_raw: bool,
+    is_raw : bool,
 }
 
 /** A struct's description. */
 TypeInfoStruct :: struct {
     using TypeInfo,
     /** The struct's name; empty for one without. */
-    name: string,
+    name : string,
     /** Its members, in declaration order. */
-    members: StructMember[],
+    members : StructMember[],
     /** In bytes, from #align(n) if it was given, otherwise the natural alignment. */
-    alignment: usize,
+    alignment : usize,
     /** Marked #scoped, so values hold pointers into the stack and can't be stored on the heap. */
-    is_scoped: bool,
+    is_scoped : bool,
     /** Marked #unrestricted, so values never point into the stack and can be stored anywhere. */
-    is_unrestricted: bool,
+    is_unrestricted : bool,
     /** Marked #packed, so there is no padding between members. */
-    is_packed: bool,
+    is_packed : bool,
     /** Marked #union, so every member is at offset 0 and they share memory. */
-    is_union: bool,
+    is_union : bool,
     /** Marked #secret, so its values are secrets, which formatting shows as <secret> (docs/memory.md, Secrets). */
-    is_secret: bool,
+    is_secret : bool,
 }
 
 /** A union's description, optionals and results included. */
 TypeInfoUnion :: struct {
     using TypeInfo,
     /** The union's name, like an instance's Optional[int]; empty for one without. */
-    name: string,
+    name : string,
     /** Its variants, in declaration order: a variant's tag is its index. */
-    variants: UnionVariant[],
+    variants : UnionVariant[],
     /**
      * The unsigned integer at offset 0 saying which variant a value is: its index in variants.
      * None when null_is_none.
      */
-    tag_type: ptr[TypeInfo]?,
+    tag_type : ptr[TypeInfo]?,
     /**
      * An optional of a pointer that's never null, like ptr[T]? or cstring?: just the pointer,
      * null for None and anything else for Some, with no tag.
      */
-    null_is_none: bool,
+    null_is_none : bool,
 }

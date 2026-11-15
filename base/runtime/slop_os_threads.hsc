@@ -19,7 +19,9 @@ import intrinsics from "base:intrinsics"
 
     /** The kernel call that ends the calling thread; it doesn't return. */
     SLOP_OS_CALL_THREAD_EXIT : u64 : 3
-    /** The kernel call that makes a thread: from a budget, in an address space, at an entry, on a stack, with a word. */
+    /**
+     * The kernel call that makes a thread: from a budget, in an address space, at an entry, on a stack, with a word.
+     */
     SLOP_OS_CALL_THREAD_CREATE : u64 : 4
     /** The kernel call that makes a port, paid for from a budget. */
     SLOP_OS_CALL_PORT_CREATE : u64 : 8
@@ -79,7 +81,12 @@ import intrinsics from "base:intrinsics"
         }
         thread.stack_pages = stack
         thread.stack_bytes = size
-        handle :: slop_os_start_thread(cast[rawptr](slop_os_thread_entry), stack, size, cast[u64](cast[uintptr](thread)))
+        handle :: slop_os_start_thread(
+            cast[rawptr](slop_os_thread_entry),
+            stack,
+            size,
+            cast[u64](cast[uintptr](thread))
+        )
         if handle == 0 {
             unmap_pages(stack, size)
             return false
@@ -94,7 +101,7 @@ import intrinsics from "base:intrinsics"
      * @param thread A thread os_thread_start started, joined only once; the Thread itself is left for the caller to
      *     free.
      */
-    os_thread_join :: fn(thread: ptr[mut Thread]) {
+    os_thread_join :: fn(thread : ptr[mut Thread]) {
         slop_os_wait_for_thread(thread.kernel_thread)
         slop_os_call(SLOP_OS_CALL_HANDLE_CLOSE, thread.kernel_thread)
         unmap_pages(thread.stack_pages, thread.stack_bytes)
@@ -114,17 +121,25 @@ import intrinsics from "base:intrinsics"
      * @param argument What the thread is given in its first argument register.
      * @return The kernel thread's owning handle, which the caller closes, or 0 if the kernel wouldn't make it.
      */
-    slop_os_start_thread #no_context :: fn(entry: rawptr, stack: rawptr, size: usize, argument: u64) -> u64 {
+    slop_os_start_thread #no_context :: fn(entry : rawptr, stack : rawptr, size : usize, argument : u64) -> u64 {
         startup :: cast[ptr[SlopOsStartup]](intrinsics.process_state().startup_block)
         /*
-         * The top, 16-byte aligned, as both architectures' calls want it; on x86-64, 8 bytes below, where a call's return
-         * address would be, as the entry is a function entered as if called: otherwise its frames are 8 bytes off, and an
+         * The top, 16-byte aligned, as both architectures' calls want it; on x86-64, 8 bytes below, where a call's
+         * return
+         * address would be, as the entry is a function entered as if called: otherwise its frames are 8 bytes off, and
+         * an
          * aligned store to one faults
          */
         aligned :: (cast[u64](cast[uintptr](stack)) + cast[u64](size)) & ~cast[u64](15)
         top :: if TARGET_ARCH == .x86_64 { aligned - 8 } else { aligned }
-        made :: slop_os_call(SLOP_OS_CALL_THREAD_CREATE, cast[u64](startup.budget), cast[u64](startup.space), cast[u64](cast[uintptr](entry)),
-            top, argument)
+        made :: slop_os_call(
+            SLOP_OS_CALL_THREAD_CREATE,
+            cast[u64](startup.budget),
+            cast[u64](startup.space),
+            cast[u64](cast[uintptr](entry)),
+            top,
+            argument
+        )
         return if made.tag == 0 { made.first } else { cast[u64](0) }
     }
 
@@ -136,16 +151,29 @@ import intrinsics from "base:intrinsics"
      *
      * @param handle A handle of the kernel thread, which stays open; the caller closes it.
      */
-    slop_os_wait_for_thread #no_context :: fn(handle: u64) {
+    slop_os_wait_for_thread #no_context :: fn(handle : u64) {
         startup :: cast[ptr[SlopOsStartup]](intrinsics.process_state().startup_block)
         port :: slop_os_call(SLOP_OS_CALL_PORT_CREATE, cast[u64](startup.budget))
         if port.tag != 0 {
             return void
         }
-        bound :: slop_os_call(SLOP_OS_CALL_PORT_BIND, port.first, handle, SLOP_OS_SIGNAL_TERMINATED, 0, SLOP_OS_BIND_ONCE)
+        bound :: slop_os_call(
+            SLOP_OS_CALL_PORT_BIND,
+            port.first,
+            handle,
+            SLOP_OS_SIGNAL_TERMINATED,
+            0,
+            SLOP_OS_BIND_ONCE
+        )
         if bound.tag == 0 {
             packets : u64[SLOP_OS_PACKET_WORDS]
-            slop_os_call(SLOP_OS_CALL_PORT_WAIT, port.first, cast[u64](cast[uintptr](&packets[0])), 1, SLOP_OS_NO_DEADLINE)
+            slop_os_call(
+                SLOP_OS_CALL_PORT_WAIT,
+                port.first,
+                cast[u64](cast[uintptr](&packets[0])),
+                1,
+                SLOP_OS_NO_DEADLINE
+            )
         }
         slop_os_call(SLOP_OS_CALL_HANDLE_CLOSE, port.first)
     }
@@ -156,7 +184,7 @@ import intrinsics from "base:intrinsics"
      *
      * @param argument The address of the thread's Thread, as os_thread_start gave it.
      */
-    slop_os_thread_entry #calling_convention(.c) #no_context :: fn(argument: u64) #never_returns {
+    slop_os_thread_entry #calling_convention(.c) #no_context :: fn(argument : u64) #never_returns {
         thread :: cast[ptr[mut Thread]](cast[rawptr](cast[uintptr](argument)))
         intrinsics.set_carrier(&thread.carrier)
         thread.carrier.native_stack_limit = cast[rawptr](cast[u64](cast[uintptr](thread.stack_pages)) + STACK_RESERVE)
@@ -192,10 +220,12 @@ import intrinsics from "base:intrinsics"
      * @param budget The CPU budget's handle; 0 for the process's own.
      * @return True if the page was written; false if there's none.
      */
-    slop_os_note_fiber #no_context :: fn(carrier: ptr[mut CarrierBlock], fiber: u64, budget: u64) -> bool {
+    slop_os_note_fiber #no_context :: fn(carrier : ptr[mut CarrierBlock], fiber : u64, budget : u64) -> bool {
         if carrier.thread_page == null {
             // Only a thread with a fiber or a budget to note needs one
-            if carrier.thread_page_failed || (fiber == 0 && budget == 0) || intrinsics.process_state().startup_block == null {
+            if carrier.thread_page_failed
+                || (fiber == 0 && budget == 0)
+                || intrinsics.process_state().startup_block == null {
                 return false
             }
             page :: map_pages(PAGE_SIZE)
@@ -224,7 +254,7 @@ import intrinsics from "base:intrinsics"
      * @param address The value to watch, which isn't read here.
      * @param expected The value it had when the caller decided to wait.
      */
-    wait_on_value :: fn(address: ptr[u32], expected: u32) {
+    wait_on_value :: fn(address : ptr[u32], expected : u32) {
         deterministic_turn()
         intrinsics.spin_hint()
     }
@@ -251,14 +281,14 @@ import intrinsics from "base:intrinsics"
      *
      * @param address The value waited on.
      */
-    wake_one :: fn(address: ptr[u32]) {}
+    wake_one :: fn(address : ptr[u32]) {}
 
     /**
      * Wake every thread waiting on a value: here nothing, since wait_on_value doesn't sleep.
      *
      * @param address The value waited on.
      */
-    wake_all :: fn(address: ptr[u32]) {}
+    wake_all :: fn(address : ptr[u32]) {}
 
     /**
      * Give the program's command line: none on SlopOS, where the kernel's is a grant, for those given it.
@@ -266,7 +296,7 @@ import intrinsics from "base:intrinsics"
      * @param allocator Unused, since nothing is allocated.
      * @return An empty array, always.
      */
-    os_command_line_arguments :: fn(allocator: Allocator) -> string[] {
+    os_command_line_arguments :: fn(allocator : Allocator) -> string[] {
         empty : string[]
         return empty
     }

@@ -42,7 +42,7 @@ FUNCTION_NAME_REACH : usize : 0x100000
  *     or more past its start, or when the program has no table.
  * @return offset How many bytes past the function's start address is; 0 whenever name is "".
  */
-function_at #no_context :: fn(address: rawptr) -> (name: string, offset: usize) {
+function_at #no_context :: fn(address : rawptr) -> (name : string, offset : usize) {
     best_name := ""
     best_start : usize = 0
     found := false
@@ -69,7 +69,7 @@ function_at #no_context :: fn(address: rawptr) -> (name: string, offset: usize) 
  * @return How many bytes past the image's start address is; or the address itself, unchanged, when the image's start
  *     isn't known or address is below it.
  */
-image_offset #no_context :: fn(address: rawptr) -> usize {
+image_offset #no_context :: fn(address : rawptr) -> usize {
     base :: cast[usize](intrinsics.image_base())
     if base == 0 || cast[usize](address) < base {
         return cast[usize](address)
@@ -87,7 +87,7 @@ image_offset #no_context :: fn(address: rawptr) -> usize {
  * @return True when address is within the image's span; false when it isn't, and wherever the image's start isn't
  *     known or its headers can't be read, like an ELF image whose headers aren't in memory.
  */
-in_image #no_context :: fn(address: rawptr) -> bool {
+in_image #no_context :: fn(address : rawptr) -> bool {
     base :: cast[usize](intrinsics.image_base())
     target :: cast[usize](address)
     if base == 0 || target < base {
@@ -103,7 +103,7 @@ in_image #no_context :: fn(address: rawptr) -> bool {
  * @return For ELF, the distance from the lowest address of its loaded segments to the highest they reach; for
  *     PE/COFF, its SizeOfImage. 0 if its headers aren't ones this reads, or an ELF image has no loaded segments.
  */
-image_size #no_context :: fn(base: usize) -> usize {
+image_size #no_context :: fn(base : usize) -> usize {
     header :: cast[ptr[u8]](base)
     if read_at[u32](base, 0) == 0x464c457f {
         // ELF: the loaded segments, from the lowest address any has to the highest it reaches
@@ -144,6 +144,6 @@ image_size #no_context :: fn(base: usize) -> usize {
  * @param offset How many bytes past base the value is.
  * @return The value there. The memory has to be readable; nothing is checked.
  */
-read_at #no_context :: fn[T](base: usize, offset: usize) -> T {
+read_at #no_context :: fn[T](base : usize, offset : usize) -> T {
     return cast[ptr[T]](base + offset)^
 }

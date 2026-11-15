@@ -13,7 +13,7 @@ package intrinsics
  * @param lane The value, of V's lane type.
  * @return A V with lane in each of its lanes.
  */
-splat : fn[V](lane: any) -> V : ---
+splat : fn[V](lane : any) -> V : ---
 
 /**
  * Choose each lane, or a whole value, from one of two, without a branch.
@@ -28,7 +28,7 @@ splat : fn[V](lane: any) -> V : ---
  * @param otherwise What's taken where mask is false.
  * @return The value made from both, of type V.
  */
-select : fn[V](mask: any, chosen: V, otherwise: V) -> V : ---
+select : fn[V](mask : any, chosen : V, otherwise : V) -> V : ---
 
 /**
  * Move a vector's lanes down, the first ones coming round to the end: rotate_lanes(vector[u32, 4].{a, b, c, d}, 1) is
@@ -40,7 +40,7 @@ select : fn[V](mask: any, chosen: V, otherwise: V) -> V : ---
  *     lane i + count, wrapping round.
  * @return The moved lanes, of type V.
  */
-rotate_lanes : fn[V](vector: V, count: usize) -> V : ---
+rotate_lanes : fn[V](vector : V, count : usize) -> V : ---
 
 /**
  * Add the lanes of a vector of integers together.
@@ -49,7 +49,7 @@ rotate_lanes : fn[V](vector: V, count: usize) -> V : ---
  * @param vector The lanes to add.
  * @return Their sum, of the lane type, wrapping round on overflow as integer addition in a lane does.
  */
-reduce_add : fn[V](vector: V) -> any : ---
+reduce_add : fn[V](vector : V) -> any : ---
 /**
  * And the lanes of a vector of integers together, bit by bit.
  *
@@ -57,7 +57,7 @@ reduce_add : fn[V](vector: V) -> any : ---
  * @param vector The lanes to combine.
  * @return The bits set in every lane, of the lane type.
  */
-reduce_and : fn[V](vector: V) -> any : ---
+reduce_and : fn[V](vector : V) -> any : ---
 /**
  * Or the lanes of a vector of integers together, bit by bit.
  *
@@ -65,7 +65,7 @@ reduce_and : fn[V](vector: V) -> any : ---
  * @param vector The lanes to combine.
  * @return The bits set in any lane, of the lane type.
  */
-reduce_or : fn[V](vector: V) -> any : ---
+reduce_or : fn[V](vector : V) -> any : ---
 /**
  * Xor the lanes of a vector of integers together, bit by bit.
  *
@@ -73,7 +73,7 @@ reduce_or : fn[V](vector: V) -> any : ---
  * @param vector The lanes to combine.
  * @return The bits set in an odd number of lanes, of the lane type.
  */
-reduce_xor : fn[V](vector: V) -> any : ---
+reduce_xor : fn[V](vector : V) -> any : ---
 
 /**
  * Tell whether any lane of a vector of bools is true, like a comparison's result.
@@ -82,7 +82,7 @@ reduce_xor : fn[V](vector: V) -> any : ---
  * @param mask The lanes to test.
  * @return True when at least one lane is true.
  */
-any_true : fn[V](mask: V) -> bool : ---
+any_true : fn[V](mask : V) -> bool : ---
 /**
  * Tell whether every lane of a vector of bools is true, like a comparison's result.
  *
@@ -90,7 +90,7 @@ any_true : fn[V](mask: V) -> bool : ---
  * @param mask The lanes to test.
  * @return True when every lane is true.
  */
-all_true : fn[V](mask: V) -> bool : ---
+all_true : fn[V](mask : V) -> bool : ---
 
 /**
  * Rotate an integer's bits, or each lane's, toward its top: bits shifted out of the top come back in at the bottom.
@@ -100,7 +100,7 @@ all_true : fn[V](mask: V) -> bool : ---
  * @param amount How many places, taken modulo the integer's (or lane's) width in bits, so any amount is valid.
  * @return The rotated bits, of type T.
  */
-rotate_left : fn[T](value: T, amount: u32) -> T : ---
+rotate_left : fn[T](value : T, amount : u32) -> T : ---
 /**
  * Rotate an integer's bits, or each lane's, toward its bottom: bits shifted out of the bottom come back in at the top.
  *
@@ -109,7 +109,7 @@ rotate_left : fn[T](value: T, amount: u32) -> T : ---
  * @param amount How many places, taken modulo the integer's (or lane's) width in bits, so any amount is valid.
  * @return The rotated bits, of type T.
  */
-rotate_right : fn[T](value: T, amount: u32) -> T : ---
+rotate_right : fn[T](value : T, amount : u32) -> T : ---
 
 /**
  * Reverse an integer's bytes, or each lane's: 0x1122_3344 becomes 0x4433_2211.
@@ -118,7 +118,7 @@ rotate_right : fn[T](value: T, amount: u32) -> T : ---
  * @param value The bytes to reverse.
  * @return The bytes in the other order, of type T.
  */
-byte_swap : fn[T](value: T) -> T : ---
+byte_swap : fn[T](value : T) -> T : ---
 /**
  * Count an integer's zero bits above its highest one bit, or each lane's.
  *
@@ -127,7 +127,7 @@ byte_swap : fn[T](value: T) -> T : ---
  * @return How many zero bits come before the first one from the top, from 0 to the width in bits, which 0 gives; of
  *     type T.
  */
-leading_zeros : fn[T](value: T) -> T : ---
+leading_zeros : fn[T](value : T) -> T : ---
 /**
  * Count an integer's zero bits below its lowest one bit, or each lane's.
  *
@@ -136,7 +136,7 @@ leading_zeros : fn[T](value: T) -> T : ---
  * @return How many zero bits come before the first one from the bottom, from 0 to the width in bits, which 0 gives;
  *     of type T.
  */
-trailing_zeros : fn[T](value: T) -> T : ---
+trailing_zeros : fn[T](value : T) -> T : ---
 /**
  * Count an integer's one bits, or each lane's.
  *
@@ -144,4 +144,4 @@ trailing_zeros : fn[T](value: T) -> T : ---
  * @param value The bits to count.
  * @return How many bits are 1, from 0 to the width in bits; of type T.
  */
-count_ones : fn[T](value: T) -> T : ---
+count_ones : fn[T](value : T) -> T : ---

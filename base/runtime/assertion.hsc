@@ -15,7 +15,7 @@ import intrinsics from "base:intrinsics"
  *
  * The handler is given location, where the assertion is in the source, and message, what failed.
  */
-AssertionHandler :: alias fn(location: SourceCodeLocation, message: string) #never_returns
+AssertionHandler :: alias fn(location : SourceCodeLocation, message : string) #never_returns
 
 /**
  * Check that something is true, and end the program through context.assertion_handler if it isn't.
@@ -27,7 +27,7 @@ AssertionHandler :: alias fn(location: SourceCodeLocation, message: string) #nev
  * @param message What failed, given to the handler to report; only read when the assertion fails.
  * @param location Where the assertion is, given to the handler; the caller's location by default.
  */
-assert :: fn(assertion: bool, message: string, location := #caller_location) {
+assert :: fn(assertion : bool, message : string, location := #caller_location) {
     if assertion {
         return void
     }
@@ -54,6 +54,6 @@ assert :: fn(assertion: bool, message: string, location := #caller_location) {
  * @param location Ignored; nothing is reported.
  * @param message Ignored; nothing is reported.
  */
-trap_assertion_handler : AssertionHandler : fn(location: SourceCodeLocation, message: string) #never_returns {
+trap_assertion_handler : AssertionHandler : fn(location : SourceCodeLocation, message : string) #never_returns {
     intrinsics.trap()
 }

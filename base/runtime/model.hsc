@@ -71,21 +71,28 @@ ModelChecker :: struct {
      * @return old What the location held before, zero-extended to 64 bits, as the operation reads it.
      * @return success For a compare-exchange, whether it stored; true for the others.
      */
-    atomic : fn(data: rawptr, operation: ModelOperation, order: ModelOrder, width: u32, address: rawptr, value: u64, expected: u64)
-        -> (old: u64, success: bool) #no_context,
+    atomic : fn(
+        data : rawptr,
+        operation : ModelOperation,
+        order : ModelOrder,
+        width : u32,
+        address : rawptr,
+        value : u64,
+        expected : u64
+    ) -> (old : u64, success : bool) #no_context,
     /**
      * Do a fence.
      *
      * @param data The checker's state.
      * @param order Its order.
      */
-    fence : fn(data: rawptr, order: ModelOrder) #no_context,
+    fence : fn(data : rawptr, order : ModelOrder) #no_context,
     /**
      * Take a spin hint: a thread waiting for another, which the checker may switch away from.
      *
      * @param data The checker's state.
      */
-    spin : fn(data: rawptr) #no_context,
+    spin : fn(data : rawptr) #no_context,
 }
 
 /**
@@ -101,12 +108,27 @@ ModelChecker :: struct {
  * @return old What the location held before, zero-extended.
  * @return success Whether a compare-exchange stored; true for the other operations.
  */
-model_atomic #no_context :: fn(operation: u32, order: u32, width: u32, address: rawptr, value: u64, expected: u64) -> (old: u64, success: bool) {
+model_atomic #no_context :: fn(
+    operation : u32,
+    order : u32,
+    width : u32,
+    address : rawptr,
+    value : u64,
+    expected : u64
+) -> (old : u64, success : bool) {
     carrier :: intrinsics.carrier()
     match carrier.model {
         case Some(checker) => {
             carrier.model = null
-            old, success :: checker.atomic(checker.data, cast[ModelOperation](operation), cast[ModelOrder](order), width, address, value, expected)
+            old, success :: checker.atomic(
+                checker.data,
+                cast[ModelOperation](operation),
+                cast[ModelOrder](order),
+                width,
+                address,
+                value,
+                expected
+            )
             carrier.model = checker
             return old, success
         }
@@ -119,7 +141,7 @@ model_atomic #no_context :: fn(operation: u32, order: u32, width: u32, address: 
  *
  * @param order Its order, a ModelOrder's number.
  */
-model_fence #no_context :: fn(order: u32) {
+model_fence #no_context :: fn(order : u32) {
     carrier :: intrinsics.carrier()
     match carrier.model {
         case Some(checker) => {
@@ -156,7 +178,13 @@ model_spin #no_context :: fn() {
  * @return old What the location held before, zero-extended.
  * @return success Whether a compare-exchange stored; true for the others.
  */
-native_atomic #no_context :: fn(operation: ModelOperation, width: u32, address: rawptr, value: u64, expected: u64) -> (old: u64, success: bool) {
+native_atomic #no_context :: fn(
+    operation : ModelOperation,
+    width : u32,
+    address : rawptr,
+    value : u64,
+    expected : u64
+) -> (old : u64, success : bool) {
     if width == 1 {
         old, success :: native_u8(operation, cast[ptr[mut u8]](address), cast[u8](value), cast[u8](expected))
         return cast[u64](old), success
@@ -185,7 +213,12 @@ native_atomic #no_context :: fn(operation: ModelOperation, width: u32, address: 
  * @return old What it held before.
  * @return success Whether a compare-exchange stored; true for the others.
  */
-native_u8 #no_context :: fn(operation: ModelOperation, target: ptr[mut u8], value: u8, expected: u8) -> (old: u8, success: bool) {
+native_u8 #no_context :: fn(
+    operation : ModelOperation,
+    target : ptr[mut u8],
+    value : u8,
+    expected : u8
+) -> (old : u8, success : bool) {
     match operation {
         case .Load => return intrinsics.atomic_load_u8(target), true
         case .Store => {
@@ -212,7 +245,12 @@ native_u8 #no_context :: fn(operation: ModelOperation, target: ptr[mut u8], valu
  * @return old What it held before.
  * @return success Whether a compare-exchange stored; true for the others.
  */
-native_u16 #no_context :: fn(operation: ModelOperation, target: ptr[mut u16], value: u16, expected: u16) -> (old: u16, success: bool) {
+native_u16 #no_context :: fn(
+    operation : ModelOperation,
+    target : ptr[mut u16],
+    value : u16,
+    expected : u16
+) -> (old : u16, success : bool) {
     match operation {
         case .Load => return intrinsics.atomic_load_u16(target), true
         case .Store => {
@@ -239,7 +277,12 @@ native_u16 #no_context :: fn(operation: ModelOperation, target: ptr[mut u16], va
  * @return old What it held before.
  * @return success Whether a compare-exchange stored; true for the others.
  */
-native_u32 #no_context :: fn(operation: ModelOperation, target: ptr[mut u32], value: u32, expected: u32) -> (old: u32, success: bool) {
+native_u32 #no_context :: fn(
+    operation : ModelOperation,
+    target : ptr[mut u32],
+    value : u32,
+    expected : u32
+) -> (old : u32, success : bool) {
     match operation {
         case .Load => return intrinsics.atomic_load_u32(target), true
         case .Store => {
@@ -266,7 +309,12 @@ native_u32 #no_context :: fn(operation: ModelOperation, target: ptr[mut u32], va
  * @return old What it held before.
  * @return success Whether a compare-exchange stored; true for the others.
  */
-native_u64 #no_context :: fn(operation: ModelOperation, target: ptr[mut u64], value: u64, expected: u64) -> (old: u64, success: bool) {
+native_u64 #no_context :: fn(
+    operation : ModelOperation,
+    target : ptr[mut u64],
+    value : u64,
+    expected : u64
+) -> (old : u64, success : bool) {
     match operation {
         case .Load => return intrinsics.atomic_load_u64(target), true
         case .Store => {

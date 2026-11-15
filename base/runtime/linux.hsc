@@ -39,7 +39,15 @@ import intrinsics from "base:intrinsics"
      * @return The kernel's result as it gives it: from -4095 to -1, as a u64, is the negated errno of a failure
      *     (syscall_failed tells), and anything else is the call's own result.
      */
-    linux_syscall #no_context :: fn(number: u64, a: u64 = 0, b: u64 = 0, c: u64 = 0, d: u64 = 0, e: u64 = 0, f: u64 = 0) -> u64 {
+    linux_syscall #no_context :: fn(
+        number : u64,
+        a : u64 = 0,
+        b : u64 = 0,
+        c : u64 = 0,
+        d : u64 = 0,
+        e : u64 = 0,
+        f : u64 = 0
+    ) -> u64 {
         return x86_64.syscall(number, a, b, c, d, e, f)
     }
 
@@ -58,8 +66,14 @@ import intrinsics from "base:intrinsics"
      * @param argument What entry is given.
      * @return The new thread's ID, above 0, in the caller; or a negated errno if the thread wasn't made.
      */
-    linux_clone_thread #no_context :: fn(flags: u64, stack: rawptr, parent_tid: ptr[mut u32], child_tid: ptr[mut u32], entry: rawptr,
-        argument: rawptr) -> i64 {
+    linux_clone_thread #no_context :: fn(
+        flags : u64,
+        stack : rawptr,
+        parent_tid : ptr[mut u32],
+        child_tid : ptr[mut u32],
+        entry : rawptr,
+        argument : rawptr
+    ) -> i64 {
         return x86_64.clone_thread(flags, stack, parent_tid, child_tid, entry, argument)
     }
 }
@@ -97,7 +111,15 @@ import intrinsics from "base:intrinsics"
      * @return The kernel's result as it gives it: from -4095 to -1, as a u64, is the negated errno of a failure
      *     (syscall_failed tells), and anything else is the call's own result.
      */
-    linux_syscall #no_context :: fn(number: u64, a: u64 = 0, b: u64 = 0, c: u64 = 0, d: u64 = 0, e: u64 = 0, f: u64 = 0) -> u64 {
+    linux_syscall #no_context :: fn(
+        number : u64,
+        a : u64 = 0,
+        b : u64 = 0,
+        c : u64 = 0,
+        d : u64 = 0,
+        e : u64 = 0,
+        f : u64 = 0
+    ) -> u64 {
         return aarch64.syscall(number, a, b, c, d, e, f)
     }
 
@@ -116,14 +138,19 @@ import intrinsics from "base:intrinsics"
      * @param argument What entry is given.
      * @return The new thread's ID, above 0, in the caller; or a negated errno if the thread wasn't made.
      */
-    linux_clone_thread #no_context :: fn(flags: u64, stack: rawptr, parent_tid: ptr[mut u32], child_tid: ptr[mut u32], entry: rawptr,
-        argument: rawptr) -> i64 {
+    linux_clone_thread #no_context :: fn(
+        flags : u64,
+        stack : rawptr,
+        parent_tid : ptr[mut u32],
+        child_tid : ptr[mut u32],
+        entry : rawptr,
+        argument : rawptr
+    ) -> i64 {
         return aarch64.clone_thread(flags, stack, parent_tid, child_tid, entry, argument)
     }
 }
 
 #if OS == .Linux && (TARGET_ARCH == .x86_64 || TARGET_ARCH == .arm64) {
-
     /** mmap's protection for memory that can be read and written, not run: PROT_READ | PROT_WRITE. */
     PROT_READ_WRITE : u64 : 3
     /** mmap's flags for memory of the process's own, backed by no file: MAP_PRIVATE | MAP_ANONYMOUS. */
@@ -147,7 +174,7 @@ import intrinsics from "base:intrinsics"
      * @return True when it's from -4095 to -1, as a u64, the negated errno of a failure; false for any other value,
      *     which is the call's result.
      */
-    syscall_failed #no_context :: fn(result: u64) -> bool {
+    syscall_failed #no_context :: fn(result : u64) -> bool {
         return result > 0xffff_ffff_ffff_f000
     }
 
@@ -158,8 +185,16 @@ import intrinsics from "base:intrinsics"
      * @return The memory's first byte, page-aligned, which the caller owns until it gives it to unmap_pages; or null if
      *     the kernel couldn't map it.
      */
-    map_pages #no_context :: fn(size: usize) -> rawptr {
-        result :: linux_syscall(SYS_MMAP, 0, cast[u64](size), PROT_READ_WRITE, MAP_PRIVATE_ANONYMOUS, 0xffff_ffff_ffff_ffff, 0)
+    map_pages #no_context :: fn(size : usize) -> rawptr {
+        result :: linux_syscall(
+            SYS_MMAP,
+            0,
+            cast[u64](size),
+            PROT_READ_WRITE,
+            MAP_PRIVATE_ANONYMOUS,
+            0xffff_ffff_ffff_ffff,
+            0
+        )
         if syscall_failed(result) {
             return null
         }
@@ -173,7 +208,7 @@ import intrinsics from "base:intrinsics"
      * @param size The size map_pages was asked for, or a part of it from address: what's unmapped is rounded up to
      *     whole pages.
      */
-    unmap_pages #no_context :: fn(address: rawptr, size: usize) {
+    unmap_pages #no_context :: fn(address : rawptr, size : usize) {
         linux_syscall(SYS_MUNMAP, cast[u64](address), cast[u64](size))
     }
 
@@ -188,7 +223,7 @@ import intrinsics from "base:intrinsics"
      * @param bytes The first byte, which only has to stay valid for the call.
      * @param count How many bytes; 0 writes nothing.
      */
-    os_write #no_context :: fn(stream: OutputStream, bytes: rawptr, count: usize) {
+    os_write #no_context :: fn(stream : OutputStream, bytes : rawptr, count : usize) {
         descriptor : u64 = 2
         if stream == OutputStream.OUTPUT {
             descriptor = 1
@@ -218,7 +253,7 @@ import intrinsics from "base:intrinsics"
      *     the caller's, from allocator. An argument with no terminating 0 in its first ARGUMENT_TEXT_LIMIT bytes is
      *     empty. Empty if there are none, or if the array couldn't be allocated.
      */
-    os_command_line_arguments :: fn(allocator: Allocator) -> string[] {
+    os_command_line_arguments :: fn(allocator : Allocator) -> string[] {
         empty : string[]
         state :: intrinsics.process_state()
         if state.argument_count == 0 || state.argument_pointers == null {
@@ -229,7 +264,8 @@ import intrinsics from "base:intrinsics"
             return empty
         }
         for &argument, index in arguments {
-            argument^ = cstring_view(cast[ptr[rawptr]](state.argument_pointers + index * 8)^, ARGUMENT_TEXT_LIMIT) or_else ""
+            argument^ = cstring_view(cast[ptr[rawptr]](state.argument_pointers + index * 8)^, ARGUMENT_TEXT_LIMIT)
+                or_else ""
         }
         return arguments
     }
@@ -239,17 +275,13 @@ import intrinsics from "base:intrinsics"
      *
      * @param code The exit status; the parent sees only its low 8 bits.
      */
-    os_exit_process #no_context :: fn(code: u32) #never_returns {
+    os_exit_process #no_context :: fn(code : u32) #never_returns {
         linux_syscall(SYS_EXIT_GROUP, cast[u64](code))
         intrinsics.trap()
     }
 
     /** The system's clocks, from clock_gettime: CLOCK_MONOTONIC, and CLOCK_REALTIME for the wall clock. */
-    SYSTEM_CLOCK :: Clock.{
-        data = null,
-        monotonic = system_monotonic,
-        wall = system_wall,
-    }
+    SYSTEM_CLOCK :: Clock.{data = null, monotonic = system_monotonic, wall = system_wall}
 
     /** clock_gettime's wall clock, which can jump when the system's time is set. */
     CLOCK_REALTIME : u64 : 0
@@ -271,7 +303,7 @@ import intrinsics from "base:intrinsics"
      * @return Nanoseconds since an unspecified start, which never go back; 0 if the clock couldn't be read, since a
      *     monotonic time can't report an error.
      */
-    system_monotonic :: fn(data: mut rawptr) -> MonotonicTime {
+    system_monotonic :: fn(data : mut rawptr) -> MonotonicTime {
         now : TimeSpec
         if syscall_failed(linux_syscall(SYS_CLOCK_GETTIME, CLOCK_MONOTONIC, cast[u64](&now))) {
             return 0
@@ -286,7 +318,7 @@ import intrinsics from "base:intrinsics"
      * @return The time since 1970-01-01T00:00:00Z, as the system has it set.
      * @error Unavailable The clock couldn't be read.
      */
-    system_wall :: fn(data: mut rawptr) -> Result[Instant, ClockError] {
+    system_wall :: fn(data : mut rawptr) -> Result[Instant, ClockError] {
         now : TimeSpec
         if syscall_failed(linux_syscall(SYS_CLOCK_GETTIME, CLOCK_REALTIME, cast[u64](&now))) {
             return .Error(.Unavailable)
@@ -295,10 +327,7 @@ import intrinsics from "base:intrinsics"
     }
 
     /** The system's random numbers, from getrandom, which waits until the kernel's generator is ready. */
-    SYSTEM_RANDOM :: Random.{
-        data = null,
-        fill = system_random_fill,
-    }
+    SYSTEM_RANDOM :: Random.{data = null, fill = system_random_fill}
 
     /**
      * Fill bytes with the system's random numbers, a getrandom at a time, which are suitable for keys.
@@ -310,13 +339,18 @@ import intrinsics from "base:intrinsics"
      * @param data Unused: the generator has no state of the program's.
      * @param bytes What's filled, all of it; empty fills nothing.
      */
-    system_random_fill :: fn(data: mut rawptr, bytes: mut u8[]) {
+    system_random_fill :: fn(data : mut rawptr, bytes : mut u8[]) {
         done : usize = 0
         loop {
             if done >= bytes.count {
                 break
             }
-            result :: linux_syscall(SYS_GETRANDOM, cast[u64](cast[rawptr](bytes.data) + done), cast[u64](bytes.count - done), 0)
+            result :: linux_syscall(
+                SYS_GETRANDOM,
+                cast[u64](cast[rawptr](bytes.data) + done),
+                cast[u64](bytes.count - done),
+                0
+            )
             // EINTR: again
             if result == ~cast[u64](3) {
                 continue
@@ -376,7 +410,7 @@ import intrinsics from "base:intrinsics"
      * @param attributes A PthreadAttributes to set up, which pthread_attr_destroy takes when it's done with.
      * @return 0, or an errno.
      */
-    pthread_attr_init #foreign(LIBC) : fn(attributes: rawptr) -> i32 : ---
+    pthread_attr_init #foreign(LIBC) : fn(attributes : rawptr) -> i32 : ---
     /**
      * Set the stack a pthread_attr_t's thread runs on, which the caller owns.
      *
@@ -385,14 +419,14 @@ import intrinsics from "base:intrinsics"
      * @param size The stack's size in bytes.
      * @return 0, or an errno.
      */
-    pthread_attr_setstack #foreign(LIBC) : fn(attributes: rawptr, stack: rawptr, size: usize) -> i32 : ---
+    pthread_attr_setstack #foreign(LIBC) : fn(attributes : rawptr, stack : rawptr, size : usize) -> i32 : ---
     /**
      * Give back what pthread_attr_init set up; the threads made with it aren't affected.
      *
      * @param attributes A PthreadAttributes pthread_attr_init set up.
      * @return 0, or an errno.
      */
-    pthread_attr_destroy #foreign(LIBC) : fn(attributes: rawptr) -> i32 : ---
+    pthread_attr_destroy #foreign(LIBC) : fn(attributes : rawptr) -> i32 : ---
     /**
      * Start a thread through the C library, calling start(argument) on it.
      *
@@ -402,7 +436,12 @@ import intrinsics from "base:intrinsics"
      * @param argument What start is given.
      * @return 0 if it started, or an errno.
      */
-    pthread_create #foreign(LIBC) : fn(thread: ptr[mut u64], attributes: rawptr, start: rawptr, argument: rawptr) -> i32 : ---
+    pthread_create #foreign(LIBC) : fn(
+        thread : ptr[mut u64],
+        attributes : rawptr,
+        start : rawptr,
+        argument : rawptr
+    ) -> i32 : ---
     /**
      * Wait for a thread pthread_create started to end, then give back its pthreads state.
      *
@@ -410,7 +449,7 @@ import intrinsics from "base:intrinsics"
      * @param result Where what its start returned is stored, or null not to.
      * @return 0, or an errno.
      */
-    pthread_join #foreign(LIBC) : fn(thread: u64, result: rawptr) -> i32 : ---
+    pthread_join #foreign(LIBC) : fn(thread : u64, result : rawptr) -> i32 : ---
 
     /** Room for a pthread_attr_t, which is 56 bytes on x86-64, with room to spare. */
     PthreadAttributes :: struct #align(16) {
@@ -424,7 +463,7 @@ import intrinsics from "base:intrinsics"
      *
      * @param carrier The calling thread's carrier block, which has to last as long as the thread.
      */
-    register_carrier #no_context :: fn(carrier: ptr[mut CarrierBlock]) {
+    register_carrier #no_context :: fn(carrier : ptr[mut CarrierBlock]) {
         intrinsics.set_thread_carrier(carrier)
     }
 
@@ -459,7 +498,7 @@ import intrinsics from "base:intrinsics"
      * @param parameter The thread's Thread, as os_thread_start gave it.
      * @return Null, to pthreads; started by clone, it doesn't return.
      */
-    linux_thread_entry #calling_convention(.c) #no_context :: fn(parameter: rawptr) -> rawptr {
+    linux_thread_entry #calling_convention(.c) #no_context :: fn(parameter : rawptr) -> rawptr {
         // pthreads' value of the carrier register, to give back
         callers :: intrinsics.carrier()
         thread :: cast[ptr[mut Thread]](parameter)
@@ -507,7 +546,12 @@ import intrinsics from "base:intrinsics"
             attributes : PthreadAttributes
             pthread_attr_init(cast[rawptr](&attributes))
             pthread_attr_setstack(cast[rawptr](&attributes), stack, THREAD_STACK_SIZE)
-            created :: pthread_create(&thread.pthread, cast[rawptr](&attributes), cast[rawptr](linux_thread_entry), cast[rawptr](thread))
+            created :: pthread_create(
+                &thread.pthread,
+                cast[rawptr](&attributes),
+                cast[rawptr](linux_thread_entry),
+                cast[rawptr](thread)
+            )
             pthread_attr_destroy(cast[rawptr](&attributes))
             if created != 0 {
                 unmap_pages(stack, THREAD_STACK_SIZE)
@@ -516,8 +560,14 @@ import intrinsics from "base:intrinsics"
             return true
         }
         top :: cast[rawptr](cast[usize](stack) + THREAD_STACK_SIZE)
-        result :: linux_clone_thread(THREAD_CLONE_FLAGS, top, &thread.tid, &thread.tid, cast[rawptr](linux_thread_entry),
-            cast[rawptr](thread))
+        result :: linux_clone_thread(
+            THREAD_CLONE_FLAGS,
+            top,
+            &thread.tid,
+            &thread.tid,
+            cast[rawptr](linux_thread_entry),
+            cast[rawptr](thread)
+        )
         if result <= 0 {
             unmap_pages(stack, THREAD_STACK_SIZE)
             return false
@@ -534,7 +584,7 @@ import intrinsics from "base:intrinsics"
      * @param thread A thread os_thread_start started, joined only once; the Thread itself is left for the caller to
      *     free.
      */
-    os_thread_join :: fn(thread: ptr[mut Thread]) {
+    os_thread_join :: fn(thread : ptr[mut Thread]) {
         if intrinsics.uses_c_library() {
             pthread_join(thread.pthread, null)
             unmap_pages(thread.stack_memory, THREAD_STACK_SIZE)
@@ -559,7 +609,7 @@ import intrinsics from "base:intrinsics"
      * @param address The value to wait on, shared only among this process's threads.
      * @param expected The value it had when the caller decided to wait.
      */
-    wait_on_value :: fn(address: ptr[u32], expected: u32) {
+    wait_on_value :: fn(address : ptr[u32], expected : u32) {
         linux_syscall(SYS_FUTEX, cast[u64](cast[rawptr](address)), FUTEX_WAIT | FUTEX_PRIVATE, cast[u64](expected))
     }
 
@@ -568,7 +618,7 @@ import intrinsics from "base:intrinsics"
      *
      * @param address The value waited on.
      */
-    wake_one :: fn(address: ptr[u32]) {
+    wake_one :: fn(address : ptr[u32]) {
         linux_syscall(SYS_FUTEX, cast[u64](cast[rawptr](address)), FUTEX_WAKE | FUTEX_PRIVATE, 1)
     }
 
@@ -577,7 +627,7 @@ import intrinsics from "base:intrinsics"
      *
      * @param address The value waited on.
      */
-    wake_all :: fn(address: ptr[u32]) {
+    wake_all :: fn(address : ptr[u32]) {
         linux_syscall(SYS_FUTEX, cast[u64](cast[rawptr](address)), FUTEX_WAKE | FUTEX_PRIVATE, 0x7fff_ffff)
     }
 }

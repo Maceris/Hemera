@@ -98,10 +98,20 @@ fence_sequentially_consistent : fn() : ---
  */
 atomic_operations :: fn() -> compiler.Code {
     types :: compiler.Code.[
-        compiler.type_code(i8), compiler.type_code(u8), compiler.type_code(i16), compiler.type_code(u16),
-        compiler.type_code(i32), compiler.type_code(u32), compiler.type_code(i64), compiler.type_code(u64),
-        compiler.type_code(i128), compiler.type_code(u128), compiler.type_code(int), compiler.type_code(uint),
-        compiler.type_code(uintptr), compiler.type_code(rawptr),
+        compiler.type_code(i8),
+        compiler.type_code(u8),
+        compiler.type_code(i16),
+        compiler.type_code(u16),
+        compiler.type_code(i32),
+        compiler.type_code(u32),
+        compiler.type_code(i64),
+        compiler.type_code(u64),
+        compiler.type_code(i128),
+        compiler.type_code(u128),
+        compiler.type_code(int),
+        compiler.type_code(uint),
+        compiler.type_code(uintptr),
+        compiler.type_code(rawptr)
     ]
     load_orderings :: string.["", "_acquire", "_no_fence"]
     store_orderings :: string.["", "_release", "_no_fence"]
@@ -112,32 +122,43 @@ atomic_operations :: fn() -> compiler.Code {
         type_name :: compiler.code_text(T)
         for ordering in load_orderings {
             add_atomic(&made, #code {
-                #insert compiler.name("atomic_load_", type_name, ordering) : fn(target: ptr[#insert T]) -> #insert T : ---
+                #insert compiler.name("atomic_load_", type_name, ordering) : fn(
+                    target : ptr[#insert T]
+                ) -> #insert T : ---
             })
         }
         for ordering in store_orderings {
             add_atomic(&made, #code {
-                #insert compiler.name("atomic_store_", type_name, ordering) : fn(target: ptr[mut #insert T], value: #insert T) : ---
+                #insert compiler.name("atomic_store_", type_name, ordering) : fn(
+                    target : ptr[mut #insert T],
+                    value : #insert T
+                ) : ---
             })
         }
         for ordering in read_modify_write_orderings {
             // Each gives the value from before
             for operation in string.["and", "exchange", "exchange_add", "or", "xor"] {
                 add_atomic(&made, #code {
-                    #insert compiler.name("interlocked_", operation, "_", type_name, ordering)
-                        : fn(target: ptr[mut #insert T], value: #insert T) -> #insert T : ---
+                    #insert compiler.name("interlocked_", operation, "_", type_name, ordering) : fn(
+                        target : ptr[mut #insert T],
+                        value : #insert T
+                    ) -> #insert T : ---
                 })
             }
             for operation in string.["increment", "decrement"] {
                 add_atomic(&made, #code {
-                    #insert compiler.name("interlocked_", operation, "_", type_name, ordering)
-                        : fn(target: ptr[mut #insert T]) -> (old: #insert T) : ---
+                    #insert compiler.name("interlocked_", operation, "_", type_name, ordering) : fn(
+                        target : ptr[mut #insert T]
+                    ) -> (old : #insert T) : ---
                 })
             }
             for weak in string.["", "_weak"] {
                 add_atomic(&made, #code {
-                    #insert compiler.name("interlocked_compare_exchange_", type_name, weak, ordering)
-                        : fn(target: ptr[mut #insert T], exchange: #insert T, expected: #insert T) -> (old: #insert T, success: bool) : ---
+                    #insert compiler.name("interlocked_compare_exchange_", type_name, weak, ordering) : fn(
+                        target : ptr[mut #insert T],
+                        exchange : #insert T,
+                        expected : #insert T
+                    ) -> (old : #insert T, success : bool) : ---
                 })
             }
         }
@@ -161,7 +182,7 @@ AtomicDeclarations :: struct {
  * @param code The declaration. If made is already full, it's left out, and the build fails with an error at the
  *     caller.
  */
-add_atomic :: fn(made: ptr[mut AtomicDeclarations], code: compiler.Code) {
+add_atomic :: fn(made : ptr[mut AtomicDeclarations], code : compiler.Code) {
     if made.count < made.codes.count {
         made.codes[made.count] = code
         made.count += 1

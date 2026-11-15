@@ -41,7 +41,7 @@ CarrierBlock :: struct #align(64) {
      * Installed by a fiber scheduler running on this thread, called by fiber_yield
      * when yielding is allowed. Null on plain threads, where fiber_yield does nothing.
      */
-    yield_function : fn(carrier: ptr[mut CarrierBlock])?,
+    yield_function : (fn(carrier : ptr[mut CarrierBlock]))?,
     /** Scheduler-defined data for this carrier, installed with yield_function; the runtime doesn't read it. */
     scheduler_data : rawptr,
     /** The scheduler's stack pointer while a fiber runs. Foreign calls run just below it. */
@@ -70,7 +70,7 @@ CarrierBlock :: struct #align(64) {
      * fiber until wake(waiter), which then queues it with the fiber's wake_function. Null on plain
      * threads, which block instead.
      */
-    park_function : fn(carrier: ptr[mut CarrierBlock], waiter #escaping : ptr[mut Waiter])?,
+    park_function : (fn(carrier : ptr[mut CarrierBlock], waiter #escaping : ptr[mut Waiter]))?,
     /** The thread's own waiter, for park when it isn't running a fiber. */
     thread_waiter : Waiter,
     /**
@@ -115,13 +115,14 @@ CarrierBlock :: struct #align(64) {
 
 /**
  * Tell the operating system which fiber is running on this thread, and the CPU budget it's bound to
- * (bind_cpu_budget): a fiber scheduler calls it just before resuming a fiber, and with null once it's back. On SlopOS it
+ * (bind_cpu_budget): a fiber scheduler calls it just before resuming a fiber, and with null once it's back. On SlopOS
+ * it
  * writes the thread's per-thread page, so the kernel charges the fiber's loan and names the fiber in samples and the
  * trace (the SlopOS repository's decisions/0041 and 0185); elsewhere it does nothing.
  *
  * @param fiber The fiber about to run on this thread; null for none, which puts the thread back on its own budget.
  */
-note_running_fiber :: fn(fiber: ptr[Fiber]?) #no_context {
+note_running_fiber :: fn(fiber : ptr[Fiber]?) #no_context {
     #if OS == .SlopOS && (TARGET_ARCH == .x86_64 || TARGET_ARCH == .arm64) {
         carrier : ptr[mut CarrierBlock] : intrinsics.carrier()
         match fiber {
@@ -139,7 +140,7 @@ note_running_fiber :: fn(fiber: ptr[Fiber]?) #no_context {
  * @param budget The handle; 0 for the process's own budget. One that isn't a CPU budget's with the right is taken as 0.
  * @return True if it's noted; false if the system has no per-thread page, or one couldn't be made: then it's ignored.
  */
-bind_cpu_budget :: fn(budget: u64) -> bool #no_context {
+bind_cpu_budget :: fn(budget : u64) -> bool #no_context {
     #if OS == .SlopOS && (TARGET_ARCH == .x86_64 || TARGET_ARCH == .arm64) {
         carrier : ptr[mut CarrierBlock] : intrinsics.carrier()
         fiber : u64 = 0

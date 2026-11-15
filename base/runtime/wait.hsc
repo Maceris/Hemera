@@ -28,7 +28,8 @@ deterministic_turn :: fn() #no_context {
 }
 
 // Windows' are in windows.hsc, Linux's on x86-64 and AArch64 in linux.hsc, and SlopOS's in slop_os_threads.hsc
-#if OS != .Windows && !(OS == .Linux && (TARGET_ARCH == .x86_64 || TARGET_ARCH == .arm64))
+#if OS != .Windows
+    && !(OS == .Linux && (TARGET_ARCH == .x86_64 || TARGET_ARCH == .arm64))
     && !(OS == .SlopOS && (TARGET_ARCH == .x86_64 || TARGET_ARCH == .arm64)) {
     /**
      * Wait until the value at address isn't expected: here, without a system to sleep on, a spin hint and a return,
@@ -37,7 +38,7 @@ deterministic_turn :: fn() #no_context {
      * @param address The value to watch, which another thread or fiber changes; it isn't read here.
      * @param expected The value it had when the caller decided to wait.
      */
-    wait_on_value :: fn(address: ptr[u32], expected: u32) {
+    wait_on_value :: fn(address : ptr[u32], expected : u32) {
         intrinsics.spin_hint()
     }
 
@@ -46,14 +47,14 @@ deterministic_turn :: fn() #no_context {
      *
      * @param address The value waited on.
      */
-    wake_one :: fn(address: ptr[u32]) {}
+    wake_one :: fn(address : ptr[u32]) {}
 
     /**
      * Wake every waiter sleeping on the value at address: here, with nothing ever asleep, nothing to do.
      *
      * @param address The value waited on.
      */
-    wake_all :: fn(address: ptr[u32]) {}
+    wake_all :: fn(address : ptr[u32]) {}
 
     /**
      * Start a thread on the system: here it can't, since threads don't start on this system yet.
@@ -70,7 +71,7 @@ deterministic_turn :: fn() #no_context {
      *
      * @param thread The thread, which is left as it is.
      */
-    os_thread_join :: fn(thread: ptr[mut Thread]) {}
+    os_thread_join :: fn(thread : ptr[mut Thread]) {}
 
     /**
      * Fetch the program's command-line arguments: here there's no command line, so none.
@@ -78,14 +79,15 @@ deterministic_turn :: fn() #no_context {
      * @param allocator Where the arguments would be allocated; nothing is.
      * @return An empty array, which needs no freeing.
      */
-    os_command_line_arguments :: fn(allocator: Allocator) -> string[] {
+    os_command_line_arguments :: fn(allocator : Allocator) -> string[] {
         empty : string[]
         return empty
     }
-
 }
 
-#if OS != .Windows && !(OS == .Linux && (TARGET_ARCH == .x86_64 || TARGET_ARCH == .arm64)) && !(OS == .SlopOS && (TARGET_ARCH == .x86_64 || TARGET_ARCH == .arm64))
+#if OS != .Windows
+    && !(OS == .Linux && (TARGET_ARCH == .x86_64 || TARGET_ARCH == .arm64))
+    && !(OS == .SlopOS && (TARGET_ARCH == .x86_64 || TARGET_ARCH == .arm64))
     && OS != .UEFI {
     /**
      * Write bytes to standard output or error: here there's neither, so they're dropped.
@@ -94,14 +96,14 @@ deterministic_turn :: fn() #no_context {
      * @param bytes The bytes, which aren't read.
      * @param count How many bytes there are.
      */
-    os_write #no_context :: fn(stream: OutputStream, bytes: rawptr, count: usize) {}
+    os_write #no_context :: fn(stream : OutputStream, bytes : rawptr, count : usize) {}
 
     /**
      * End the process: here, with no system to return to, by trapping.
      *
      * @param code The exit code, which goes nowhere.
      */
-    os_exit_process #no_context :: fn(code: u32) #never_returns {
+    os_exit_process #no_context :: fn(code : u32) #never_returns {
         intrinsics.trap()
     }
 

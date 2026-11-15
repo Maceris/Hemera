@@ -83,7 +83,12 @@ import intrinsics from "base:intrinsics"
         lifecycle.stack = stack
         lifecycle.carrier.native_stack_limit = cast[rawptr](cast[u64](cast[uintptr](stack)) + STACK_RESERVE)
         lifecycle.carrier.stack_limit = lifecycle.carrier.native_stack_limit
-        _ = slop_os_start_thread(cast[rawptr](slop_os_lifecycle_entry), stack, SLOP_OS_LIFECYCLE_STACK, cast[u64](cast[uintptr](lifecycle)))
+        _ = slop_os_start_thread(
+            cast[rawptr](slop_os_lifecycle_entry),
+            stack,
+            SLOP_OS_LIFECYCLE_STACK,
+            cast[u64](cast[uintptr](lifecycle))
+        )
     }
 
     /**
@@ -94,7 +99,7 @@ import intrinsics from "base:intrinsics"
      *
      * @param argument The address of the thread's SlopOsLifecycle, as slop_os_start_lifecycle gave it.
      */
-    slop_os_lifecycle_entry #calling_convention(.c) #no_context :: fn(argument: u64) #never_returns {
+    slop_os_lifecycle_entry #calling_convention(.c) #no_context :: fn(argument : u64) #never_returns {
         lifecycle :: cast[ptr[mut SlopOsLifecycle]](cast[rawptr](cast[uintptr](argument)))
         intrinsics.set_carrier(&lifecycle.carrier)
         slop_os_serve_lifecycle(lifecycle.channel)
@@ -114,7 +119,7 @@ import intrinsics from "base:intrinsics"
      *
      * @param channel The handle of the program's end of the lifecycle channel, which has to stay open while this runs.
      */
-    slop_os_serve_lifecycle #no_context :: fn(channel: u64) {
+    slop_os_serve_lifecycle #no_context :: fn(channel : u64) {
         startup :: cast[ptr[SlopOsStartup]](intrinsics.process_state().startup_block)
         port :: slop_os_call(SLOP_OS_CALL_PORT_CREATE, cast[u64](startup.budget))
         if port.tag != 0 {
@@ -126,14 +131,26 @@ import intrinsics from "base:intrinsics"
         }
         loop {
             message : SlopOsLifecycleMessage
-            read :: slop_os_call(SLOP_OS_CALL_CHANNEL_READ, channel, cast[u64](cast[uintptr](&message)), cast[u64](size_of(SlopOsLifecycleMessage)), 0)
+            read :: slop_os_call(
+                SLOP_OS_CALL_CHANNEL_READ,
+                channel,
+                cast[u64](cast[uintptr](&message)),
+                cast[u64](size_of(SlopOsLifecycleMessage)),
+                0
+            )
             if read.tag == SLOP_OS_ERROR_PEER_CLOSED {
                 break
             }
             if read.tag != 0 {
                 // Nothing to read until the channel says there is
                 packets : u64[SLOP_OS_PACKET_WORDS]
-                slop_os_call(SLOP_OS_CALL_PORT_WAIT, port.first, cast[u64](cast[uintptr](&packets[0])), 1, SLOP_OS_NO_DEADLINE)
+                slop_os_call(
+                    SLOP_OS_CALL_PORT_WAIT,
+                    port.first,
+                    cast[u64](cast[uintptr](&packets[0])),
+                    1,
+                    SLOP_OS_NO_DEADLINE
+                )
                 continue
             }
             answer := SlopOsLifecycleMessage.{sequence = message.sequence}
@@ -147,8 +164,13 @@ import intrinsics from "base:intrinsics"
             else {
                 continue
             }
-            slop_os_call(SLOP_OS_CALL_CHANNEL_WRITE, channel, cast[u64](cast[uintptr](&answer)), cast[u64](size_of(SlopOsLifecycleMessage)),
-                SLOP_OS_NO_BATCH)
+            slop_os_call(
+                SLOP_OS_CALL_CHANNEL_WRITE,
+                channel,
+                cast[u64](cast[uintptr](&answer)),
+                cast[u64](size_of(SlopOsLifecycleMessage)),
+                SLOP_OS_NO_BATCH
+            )
         }
         slop_os_call(SLOP_OS_CALL_HANDLE_CLOSE, port.first)
     }
@@ -189,7 +211,7 @@ import intrinsics from "base:intrinsics"
      *     asks for no packet from then on.
      * @param key The key the packet carries, so the program can tell it from its port's other packets.
      */
-    slop_os_on_stop #no_context :: fn(port: u64, key: u64) {
+    slop_os_on_stop #no_context :: fn(port : u64, key : u64) {
         state :: intrinsics.process_state()
         state.stop_key = key
         intrinsics.atomic_store_u64_release(&state.stop_port, port)

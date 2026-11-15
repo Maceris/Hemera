@@ -6,7 +6,8 @@ import intrinsics from "base:intrinsics"
  * The process's heap (PageHeap, process.hsc) on systems where the runtime makes its own from pages the
  * system maps: map_pages and unmap_pages are each system's, in linux.hsc and slop_os.hsc.
  */
-#if (OS == .Linux && (TARGET_ARCH == .x86_64 || TARGET_ARCH == .arm64)) || (OS == .SlopOS && (TARGET_ARCH == .x86_64 || TARGET_ARCH == .arm64)) {
+#if (OS == .Linux && (TARGET_ARCH == .x86_64 || TARGET_ARCH == .arm64))
+    || (OS == .SlopOS && (TARGET_ARCH == .x86_64 || TARGET_ARCH == .arm64)) {
     /**
      * Allocate, reallocate or free with the process's PageHeap (process.hsc), which any thread can use.
      *
@@ -25,12 +26,12 @@ import intrinsics from "base:intrinsics"
      *     map, and old_memory is then left as it was; null on success.
      */
     pages_allocator_function : AllocatorFn : fn(
-        allocator_data: rawptr,
-        size: usize,
-        alignment: usize,
-        old_memory: rawptr,
-        old_size: usize,
-        location := #caller_location,
+        allocator_data : rawptr,
+        size : usize,
+        alignment : usize,
+        old_memory : rawptr,
+        old_size : usize,
+        location := #caller_location
     ) -> (mut u8[], AllocatorError?) {
         empty : mut u8[]
         result := empty
@@ -46,7 +47,11 @@ import intrinsics from "base:intrinsics"
         }
         if old_memory != null {
             if size > 0 {
-                intrinsics.mem_copy(cast[mut rawptr](result.data), old_memory, if old_size < size { old_size } else { size })
+                intrinsics.mem_copy(
+                    cast[mut rawptr](result.data),
+                    old_memory,
+                    if old_size < size { old_size } else { size }
+                )
             }
             heap_free(old_memory)
         }
@@ -63,7 +68,7 @@ import intrinsics from "base:intrinsics"
      * @return The class, from 0 for 16 bytes to PAGE_HEAP_CLASSES - 1 for 2 KiB, or PAGE_HEAP_CLASSES when the block
      *     needs pages of its own.
      */
-    heap_class #no_context :: fn(size: usize) -> usize {
+    heap_class #no_context :: fn(size : usize) -> usize {
         class : usize = 0
         block : usize = 16
         loop {
@@ -84,7 +89,7 @@ import intrinsics from "base:intrinsics"
      *
      * @param heap The heap, the process's.
      */
-    heap_lock #no_context :: fn(heap: ptr[mut PageHeap]) {
+    heap_lock #no_context :: fn(heap : ptr[mut PageHeap]) {
         loop {
             if intrinsics.interlocked_exchange_u32(&heap.lock, 1) == 0 {
                 break
@@ -98,7 +103,7 @@ import intrinsics from "base:intrinsics"
      *
      * @param heap The heap, whose lock the caller holds.
      */
-    heap_unlock #no_context :: fn(heap: ptr[mut PageHeap]) {
+    heap_unlock #no_context :: fn(heap : ptr[mut PageHeap]) {
         intrinsics.atomic_store_u32_release(&heap.lock, 0)
     }
 
@@ -113,7 +118,7 @@ import intrinsics from "base:intrinsics"
      * @return The block's first byte, after its 16-byte header, which heap_free takes back; or null when the system
      *     has no pages to map.
      */
-    heap_allocate #no_context :: fn(size: usize, alignment: usize) -> rawptr {
+    heap_allocate #no_context :: fn(size : usize, alignment : usize) -> rawptr {
         class :: heap_class(size)
         if class >= PAGE_HEAP_CLASSES || alignment > 16 {
             // Pages of its own, with what freeing them needs in front
@@ -162,7 +167,7 @@ import intrinsics from "base:intrinsics"
      *
      * @param memory A block from heap_allocate, not null, which nothing may use after this.
      */
-    heap_free #no_context :: fn(memory: rawptr) {
+    heap_free #no_context :: fn(memory : rawptr) {
         header :: cast[usize](memory) - 16
         first :: cast[ptr[usize]](cast[rawptr](header))^
         if first >= PAGE_HEAP_CLASSES {

@@ -55,7 +55,7 @@ process_arguments :: fn() -> string[] {
  * @return How many arguments the line has, whether or not they fit: 0 for an empty line, otherwise at least 1, the
  *     program's name, which may be empty.
  */
-split_command_line :: fn(line: string, bytes #escaping : mut u8[], arguments: mut string[]) -> usize {
+split_command_line :: fn(line : string, bytes #escaping : mut u8[], arguments : mut string[]) -> usize {
     count : usize = 0
     written : usize = 0
     index : usize = 0
@@ -160,7 +160,13 @@ split_command_line :: fn(line: string, bytes #escaping : mut u8[], arguments: mu
  *     and nothing is stored. start equal to end gives an empty argument.
  * @return The next argument's index, count + 1, whether or not this one was stored.
  */
-finish_argument :: fn(bytes #escaping : mut u8[], arguments: mut string[], count: usize, start: usize, end: usize) -> usize {
+finish_argument :: fn(
+    bytes #escaping : mut u8[],
+    arguments : mut string[],
+    count : usize,
+    start : usize,
+    end : usize
+) -> usize {
     if count < arguments.count && end <= bytes.count {
         if end > start && start < bytes.count {
             arguments[count] = string_of(&bytes[start], end - start)
@@ -188,7 +194,7 @@ ARGUMENT_TEXT_LIMIT :: 131072
  * @return The bytes before the 0, viewing the memory at start, so good for as long as it is. Empty for null or when
  *     the first byte is 0, and None when there's no 0 among the first limit bytes.
  */
-cstring_view :: fn(start: rawptr, limit: usize) -> string? {
+cstring_view :: fn(start : rawptr, limit : usize) -> string? {
     if start == null {
         return ""
     }

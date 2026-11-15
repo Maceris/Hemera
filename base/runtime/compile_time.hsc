@@ -44,7 +44,7 @@ COMPILE_TIME_LOGGER :: Logger.{
  * @param params The values for the placeholders, in order.
  * @param location Where it was logged, which the compiler prints with it; the caller's own by default.
  */
-compile_time_trace : LogFunction : fn(format_string: string, params: any..., location := #caller_location) {
+compile_time_trace : LogFunction : fn(format_string : string, params : any..., location := #caller_location) {
     if #is_compile_time {
         intrinsics.compile_time_log(.TRACE, format_string, params, location)
     }
@@ -57,7 +57,7 @@ compile_time_trace : LogFunction : fn(format_string: string, params: any..., loc
  * @param params The values for the placeholders, in order.
  * @param location Where it was logged, which the compiler prints with it; the caller's own by default.
  */
-compile_time_debug : LogFunction : fn(format_string: string, params: any..., location := #caller_location) {
+compile_time_debug : LogFunction : fn(format_string : string, params : any..., location := #caller_location) {
     if #is_compile_time {
         intrinsics.compile_time_log(.DEBUG, format_string, params, location)
     }
@@ -70,7 +70,7 @@ compile_time_debug : LogFunction : fn(format_string: string, params: any..., loc
  * @param params The values for the placeholders, in order.
  * @param location Where it was logged, which the compiler prints with it; the caller's own by default.
  */
-compile_time_info : LogFunction : fn(format_string: string, params: any..., location := #caller_location) {
+compile_time_info : LogFunction : fn(format_string : string, params : any..., location := #caller_location) {
     if #is_compile_time {
         intrinsics.compile_time_log(.INFO, format_string, params, location)
     }
@@ -83,7 +83,7 @@ compile_time_info : LogFunction : fn(format_string: string, params: any..., loca
  * @param params The values for the placeholders, in order.
  * @param location Where it was logged, which the compiler prints with it; the caller's own by default.
  */
-compile_time_warn : LogFunction : fn(format_string: string, params: any..., location := #caller_location) {
+compile_time_warn : LogFunction : fn(format_string : string, params : any..., location := #caller_location) {
     if #is_compile_time {
         intrinsics.compile_time_log(.WARN, format_string, params, location)
     }
@@ -96,7 +96,7 @@ compile_time_warn : LogFunction : fn(format_string: string, params: any..., loca
  * @param params The values for the placeholders, in order.
  * @param location Where it was logged, which the compiler reports the error at; the caller's own by default.
  */
-compile_time_error : LogFunction : fn(format_string: string, params: any..., location := #caller_location) {
+compile_time_error : LogFunction : fn(format_string : string, params : any..., location := #caller_location) {
     if #is_compile_time {
         intrinsics.compile_time_log(.ERROR, format_string, params, location)
     }
@@ -109,7 +109,7 @@ compile_time_error : LogFunction : fn(format_string: string, params: any..., loc
  * @param params The values for the placeholders, in order.
  * @param location Where it was logged, which the compiler reports the error at; the caller's own by default.
  */
-compile_time_fatal : LogFunction : fn(format_string: string, params: any..., location := #caller_location) {
+compile_time_fatal : LogFunction : fn(format_string : string, params : any..., location := #caller_location) {
     if #is_compile_time {
         intrinsics.compile_time_log(.FATAL, format_string, params, location)
     }
@@ -122,7 +122,7 @@ compile_time_fatal : LogFunction : fn(format_string: string, params: any..., loc
  * @param location Where the assertion failed, which the compiler reports the error at.
  * @param message What failed, as the compiler reports it.
  */
-compile_time_assertion_handler : AssertionHandler : fn(location: SourceCodeLocation, message: string) #never_returns {
+compile_time_assertion_handler : AssertionHandler : fn(location : SourceCodeLocation, message : string) #never_returns {
     if #is_compile_time {
         intrinsics.compile_time_fail(message, location)
     }
@@ -146,12 +146,12 @@ compile_time_assertion_handler : AssertionHandler : fn(location: SourceCodeLocat
  * @return Null on success, or OutOfMemory when the compiler had no memory to give, or at run time.
  */
 compile_time_allocator_function : AllocatorFn : fn(
-    allocator_data: rawptr,
-    size: usize,
-    alignment: usize,
-    old_memory: rawptr,
-    old_size: usize,
-    location := #caller_location,
+    allocator_data : rawptr,
+    size : usize,
+    alignment : usize,
+    old_memory : rawptr,
+    old_size : usize,
+    location := #caller_location
 ) -> (mut u8[], AllocatorError?) {
     empty : mut u8[]
     // The compiler's memory is only there at compile time

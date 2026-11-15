@@ -16,7 +16,7 @@ package compiler
  * @return value, no longer a secret, as a type that isn't #secret: a #secret alias gives what it aliases. A #secret
  *     struct has no public form, so declassifying one is an error; declassify what's in it.
  */
-declassify : fn[T](value: T) -> any : ---
+declassify : fn[T](value : T) -> any : ---
 
 /**
  * Make a value a secret, for a local that holds secrets later, like acc := compiler.secret(cast[u32](0)).
@@ -28,4 +28,4 @@ declassify : fn[T](value: T) -> any : ---
  * @param value Any value, public or secret already; its bits come back unchanged.
  * @return value, as a secret, of the same type.
  */
-secret : fn[T](value: T) -> T : ---
+secret : fn[T](value : T) -> T : ---

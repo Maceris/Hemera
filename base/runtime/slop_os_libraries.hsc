@@ -5,7 +5,8 @@ import intrinsics from "base:intrinsics"
 /*
  * Loading a typed library on SlopOS (libraries.hsc; the SlopOS repository's decisions 0119, 0120): whoever launched the
  * program gave it each library it imports as a grant, library:<the library's file>, read-only memory holding the file,
- * from the bundle store or a boot module. Its segments that aren't written are mapped from that memory, so every process
+ * from the bundle store or a boot module. Its segments that aren't written are mapped from that memory, so every
+ * process
  * using the library shares their pages, its text read and execute; each that is written is copied into memory of the
  * program's own. Its relative relocations are applied, only ever within those copies, and its interface record is
  * found at its entry, where the compiler puts it. Anything else, a relocation of another kind or one into what's
@@ -142,7 +143,7 @@ import intrinsics from "base:intrinsics"
      *     machine or is cut short, it has more than LIBRARY_MAX_SEGMENTS written segments, a relocation is of another
      *     kind or outside its copies, or the free range or the kernel couldn't give the memory.
      */
-    os_load_library :: fn(name: string) -> ptr[LibraryInterface]? {
+    os_load_library :: fn(name : string) -> ptr[LibraryInterface]? {
         state :: intrinsics.process_state()
         if state.startup_block == null {
             return null
@@ -170,26 +171,47 @@ import intrinsics from "base:intrinsics"
         file_size :: sized.first
         // The whole file, read-only, to read its headers and copy its written segments from
         file :: reserve_addresses(cast[usize](file_size)) or_return null
-        if slop_os_call(SLOP_OS_CALL_MEMORY_MAP, handle, cast[u64](startup.space), file, 0, file_size, SLOP_OS_PROTECTION_READ).tag != 0 {
+        if slop_os_call(
+            SLOP_OS_CALL_MEMORY_MAP,
+            handle,
+            cast[u64](startup.space),
+            file,
+            0,
+            file_size,
+            SLOP_OS_PROTECTION_READ
+        ).tag
+            != 0 {
             return null
         }
         defer slop_os_call(SLOP_OS_CALL_MEMORY_UNMAP, cast[u64](startup.space), file)
         elf :: cast[ptr[LibraryElfHeader]](cast[uintptr](file))
-        if elf.ident[0] != 0x7f || elf.ident[1] != 0x45 || elf.ident[2] != 0x4c || elf.ident[3] != 0x46 || elf.ident[4] != 2
-            || elf.ident[5] != 1 || elf.type != 3 || elf.machine != LIBRARY_ELF_MACHINE
+        if elf.ident[0] != 0x7f
+            || elf.ident[1] != 0x45
+            || elf.ident[2] != 0x4c
+            || elf.ident[3] != 0x46
+            || elf.ident[4] != 2
+            || elf.ident[5] != 1
+            || elf.type != 3
+            || elf.machine != LIBRARY_ELF_MACHINE
             || cast[usize](elf.program_header_size) != size_of(LibraryProgramHeader) {
             return null
         }
         count :: cast[u64](elf.program_header_count)
-        if elf.program_headers > file_size || count * cast[u64](size_of(LibraryProgramHeader)) > file_size - elf.program_headers {
+        if elf.program_headers > file_size
+            || count * cast[u64](size_of(LibraryProgramHeader)) > file_size - elf.program_headers {
             return null
         }
-        program :: view_of(cast[ptr[LibraryProgramHeader]](cast[uintptr](file + elf.program_headers)), cast[usize](count))
+        program :: view_of(
+            cast[ptr[LibraryProgramHeader]](cast[uintptr](file + elf.program_headers)),
+            cast[usize](count)
+        )
         lowest := ~cast[u64](0)
         highest : u64 = 0
         for each in program {
             if each.type == LIBRARY_PT_LOAD {
-                if each.offset > file_size || each.file_size > file_size - each.offset || each.file_size > each.memory_size
+                if each.offset > file_size
+                    || each.file_size > file_size - each.offset
+                    || each.file_size > each.memory_size
                     || (each.offset & (LIBRARY_PAGE - 1)) != (each.address & (LIBRARY_PAGE - 1)) {
                     return null
                 }
@@ -218,8 +240,22 @@ import intrinsics from "base:intrinsics"
                 if end - start > file_size - from {
                     return null
                 }
-                protection :: if each.flags & LIBRARY_PF_EXECUTE != 0 { SLOP_OS_PROTECTION_READ_EXECUTE } else { SLOP_OS_PROTECTION_READ }
-                if slop_os_call(SLOP_OS_CALL_MEMORY_MAP, handle, cast[u64](startup.space), base + start, from, end - start, protection).tag != 0 {
+                protection :: if each.flags & LIBRARY_PF_EXECUTE != 0 {
+                    SLOP_OS_PROTECTION_READ_EXECUTE
+                }
+                else {
+                    SLOP_OS_PROTECTION_READ
+                }
+                if slop_os_call(
+                    SLOP_OS_CALL_MEMORY_MAP,
+                    handle,
+                    cast[u64](startup.space),
+                    base + start,
+                    from,
+                    end - start,
+                    protection
+                ).tag
+                    != 0 {
                     return null
                 }
                 continue
@@ -232,12 +268,23 @@ import intrinsics from "base:intrinsics"
             if created.tag != 0 {
                 return null
             }
-            if slop_os_call(SLOP_OS_CALL_MEMORY_MAP, created.first, cast[u64](startup.space), base + start, 0, end - start,
-                SLOP_OS_PROTECTION_READ_WRITE).tag != 0 {
+            if slop_os_call(
+                SLOP_OS_CALL_MEMORY_MAP,
+                created.first,
+                cast[u64](startup.space),
+                base + start,
+                0,
+                end - start,
+                SLOP_OS_PROTECTION_READ_WRITE
+            ).tag
+                != 0 {
                 return null
             }
-            intrinsics.mem_copy_non_overlapping(cast[mut rawptr](cast[uintptr](base + each.address)), cast[rawptr](cast[uintptr](file + each.offset)),
-                cast[usize](each.file_size))
+            intrinsics.mem_copy_non_overlapping(
+                cast[mut rawptr](cast[uintptr](base + each.address)),
+                cast[rawptr](cast[uintptr](file + each.offset)),
+                cast[usize](each.file_size)
+            )
             copies[copy_count] = LibraryCopy.{start = start, end = end}
             copy_count += 1
         }
@@ -263,7 +310,7 @@ import intrinsics from "base:intrinsics"
      *     copy, it has Rel, PLT or packed relocations, its Rela entries aren't LibraryRela's size, or one isn't a
      *     relative relocation.
      */
-    relocate_library :: fn(base: u64, address: u64, copies: LibraryCopy[]) -> bool {
+    relocate_library :: fn(base : u64, address : u64, copies : LibraryCopy[]) -> bool {
         if !within_copies(address, 16, copies) {
             return false
         }
@@ -302,7 +349,8 @@ import intrinsics from "base:intrinsics"
         }
         for i in cast[u64](0)..<bytes / entry_size {
             each :: cast[ptr[LibraryRela]](cast[uintptr](base + relocations + i * entry_size))
-            if cast[u32](each.info & 0xffffffff) != LIBRARY_RELATIVE_RELOCATION || !within_copies(each.offset, 8, copies) {
+            if cast[u32](each.info & 0xffffffff) != LIBRARY_RELATIVE_RELOCATION
+                || !within_copies(each.offset, 8, copies) {
                 return false
             }
             cast[ptr[mut u64]](cast[uintptr](base + each.offset))^ = base + cast[u64](each.addend)
@@ -318,7 +366,7 @@ import intrinsics from "base:intrinsics"
      * @param copies The library's copied segments.
      * @return True if one copy holds them all; false if none does, or there are no copies.
      */
-    within_copies :: fn(offset: u64, bytes: u64, copies: LibraryCopy[]) -> bool {
+    within_copies :: fn(offset : u64, bytes : u64, copies : LibraryCopy[]) -> bool {
         for copy in copies {
             if offset >= copy.start && offset + bytes <= copy.end {
                 return true

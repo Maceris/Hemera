@@ -147,7 +147,7 @@ package runtime
      * @return The library's interface record, at its entry, valid for the rest of the process; or null if the path
      *     was too long, the file couldn't be opened, read or mapped, or it isn't a typed library.
      */
-    linux_load_library :: fn(name: string) -> ptr[LibraryInterface]? {
+    linux_load_library :: fn(name : string) -> ptr[LibraryInterface]? {
         path : u8[4096]
         length :: library_path(name, path) or_return null
         if length >= path.count {
@@ -165,8 +165,15 @@ package runtime
         }
         elf :: cast[ptr[ElfHeader]](&headers[0])
         // An ELF64, little-endian, of this machine, a shared object
-        if elf.ident[0] != 0x7f || elf.ident[1] != 0x45 || elf.ident[2] != 0x4c || elf.ident[3] != 0x46 || elf.ident[4] != 2
-            || elf.ident[5] != 1 || elf.type != 3 || elf.machine != ELF_MACHINE || cast[usize](elf.program_header_size) != size_of(ProgramHeader) {
+        if elf.ident[0] != 0x7f
+            || elf.ident[1] != 0x45
+            || elf.ident[2] != 0x4c
+            || elf.ident[3] != 0x46
+            || elf.ident[4] != 2
+            || elf.ident[5] != 1
+            || elf.type != 3
+            || elf.machine != ELF_MACHINE
+            || cast[usize](elf.program_header_size) != size_of(ProgramHeader) {
             return null
         }
         count :: cast[usize](elf.program_header_count)
@@ -201,10 +208,23 @@ package runtime
             }
             start :: each.address & ~(PAGE - 1)
             end :: (each.address + each.memory_size + PAGE - 1) & ~(PAGE - 1)
-            mapped :: linux_syscall(SYS_MMAP, base + start, end - start, PROT_READ_WRITE, MAP_PRIVATE_ANONYMOUS | MAP_FIXED,
-                0xffff_ffff_ffff_ffff, 0)
-            if syscall_failed(mapped) || !read_exactly(descriptor, cast[rawptr](cast[uintptr](base + each.address)),
-                cast[usize](each.file_size), each.offset, false) {
+            mapped :: linux_syscall(
+                SYS_MMAP,
+                base + start,
+                end - start,
+                PROT_READ_WRITE,
+                MAP_PRIVATE_ANONYMOUS | MAP_FIXED,
+                0xffff_ffff_ffff_ffff,
+                0
+            )
+            if syscall_failed(mapped)
+                || !read_exactly(
+                    descriptor,
+                    cast[rawptr](cast[uintptr](base + each.address)),
+                    cast[usize](each.file_size),
+                    each.offset,
+                    false
+                ) {
                 return null
             }
         }
@@ -241,7 +261,7 @@ package runtime
      * @return The path's length in bytes; or None if path is empty, the program's own path couldn't be read or
      *     doesn't fit, or the whole path doesn't fit.
      */
-    library_path :: fn(name: string, path: mut u8[]) -> usize? {
+    library_path :: fn(name : string, path : mut u8[]) -> usize? {
         if path.count == 0 {
             return null
         }
@@ -252,8 +272,13 @@ package runtime
         at : usize = 0
         if !has_folder {
             link :: u8.[0x2f, 0x70, 0x72, 0x6f, 0x63, 0x2f, 0x73, 0x65, 0x6c, 0x66, 0x2f, 0x65, 0x78, 0x65, 0]
-            read :: linux_syscall(SYS_READLINKAT, AT_FDCWD, cast[u64](cast[rawptr](&link[0])), cast[u64](cast[rawptr](&path[0])),
-                cast[u64](path.count))
+            read :: linux_syscall(
+                SYS_READLINKAT,
+                AT_FDCWD,
+                cast[u64](cast[rawptr](&link[0])),
+                cast[u64](cast[rawptr](&path[0])),
+                cast[u64](path.count)
+            )
             if syscall_failed(read) || read >= cast[u64](path.count) {
                 return null
             }
@@ -288,13 +313,19 @@ package runtime
      * @return True if count bytes were read, or the file ended first and short is true; false if a read failed, or the
      *     file ended first and short is false.
      */
-    read_exactly :: fn(descriptor: u64, into: rawptr, count: usize, offset: u64, short: bool) -> bool {
+    read_exactly :: fn(descriptor : u64, into : rawptr, count : usize, offset : u64, short : bool) -> bool {
         done : usize = 0
         loop {
             if done >= count {
                 return true
             }
-            read :: linux_syscall(SYS_PREAD, descriptor, cast[u64](into + done), cast[u64](count - done), offset + cast[u64](done))
+            read :: linux_syscall(
+                SYS_PREAD,
+                descriptor,
+                cast[u64](into + done),
+                cast[u64](count - done),
+                offset + cast[u64](done)
+            )
             if syscall_failed(read) {
                 return false
             }
@@ -316,7 +347,7 @@ package runtime
      * @return True if every relocation was applied, or there were none; false if the library has Rel, PLT or packed
      *     relocations, its Rela entries aren't Rela's size, or one of them isn't relative.
      */
-    relocate :: fn(base: u64, address: u64) -> bool {
+    relocate :: fn(base : u64, address : u64) -> bool {
         relocations : u64 = 0
         bytes : u64 = 0
         entry_size := cast[u64](size_of(Rela))

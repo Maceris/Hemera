@@ -147,7 +147,7 @@ SLOP_OS_EVENTS_MAX_ARGUMENTS :: 32
  * @param count The number, in bytes; within 7 of u64's largest, it wraps.
  * @return The smallest multiple of 8 that's at least count; 0 for 0.
  */
-slop_os_events_padded #no_context :: fn(count: u64) -> u64 {
+slop_os_events_padded #no_context :: fn(count : u64) -> u64 {
     return (count + 7) & ~cast[u64](7)
 }
 
@@ -211,7 +211,7 @@ slop_os_events_padded #no_context :: fn(count: u64) -> u64 {
      *     first SLOP_OS_EVENTS_MAX_ARGUMENTS, the format string's among them, are kept.
      * @param location Where it was logged from; unused, as records don't hold it.
      */
-    slop_os_log_trace : LogFunction : fn(format_string: string, params: any..., location := #caller_location) {
+    slop_os_log_trace : LogFunction : fn(format_string : string, params : any..., location := #caller_location) {
         slop_os_log(.TRACE, "trace", format_string, params)
     }
 
@@ -224,7 +224,7 @@ slop_os_events_padded #no_context :: fn(count: u64) -> u64 {
      *     first SLOP_OS_EVENTS_MAX_ARGUMENTS, the format string's among them, are kept.
      * @param location Where it was logged from; unused, as records don't hold it.
      */
-    slop_os_log_debug : LogFunction : fn(format_string: string, params: any..., location := #caller_location) {
+    slop_os_log_debug : LogFunction : fn(format_string : string, params : any..., location := #caller_location) {
         slop_os_log(.DEBUG, "debug", format_string, params)
     }
 
@@ -237,7 +237,7 @@ slop_os_events_padded #no_context :: fn(count: u64) -> u64 {
      *     first SLOP_OS_EVENTS_MAX_ARGUMENTS, the format string's among them, are kept.
      * @param location Where it was logged from; unused, as records don't hold it.
      */
-    slop_os_log_info : LogFunction : fn(format_string: string, params: any..., location := #caller_location) {
+    slop_os_log_info : LogFunction : fn(format_string : string, params : any..., location := #caller_location) {
         slop_os_log(.INFO, "info", format_string, params)
     }
 
@@ -250,7 +250,7 @@ slop_os_events_padded #no_context :: fn(count: u64) -> u64 {
      *     first SLOP_OS_EVENTS_MAX_ARGUMENTS, the format string's among them, are kept.
      * @param location Where it was logged from; unused, as records don't hold it.
      */
-    slop_os_log_warn : LogFunction : fn(format_string: string, params: any..., location := #caller_location) {
+    slop_os_log_warn : LogFunction : fn(format_string : string, params : any..., location := #caller_location) {
         slop_os_log(.WARN, "warn", format_string, params)
     }
 
@@ -263,7 +263,7 @@ slop_os_events_padded #no_context :: fn(count: u64) -> u64 {
      *     first SLOP_OS_EVENTS_MAX_ARGUMENTS, the format string's among them, are kept.
      * @param location Where it was logged from; unused, as records don't hold it.
      */
-    slop_os_log_error : LogFunction : fn(format_string: string, params: any..., location := #caller_location) {
+    slop_os_log_error : LogFunction : fn(format_string : string, params : any..., location := #caller_location) {
         slop_os_log(.ERROR, "error", format_string, params)
     }
 
@@ -276,7 +276,7 @@ slop_os_events_padded #no_context :: fn(count: u64) -> u64 {
      *     first SLOP_OS_EVENTS_MAX_ARGUMENTS, the format string's among them, are kept.
      * @param location Where it was logged from; unused, as records don't hold it.
      */
-    slop_os_log_fatal : LogFunction : fn(format_string: string, params: any..., location := #caller_location) {
+    slop_os_log_fatal : LogFunction : fn(format_string : string, params : any..., location := #caller_location) {
         slop_os_log(.FATAL, "fatal", format_string, params)
     }
 
@@ -295,7 +295,7 @@ slop_os_events_padded #no_context :: fn(count: u64) -> u64 {
      * @param params The format string's arguments; only the first SLOP_OS_EVENTS_MAX_ARGUMENTS, the format string's
      *     among them, are written.
      */
-    slop_os_log :: fn(level: LogLevel, label: string, format_string: string, params: any[]) {
+    slop_os_log :: fn(level : LogLevel, label : string, format_string : string, params : any[]) {
         if cast[int](level) < cast[int](context.log_level) {
             return void
         }
@@ -345,7 +345,12 @@ slop_os_events_padded #no_context :: fn(count: u64) -> u64 {
      * @return True if it's all in the ring and published; false, with nothing put, if the ring hasn't room for them,
      *     an entry is more than half the ring, or there isn't the memory to put them together.
      */
-    events_write :: fn(log: ptr[mut SlopOsEventsLog], level: LogLevel, format_string: string, params: any[]) -> bool {
+    events_write :: fn(
+        log : ptr[mut SlopOsEventsLog],
+        level : LogLevel,
+        format_string : string,
+        params : any[]
+    ) -> bool {
         array_reset(&log.entries)
         if log.dropped > 0 {
             dropped :: events_begin(&log.entries, SLOP_OS_EVENTS_DROPPED, size_of(SlopOsEventsDropped)) or_return false
@@ -452,7 +457,7 @@ slop_os_events_padded #no_context :: fn(count: u64) -> u64 {
      * @return True once it's the logger's ring; false if the process has a ring already, is mapping one, or this one
      *     couldn't be mapped.
      */
-    slop_os_adopt_events_ring :: fn(ring_handle: u32, doorbell: u32) -> bool {
+    slop_os_adopt_events_ring :: fn(ring_handle : u32, doorbell : u32) -> bool {
         state :: intrinsics.process_state()
         // Only for a process whose logger has no ring: one it found none for, or hasn't looked for yet
         claimed := false
@@ -491,7 +496,11 @@ slop_os_events_padded #no_context :: fn(count: u64) -> u64 {
                 case CLOCK_PAGE_MAPPING => continue
                 case _ => {}
             }
-            _, claimed :: intrinsics.interlocked_compare_exchange_u32(&state.events_state, CLOCK_PAGE_MAPPING, CLOCK_PAGE_UNTRIED)
+            _, claimed :: intrinsics.interlocked_compare_exchange_u32(
+                &state.events_state,
+                CLOCK_PAGE_MAPPING,
+                CLOCK_PAGE_UNTRIED
+            )
             if claimed {
                 break
             }
@@ -528,7 +537,7 @@ slop_os_events_padded #no_context :: fn(count: u64) -> u64 {
      * @return The SlopOsEventsLog, as map_events_log gives it; null if either is 0, or it couldn't be mapped or isn't a
      *     ring this runtime writes.
      */
-    map_events_ring #no_context :: fn(ring_handle: u32, doorbell: u32) -> rawptr {
+    map_events_ring #no_context :: fn(ring_handle : u32, doorbell : u32) -> rawptr {
         state :: intrinsics.process_state()
         if state.startup_block == null {
             return null
@@ -538,13 +547,21 @@ slop_os_events_padded #no_context :: fn(count: u64) -> u64 {
             return null
         }
         address :: reserve_addresses(cast[usize](SLOP_OS_EVENTS_RING_BYTES)) or_return null
-        mapped :: slop_os_call(SLOP_OS_CALL_MEMORY_MAP, cast[u64](ring_handle), cast[u64](startup.space), address, 0,
-            SLOP_OS_EVENTS_RING_BYTES, SLOP_OS_PROTECTION_READ_WRITE)
+        mapped :: slop_os_call(
+            SLOP_OS_CALL_MEMORY_MAP,
+            cast[u64](ring_handle),
+            cast[u64](startup.space),
+            address,
+            0,
+            SLOP_OS_EVENTS_RING_BYTES,
+            SLOP_OS_PROTECTION_READ_WRITE
+        )
         if mapped.tag != 0 {
             return null
         }
         ring :: cast[ptr[mut SlopOsEventsRing]](cast[rawptr](address))
-        if ring.magic != SLOP_OS_EVENTS_MAGIC || ring.version != SLOP_OS_EVENTS_VERSION
+        if ring.magic != SLOP_OS_EVENTS_MAGIC
+            || ring.version != SLOP_OS_EVENTS_VERSION
             || ring.size + cast[u64](size_of(SlopOsEventsRing)) > SLOP_OS_EVENTS_RING_BYTES {
             return null
         }
@@ -565,7 +582,7 @@ slop_os_events_padded #no_context :: fn(count: u64) -> u64 {
      * @return True if it was remembered as given to this reader; false if it wasn't, or was past
      *     SLOP_OS_EVENTS_FORMATS and so never remembered.
      */
-    events_knows_format #no_context :: fn(log: ptr[SlopOsEventsLog], offset: u64) -> bool {
+    events_knows_format #no_context :: fn(log : ptr[SlopOsEventsLog], offset : u64) -> bool {
         for known in log.formats {
             if known == offset + 1 {
                 return true
@@ -582,7 +599,7 @@ slop_os_events_padded #no_context :: fn(count: u64) -> u64 {
      * @param offset The format string's offset in the program's image. With every place used, it isn't remembered,
      *     and is given again with each record.
      */
-    events_remember_format #no_context :: fn(log: ptr[mut SlopOsEventsLog], offset: u64) {
+    events_remember_format #no_context :: fn(log : ptr[mut SlopOsEventsLog], offset : u64) {
         for known, i in log.formats {
             if known == 0 {
                 log.formats[i] = offset + 1
@@ -599,7 +616,7 @@ slop_os_events_padded #no_context :: fn(count: u64) -> u64 {
      * @return Its schema hash if it was remembered as given to this reader; null if it wasn't, or was past
      *     SLOP_OS_EVENTS_TYPES and so never remembered.
      */
-    events_known_type #no_context :: fn(log: ptr[SlopOsEventsLog], type: ptr[compiler.TypeInfo]) -> u8[32]? {
+    events_known_type #no_context :: fn(log : ptr[SlopOsEventsLog], type : ptr[compiler.TypeInfo]) -> u8[32]? {
         for i in cast[usize](0)..<log.type_count {
             if log.types[i % SLOP_OS_EVENTS_TYPES].type == cast[uintptr](type) {
                 return log.types[i % SLOP_OS_EVENTS_TYPES].hash
@@ -616,7 +633,7 @@ slop_os_events_padded #no_context :: fn(count: u64) -> u64 {
      * @param known The type and its hash. With SLOP_OS_EVENTS_TYPES remembered already, it isn't, and its schema is
      *     given again with each record.
      */
-    events_remember_type #no_context :: fn(log: ptr[mut SlopOsEventsLog], known: SlopOsEventsType) {
+    events_remember_type #no_context :: fn(log : ptr[mut SlopOsEventsLog], known : SlopOsEventsType) {
         if log.type_count < log.types.count {
             log.types[log.type_count] = known
             log.type_count += 1
@@ -638,7 +655,7 @@ slop_os_events_padded #no_context :: fn(count: u64) -> u64 {
      * @return Where the entry starts in entries, for events_at and events_end; or null, with nothing added, without
      *     the memory.
      */
-    events_begin :: fn(entries: ptr[mut u8[..]], kind: u16, header: usize) -> usize? {
+    events_begin :: fn(entries : ptr[mut u8[..]], kind : u16, header : usize) -> usize? {
         at :: events_zeroes(entries, header) or_return null
         entry :: cast[ptr[mut SlopOsEventsEntry]](events_at(entries, at))
         entry.kind = kind
@@ -653,7 +670,7 @@ slop_os_events_padded #no_context :: fn(count: u64) -> u64 {
      * @param at Where the entry starts, as events_begin gave it.
      * @return True once it's ended; false, with its size not set, without the memory to pad it.
      */
-    events_end :: fn(entries: ptr[mut u8[..]], at: usize) -> bool {
+    events_end :: fn(entries : ptr[mut u8[..]], at : usize) -> bool {
         if !events_pad(entries) {
             return false
         }
@@ -667,8 +684,9 @@ slop_os_events_padded #no_context :: fn(count: u64) -> u64 {
      * @param entries The entries being put together; already a multiple of 8, nothing's added.
      * @return True once it's padded; false, with nothing added, without the memory.
      */
-    events_pad :: fn(entries: ptr[mut u8[..]]) -> bool {
-        return events_zeroes(entries, cast[usize](slop_os_events_padded(cast[u64](entries.count))) - entries.count) != null
+    events_pad :: fn(entries : ptr[mut u8[..]]) -> bool {
+        return events_zeroes(entries, cast[usize](slop_os_events_padded(cast[u64](entries.count))) - entries.count)
+            != null
     }
 
     /**
@@ -678,7 +696,7 @@ slop_os_events_padded #no_context :: fn(count: u64) -> u64 {
      * @param count How many bytes to add; 0 adds none.
      * @return Where they start in entries, its count before; or null, with nothing added, without the memory.
      */
-    events_zeroes :: fn(entries: ptr[mut u8[..]], count: usize) -> usize? {
+    events_zeroes :: fn(entries : ptr[mut u8[..]], count : usize) -> usize? {
         at :: entries.count
         if !events_room(entries, count) {
             return null
@@ -697,7 +715,7 @@ slop_os_events_padded #no_context :: fn(count: u64) -> u64 {
      * @param count How many bytes to copy.
      * @return True once they're added; false, with nothing added, without the memory.
      */
-    events_bytes :: fn(entries: ptr[mut u8[..]], data: rawptr, count: usize) -> bool {
+    events_bytes :: fn(entries : ptr[mut u8[..]], data : rawptr, count : usize) -> bool {
         if !events_room(entries, count) {
             return false
         }
@@ -715,7 +733,7 @@ slop_os_events_padded #no_context :: fn(count: u64) -> u64 {
      * @param count How many more bytes are wanted.
      * @return True if there's room, already or now; false, with entries as it was, without the memory.
      */
-    events_room :: fn(entries: ptr[mut u8[..]], count: usize) -> bool {
+    events_room :: fn(entries : ptr[mut u8[..]], count : usize) -> bool {
         needed :: entries.count + count
         capacity :: resizable(entries).capacity
         if needed <= capacity {
@@ -732,7 +750,7 @@ slop_os_events_padded #no_context :: fn(count: u64) -> u64 {
      * @param at A place in them, in bytes from the start, as events_begin gave it; not checked against the count.
      * @return Its address, good until entries next grows.
      */
-    events_at #no_context :: fn(entries: ptr[u8[..]], at: usize) -> rawptr {
+    events_at #no_context :: fn(entries : ptr[u8[..]], at : usize) -> rawptr {
         return cast[rawptr](cast[uintptr](entries.data) + cast[uintptr](at))
     }
 
@@ -747,7 +765,7 @@ slop_os_events_padded #no_context :: fn(count: u64) -> u64 {
      * @return True once they're all in the ring and written is moved past them; false, with nothing put, if there
      *     isn't room for them all, or an entry's size is 0 or more than half the ring.
      */
-    events_put #no_context :: fn(log: ptr[mut SlopOsEventsLog], entries: u8[]) -> bool {
+    events_put #no_context :: fn(log : ptr[mut SlopOsEventsLog], entries : u8[]) -> bool {
         ring :: log.ring
         size :: ring.size
         data :: cast[uintptr](ring) + cast[uintptr](size_of(SlopOsEventsRing))
@@ -761,7 +779,8 @@ slop_os_events_padded #no_context :: fn(count: u64) -> u64 {
             if at >= entries.count {
                 break
             }
-            entry_size :: cast[u64](cast[ptr[SlopOsEventsEntry]](cast[rawptr](cast[uintptr](entries.data) + cast[uintptr](at))).size)
+            entry_size :: cast[u64](cast[ptr[SlopOsEventsEntry]](cast[rawptr](cast[uintptr](entries.data)
+                + cast[uintptr](at))).size)
             if entry_size == 0 || entry_size > size / 2 {
                 return false
             }
@@ -788,15 +807,24 @@ slop_os_events_padded #no_context :: fn(count: u64) -> u64 {
                 pad.kind = SLOP_OS_EVENTS_PAD
                 written += left
             }
-            intrinsics.mem_copy_non_overlapping(cast[mut rawptr](data + cast[uintptr](written % size)), cast[rawptr](source),
-                cast[usize](entry_size))
+            intrinsics.mem_copy_non_overlapping(
+                cast[mut rawptr](data + cast[uintptr](written % size)),
+                cast[rawptr](source),
+                cast[usize](entry_size)
+            )
             written += entry_size
             at += cast[usize](entry_size)
         }
         intrinsics.atomic_store_u64_release(&ring.written, written)
         if intrinsics.interlocked_exchange_u32(&ring.waiting, 0) != 0 {
             bell : u8 = 1
-            slop_os_call(SLOP_OS_CALL_CHANNEL_WRITE, cast[u64](log.doorbell), cast[u64](cast[uintptr](&bell)), 1, SLOP_OS_NO_BATCH)
+            slop_os_call(
+                SLOP_OS_CALL_CHANNEL_WRITE,
+                cast[u64](log.doorbell),
+                cast[u64](cast[uintptr](&bell)),
+                1,
+                SLOP_OS_NO_BATCH
+            )
         }
         return true
     }

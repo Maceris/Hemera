@@ -126,16 +126,16 @@ SystemRegister :: enum #backed_by(u32) {
 BarrierDomain :: enum #backed_by(u8) {
     OSHLD = 1, /**< The outer shareable domain, ordering loads before later accesses. */
     OSHST = 2, /**< The outer shareable domain, stores only. */
-    OSH = 3, /**< The outer shareable domain, every access. */
+    OSH   = 3, /**< The outer shareable domain, every access. */
     NSHLD = 5, /**< This CPU only, ordering loads before later accesses. */
     NSHST = 6, /**< This CPU only, stores only. */
-    NSH = 7, /**< This CPU only, every access. */
+    NSH   = 7, /**< This CPU only, every access. */
     ISHLD = 9, /**< The inner shareable domain, the CPUs running one OS, ordering loads before later accesses. */
     ISHST = 10, /**< The inner shareable domain, stores only. */
-    ISH = 11, /**< The inner shareable domain, every access: what TLB maintenance on every CPU needs. */
-    LD = 13, /**< The full system, ordering loads before later accesses. */
-    ST = 14, /**< The full system, stores only. */
-    SY = 15, /**< The full system, every access, devices included. */
+    ISH   = 11, /**< The inner shareable domain, every access: what TLB maintenance on every CPU needs. */
+    LD    = 13, /**< The full system, ordering loads before later accesses. */
+    ST    = 14, /**< The full system, stores only. */
+    SY    = 15, /**< The full system, every access, devices included. */
 }
 
 /**
@@ -229,7 +229,7 @@ DAIF_DEBUG : u8 : 8
  * @param f The sixth argument, in x5.
  * @return x0 after the call: -4095 to -1, as an i64, are errors (-errno), and anything else is the call's result.
  */
-syscall : fn(number: u64, a: u64 = 0, b: u64 = 0, c: u64 = 0, d: u64 = 0, e: u64 = 0, f: u64 = 0) -> u64 : ---
+syscall : fn(number : u64, a : u64 = 0, b : u64 = 0, c : u64 = 0, d : u64 = 0, e : u64 = 0, f : u64 = 0) -> u64 : ---
 
 /** What system_call gives: x0, x1 and x2 after the call, whose meaning is the kernel's. */
 SystemCallResult :: struct {
@@ -251,7 +251,15 @@ SystemCallResult :: struct {
  * @param f The sixth argument, in x5.
  * @return The three registers the kernel answered in.
  */
-system_call : fn(number: u64, a: u64 = 0, b: u64 = 0, c: u64 = 0, d: u64 = 0, e: u64 = 0, f: u64 = 0) -> SystemCallResult : ---
+system_call : fn(
+    number : u64,
+    a : u64 = 0,
+    b : u64 = 0,
+    c : u64 = 0,
+    d : u64 = 0,
+    e : u64 = 0,
+    f : u64 = 0
+) -> SystemCallResult : ---
 
 /**
  * Start a thread with Linux's clone, which starts on stack by calling entry(argument), with the C convention.
@@ -268,8 +276,14 @@ system_call : fn(number: u64, a: u64 = 0, b: u64 = 0, c: u64 = 0, d: u64 = 0, e:
  * @param argument What entry is given as its one argument.
  * @return The new thread's ID, or -errno if clone failed, in which case no thread started.
  */
-clone_thread : fn(flags: u64, stack: rawptr, parent_tid: ptr[mut u32], child_tid: ptr[mut u32], entry: rawptr,
-    argument: rawptr) -> i64 : ---
+clone_thread : fn(
+    flags : u64,
+    stack : rawptr,
+    parent_tid : ptr[mut u32],
+    child_tid : ptr[mut u32],
+    entry : rawptr,
+    argument : rawptr
+) -> i64 : ---
 
 // System registers
 
@@ -280,7 +294,7 @@ clone_thread : fn(flags: u64, stack: rawptr, parent_tid: ptr[mut u32], child_tid
  * @param system_register The register; a constant, like .CNTVCT_EL0.
  * @return Its 64 bits.
  */
-read_system_register : fn[system_register](system_register: SystemRegister) -> u64 : ---
+read_system_register : fn[system_register](system_register : SystemRegister) -> u64 : ---
 /**
  * Set a system register (msr). Changes that affect the instructions after it need an isb.
  *
@@ -288,7 +302,7 @@ read_system_register : fn[system_register](system_register: SystemRegister) -> u
  * @param system_register The register; a constant, like .VBAR_EL1.
  * @param value Its new 64 bits.
  */
-write_system_register : fn[system_register](system_register: SystemRegister, value: u64) : ---
+write_system_register : fn[system_register](system_register : SystemRegister, value : u64) : ---
 /**
  * Read a system register SystemRegister doesn't name, by its encoding's parts (mrs). Each part is a compile-time
  * constant, since it's part of the instruction.
@@ -305,7 +319,13 @@ write_system_register : fn[system_register](system_register: SystemRegister, val
  * @param op2 The op2 field, 0 to 7.
  * @return The register's 64 bits.
  */
-read_system_register_encoded : fn[op0, op1, crn, crm, op2](op0: u8, op1: u8, crn: u8, crm: u8, op2: u8) -> u64 : ---
+read_system_register_encoded : fn[op0, op1, crn, crm, op2](
+    op0 : u8,
+    op1 : u8,
+    crn : u8,
+    crm : u8,
+    op2 : u8
+) -> u64 : ---
 /**
  * Set a system register SystemRegister doesn't name, by its encoding's parts (msr). Each part is a compile-time
  * constant, since it's part of the instruction.
@@ -322,7 +342,14 @@ read_system_register_encoded : fn[op0, op1, crn, crm, op2](op0: u8, op1: u8, crn
  * @param op2 The op2 field, 0 to 7.
  * @param value The register's new 64 bits.
  */
-write_system_register_encoded : fn[op0, op1, crn, crm, op2](op0: u8, op1: u8, crn: u8, crm: u8, op2: u8, value: u64) : ---
+write_system_register_encoded : fn[op0, op1, crn, crm, op2](
+    op0 : u8,
+    op1 : u8,
+    crn : u8,
+    crm : u8,
+    op2 : u8,
+    value : u64
+) : ---
 
 /**
  * Mask exceptions: set the DAIF bits in mask, as msr daifset does.
@@ -330,14 +357,14 @@ write_system_register_encoded : fn[op0, op1, crn, crm, op2](op0: u8, op1: u8, cr
  * @tparam mask The bits, as a compile-time value, since they're part of the instruction.
  * @param mask DAIF_* bits or'ed together, a constant from 0 to 15; bits not in it are left as they are.
  */
-daif_set : fn[mask](mask: u8) : ---
+daif_set : fn[mask](mask : u8) : ---
 /**
  * Unmask exceptions: clear the DAIF bits in mask, as msr daifclr does.
  *
  * @tparam mask The bits, as a compile-time value, since they're part of the instruction.
  * @param mask DAIF_* bits or'ed together, a constant from 0 to 15; bits not in it are left as they are.
  */
-daif_clear : fn[mask](mask: u8) : ---
+daif_clear : fn[mask](mask : u8) : ---
 
 // Barriers
 
@@ -348,14 +375,14 @@ daif_clear : fn[mask](mask: u8) : ---
  * @tparam domain The domain, as a compile-time value, since it's part of the instruction.
  * @param domain Which CPUs and accesses it waits for; a constant, like .ISH.
  */
-dsb : fn[domain](domain: BarrierDomain) : ---
+dsb : fn[domain](domain : BarrierDomain) : ---
 /**
  * Make a data memory barrier (dmb): accesses before it, in domain, are seen before the ones after it.
  *
  * @tparam domain The domain, as a compile-time value, since it's part of the instruction.
  * @param domain Which CPUs and accesses it orders; a constant, like .ISH.
  */
-dmb : fn[domain](domain: BarrierDomain) : ---
+dmb : fn[domain](domain : BarrierDomain) : ---
 /**
  * Make an instruction synchronization barrier (isb): instructions after it are fetched again, seeing system register
  * changes.
@@ -375,7 +402,15 @@ isb : fn() : ---
  * @param entry The address to branch to, under the new tables.
  * @param argument What entry gets in x0.
  */
-enter : fn(mair: u64, tcr: u64, ttbr0: u64, ttbr1: u64, stack: u64, entry: u64, argument: u64) #never_returns : ---
+enter : fn(
+    mair : u64,
+    tcr : u64,
+    ttbr0 : u64,
+    ttbr1 : u64,
+    stack : u64,
+    entry : u64,
+    argument : u64
+) #never_returns : ---
 
 /**
  * Call the hypervisor (hvc #0), as PSCI does under one: function in w0 and its arguments in x1 to x3.
@@ -386,7 +421,7 @@ enter : fn(mair: u64, tcr: u64, ttbr0: u64, ttbr1: u64, stack: u64, entry: u64, 
  * @param c The third argument, in x3.
  * @return x0 as it comes back; for PSCI, 0 for success or a negative error code.
  */
-hvc : fn(function: u64, a: u64 = 0, b: u64 = 0, c: u64 = 0) -> u64 : ---
+hvc : fn(function : u64, a : u64 = 0, b : u64 = 0, c : u64 = 0) -> u64 : ---
 /**
  * Call the secure firmware (smc #0), as PSCI does without a hypervisor: function in w0 and its arguments in x1 to x3.
  *
@@ -396,7 +431,7 @@ hvc : fn(function: u64, a: u64 = 0, b: u64 = 0, c: u64 = 0) -> u64 : ---
  * @param c The third argument, in x3.
  * @return x0 as it comes back; for PSCI, 0 for success or a negative error code.
  */
-smc : fn(function: u64, a: u64 = 0, b: u64 = 0, c: u64 = 0) -> u64 : ---
+smc : fn(function : u64, a : u64 = 0, b : u64 = 0, c : u64 = 0) -> u64 : ---
 
 // Waiting
 
@@ -424,50 +459,50 @@ tlbi_vmalle1is : fn() : ---
  *
  * @param operand The page's address shifted right by 12, with the ASID in bits 48 to 63.
  */
-tlbi_vae1 : fn(operand: u64) : ---
+tlbi_vae1 : fn(operand : u64) : ---
 /**
  * Invalidate one page's TLB entries for one ASID on every CPU in the inner shareable domain (tlbi vae1is).
  *
  * @param operand The page's address shifted right by 12, with the ASID in bits 48 to 63.
  */
-tlbi_vae1is : fn(operand: u64) : ---
+tlbi_vae1is : fn(operand : u64) : ---
 /**
  * Invalidate one page's last-level TLB entry for one ASID on this CPU (tlbi vale1), leaving intermediate tables'
  * cached entries.
  *
  * @param operand The page's address shifted right by 12, with the ASID in bits 48 to 63.
  */
-tlbi_vale1 : fn(operand: u64) : ---
+tlbi_vale1 : fn(operand : u64) : ---
 /**
  * Invalidate one page's last-level TLB entry for one ASID on every CPU in the inner shareable domain (tlbi vale1is).
  *
  * @param operand The page's address shifted right by 12, with the ASID in bits 48 to 63.
  */
-tlbi_vale1is : fn(operand: u64) : ---
+tlbi_vale1is : fn(operand : u64) : ---
 /**
  * Invalidate one page's TLB entries for every ASID on this CPU (tlbi vaae1).
  *
  * @param operand The page's address shifted right by 12; the ASID bits are ignored.
  */
-tlbi_vaae1 : fn(operand: u64) : ---
+tlbi_vaae1 : fn(operand : u64) : ---
 /**
  * Invalidate one page's TLB entries for every ASID on every CPU in the inner shareable domain (tlbi vaae1is).
  *
  * @param operand The page's address shifted right by 12; the ASID bits are ignored.
  */
-tlbi_vaae1is : fn(operand: u64) : ---
+tlbi_vaae1is : fn(operand : u64) : ---
 /**
  * Invalidate every TLB entry of one ASID on this CPU (tlbi aside1).
  *
  * @param operand The ASID, in bits 48 to 63.
  */
-tlbi_aside1 : fn(operand: u64) : ---
+tlbi_aside1 : fn(operand : u64) : ---
 /**
  * Invalidate every TLB entry of one ASID on every CPU in the inner shareable domain (tlbi aside1is).
  *
  * @param operand The ASID, in bits 48 to 63.
  */
-tlbi_aside1is : fn(operand: u64) : ---
+tlbi_aside1is : fn(operand : u64) : ---
 
 // Cache maintenance, by the address of a byte in the line
 
@@ -476,32 +511,32 @@ tlbi_aside1is : fn(operand: u64) : ---
  *
  * @param address Any byte of the cache line.
  */
-dc_cvau : fn(address: rawptr) : ---
+dc_cvau : fn(address : rawptr) : ---
 /**
  * Clean data to the point of coherency (dc cvac), as a device without coherent access needs before it reads.
  *
  * @param address Any byte of the cache line.
  */
-dc_cvac : fn(address: rawptr) : ---
+dc_cvac : fn(address : rawptr) : ---
 /**
  * Clean and invalidate data to the point of coherency (dc civac).
  *
  * @param address Any byte of the cache line.
  */
-dc_civac : fn(address: rawptr) : ---
+dc_civac : fn(address : rawptr) : ---
 /**
  * Invalidate data to the point of coherency (dc ivac), losing anything not written back, as before reading what a
  * device without coherent access wrote.
  *
  * @param address Any byte of the cache line.
  */
-dc_ivac : fn(address: rawptr) : ---
+dc_ivac : fn(address : rawptr) : ---
 /**
  * Invalidate one line of instructions to the point of unification (ic ivau), after code is written.
  *
  * @param address Any byte of the line.
  */
-ic_ivau : fn(address: rawptr) : ---
+ic_ivau : fn(address : rawptr) : ---
 /** Invalidate all of this CPU's instruction cache to the point of unification (ic iallu). */
 ic_iallu : fn() : ---
 /** Invalidate every CPU's instruction cache in the inner shareable domain to the point of unification (ic ialluis). */
@@ -513,27 +548,27 @@ ic_ialluis : fn() : ---
  *
  * @param address Any virtual address, mapped or not; it isn't accessed, and a fault is reported in PAR_EL1, not taken.
  */
-at_s1e1r : fn(address: rawptr) : ---
+at_s1e1r : fn(address : rawptr) : ---
 /**
  * Translate an address as a write at EL1 would (at s1e1w), into PAR_EL1. Read PAR_EL1 after an isb.
  *
  * @param address Any virtual address, mapped or not; it isn't written, and a fault is reported in PAR_EL1, not taken.
  */
-at_s1e1w : fn(address: rawptr) : ---
+at_s1e1w : fn(address : rawptr) : ---
 /**
  * Translate an address as a read at EL0 would (at s1e0r), into PAR_EL1, as checking a user pointer does.
  *
  * @param address Any virtual address, like a user pointer; it isn't accessed, and a fault is reported in PAR_EL1, not
  *     taken.
  */
-at_s1e0r : fn(address: rawptr) : ---
+at_s1e0r : fn(address : rawptr) : ---
 /**
  * Translate an address as a write at EL0 would (at s1e0w), into PAR_EL1, as checking a user pointer does.
  *
  * @param address Any virtual address, like a user pointer; it isn't written, and a fault is reported in PAR_EL1, not
  *     taken.
  */
-at_s1e0w : fn(address: rawptr) : ---
+at_s1e0w : fn(address : rawptr) : ---
 
 /*
  * Randomness, only on CPUs that have it (FEAT_RNG: ID_AA64ISAR0_EL1 bits 60 to 63); elsewhere the
@@ -560,14 +595,14 @@ rndrrs : fn() -> u64? : ---
  *
  * @param area Where they go: FP_SIMD_STATE_SIZE bytes, 16-byte aligned.
  */
-save_fp_simd : fn(area: rawptr) : ---
+save_fp_simd : fn(area : rawptr) : ---
 /**
  * Restore v0 to v31, then FPCR and FPSR, from what save_fp_simd wrote. It traps unless CPACR_EL1 lets EL1 use
  * floating point.
  *
  * @param area What save_fp_simd saved: FP_SIMD_STATE_SIZE bytes, 16-byte aligned.
  */
-restore_fp_simd : fn(area: rawptr) : ---
+restore_fp_simd : fn(area : rawptr) : ---
 /** How many bytes save_fp_simd writes: 32 16-byte registers, then FPCR and FPSR, padded to 16 bytes. */
 FP_SIMD_STATE_SIZE : usize : 528
 
@@ -579,7 +614,7 @@ FP_SIMD_STATE_SIZE : usize : 528
  * @tparam immediate The immediate, as a compile-time value, since it's part of the instruction.
  * @param immediate What the handler sees in ESR_EL1's low 16 bits; a constant.
  */
-brk : fn[immediate](immediate: u16) : ---
+brk : fn[immediate](immediate : u16) : ---
 
 /**
  * Make a semihosting call (hlt #0xf000), for code running under a debugger or QEMU's -semihosting.
@@ -591,7 +626,7 @@ brk : fn[immediate](immediate: u16) : ---
  * @param parameter The operation's parameter, in x1, usually a pointer to its block of arguments.
  * @return x0 after the call, the operation's result.
  */
-semihosting : fn(operation: u64, parameter: rawptr) -> u64 : ---
+semihosting : fn(operation : u64, parameter : rawptr) -> u64 : ---
 
 // Entry and return
 
@@ -607,7 +642,7 @@ semihosting : fn(operation: u64, parameter: rawptr) -> u64 : ---
  * @param handler The entry function. It's also the generic parameter, so it must be known at compile time.
  * @return The table, 2 KiB-aligned, read-only, in the program for its whole run.
  */
-vector_table : fn[handler](handler: (fn(frame: ptr[mut RegisterFrame]))) -> ptr[VectorTable] : ---
+vector_table : fn[handler](handler : (fn(frame : ptr[mut RegisterFrame]))) -> ptr[VectorTable] : ---
 
 /**
  * Set SP_EL1, the stack exceptions taken to EL1 run on, while running on SP_EL0 (PSTATE.SP clear), as code a
@@ -616,7 +651,7 @@ vector_table : fn[handler](handler: (fn(frame: ptr[mut RegisterFrame]))) -> ptr[
  * @param stack The top of the exceptions' stack, 16-byte aligned. On SP_EL1 this would move the caller's own stack,
  *     so it isn't for that.
  */
-write_sp_el1 : fn(stack: rawptr) : ---
+write_sp_el1 : fn(stack : rawptr) : ---
 
 /**
  * Restore every register from frame and return with eret to where the frame says, usually user mode. Interrupts must
@@ -626,4 +661,4 @@ write_sp_el1 : fn(stack: rawptr) : ---
  * @param kernel_stack Where SP_EL1 is put for the next exception (selected first, so this works from code running on
  *     SP_EL0 too): AArch64 has no TSS, so the stack pointer at eret is where the next exception's frame goes.
  */
-return_to_user #never_returns : fn(frame: ptr[RegisterFrame], kernel_stack: rawptr) : ---
+return_to_user #never_returns : fn(frame : ptr[RegisterFrame], kernel_stack : rawptr) : ---

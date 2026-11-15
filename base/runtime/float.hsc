@@ -16,7 +16,7 @@ FUSED_SPECIAL : i32 : 0x7ff - 0x3ff - 52 - 1
  * @param bits The bits, sign first, as IEEE 754's binary64 lays them out.
  * @return The float they make.
  */
-float_of_bits #no_context :: fn(bits: u64) -> f64 {
+float_of_bits #no_context :: fn(bits : u64) -> f64 {
     return bit_cast[f64](bits)
 }
 
@@ -29,8 +29,8 @@ float_of_bits #no_context :: fn(bits: u64) -> f64 {
  *     is set and bit 0 clear. The exponent: FUSED_SPECIAL for an infinity or NaN, above it for a zero, below it
  *     otherwise. And whether the sign bit is set.
  */
-//SPEC: musl src/math/fma.c normalize
-fused_multiply_split #no_context :: fn(x: f64) -> (u64, i32, bool) {
+// SPEC: musl src/math/fma.c normalize
+fused_multiply_split #no_context :: fn(x : f64) -> (u64, i32, bool) {
     bits := bit_cast[u64](x)
     sign :: (bits >> 63) != 0
     exponent := cast[i32]((bits >> 52) & 0x7ff)
@@ -49,7 +49,7 @@ fused_multiply_split #no_context :: fn(x: f64) -> (u64, i32, bool) {
  * @param bits The bits.
  * @return 1 if bits isn't 0, 0 if it is.
  */
-fused_sticky #no_context :: fn(bits: u64) -> u64 {
+fused_sticky #no_context :: fn(bits : u64) -> u64 {
     return if bits != 0 { 1 } else { 0 }
 }
 
@@ -61,8 +61,8 @@ fused_sticky #no_context :: fn(bits: u64) -> u64 {
  *     underflows to zero, keeping x's sign.
  * @return x × 2^power, rounded to nearest; NaN for NaN, and infinity or zero as given.
  */
-//SPEC: musl src/math/scalbn.c
-scale_by_power_of_two #no_context :: fn(x: f64, power: i32) -> f64 {
+// SPEC: musl src/math/scalbn.c
+scale_by_power_of_two #no_context :: fn(x : f64, power : i32) -> f64 {
     y := x
     n := power
     if n > 1023 {
@@ -99,8 +99,8 @@ scale_by_power_of_two #no_context :: fn(x: f64, power: i32) -> f64 {
  * @param z What's added to the product.
  * @return The f64 nearest x × y + z, ties to even; NaN and infinities as x * y + z gives them.
  */
-//SPEC: musl src/math/fma.c
-fused_multiply_add_f64 #no_context :: fn(x: f64, y: f64, z: f64) -> f64 {
+// SPEC: musl src/math/fma.c
+fused_multiply_add_f64 #no_context :: fn(x : f64, y : f64, z : f64) -> f64 {
     x_significand, x_exponent, x_sign :: fused_multiply_split(x)
     y_significand, y_exponent, y_sign :: fused_multiply_split(y)
     z_significand, z_exponent, z_sign :: fused_multiply_split(z)
@@ -135,10 +135,11 @@ fused_multiply_add_f64 #no_context :: fn(x: f64, y: f64, z: f64) -> f64 {
             z_high = z_significand
             exponent = z_exponent - 64
             apart -= 64
-            if apart == 0 {
-            }
+            if apart == 0 {}
             else if apart < 64 {
-                low = high << cast[u32](64 - apart) | low >> cast[u32](apart) | fused_sticky(low << cast[u32](64 - apart))
+                low = high << cast[u32](64 - apart)
+                    | low >> cast[u32](apart)
+                    | fused_sticky(low << cast[u32](64 - apart))
                 high = high >> cast[u32](apart)
             }
             else {
@@ -249,14 +250,16 @@ fused_multiply_add_f64 #no_context :: fn(x: f64, y: f64, z: f64) -> f64 {
  * @param z What's added to the product.
  * @return The f32 nearest x × y + z, ties to even; NaN and infinities as x * y + z gives them.
  */
-//SPEC: musl src/math/fmaf.c
-fused_multiply_add_f32 #no_context :: fn(x: f32, y: f32, z: f32) -> f32 {
+// SPEC: musl src/math/fmaf.c
+fused_multiply_add_f32 #no_context :: fn(x : f32, y : f32, z : f32) -> f32 {
     product :: cast[f64](x) * cast[f64](y)
     wide_z :: cast[f64](z)
     sum :: product + wide_z
     bits := bit_cast[u64](sum)
     // Not halfway between two f32s, or a NaN, or exact: one rounding to f32 is right
-    if (bits & 0x1fff_ffff) != 0x1000_0000 || ((bits >> 52) & 0x7ff) == 0x7ff || (sum - product == wide_z && sum - wide_z == product) {
+    if (bits & 0x1fff_ffff) != 0x1000_0000
+        || ((bits >> 52) & 0x7ff) == 0x7ff
+        || (sum - product == wide_z && sum - wide_z == product) {
         return cast[f32](sum)
     }
     // Halfway but inexact: a step toward what was lost

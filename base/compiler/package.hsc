@@ -95,7 +95,7 @@ ProgramInfo :: struct {
  * @param folder The folder, relative to the calling file's package, or absolute.
  * @return The folders' canonical paths, sorted; empty when folder doesn't exist or has none.
  */
-subfolders : fn(folder: string) -> string[] : ---
+subfolders : fn(folder : string) -> string[] : ---
 
 /**
  * Give info for the package in a folder, whether the calling program has it or not.
@@ -107,7 +107,7 @@ subfolders : fn(folder: string) -> string[] : ---
  * @param folder The package's folder, relative to the calling file's package, or absolute.
  * @return The package's info, or none if there's no folder there or no package files in it.
  */
-load_package : fn(folder: string) -> PackageInfo? : ---
+load_package : fn(folder : string) -> PackageInfo? : ---
 
 /**
  * Give info for a package imported by the calling file.
@@ -115,7 +115,7 @@ load_package : fn(folder: string) -> PackageInfo? : ---
  * @param import_name The import's alias, or the package's name if it was imported without one.
  * @return The package's info, or none if the calling file has no such import.
  */
-package_info : fn(import_name: string) -> PackageInfo? : ---
+package_info : fn(import_name : string) -> PackageInfo? : ---
 
 /**
  * Find a constant a package declares.
@@ -124,7 +124,7 @@ package_info : fn(import_name: string) -> PackageInfo? : ---
  * @param name The constant's name, compared exactly.
  * @return The constant, or none if the package declares no constant of that name.
  */
-find_constant : fn(package: ptr[PackageInfo], name: string) -> ConstantInfo? : ---
+find_constant : fn(package : ptr[PackageInfo], name : string) -> ConstantInfo? : ---
 
 /**
  * Find a function a package declares, or an instance of one of its generic functions.
@@ -135,4 +135,4 @@ find_constant : fn(package: ptr[PackageInfo], name: string) -> ConstantInfo? : -
  * @return The function, or none if the package declares no function of that name, or the program has no such
  *     instance, as before anything calls it.
  */
-find_function : fn(package: ptr[PackageInfo], name: string) -> FunctionInfo? : ---
+find_function : fn(package : ptr[PackageInfo], name : string) -> FunctionInfo? : ---

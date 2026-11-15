@@ -109,9 +109,7 @@ BackendOptions :: struct {
 }
 
 /** LLVM's own options for a target, of which there are none yet. */
-LLVMOptions :: struct {
-
-}
+LLVMOptions :: struct {}
 
 /** The code generators a target can be built with. */
 BackendType :: enum {
@@ -127,7 +125,7 @@ Configuration :: enum {
     /** For debugging: what the command line gives with debug info. */
     Debug,
     /** For release: what the command line gives without debug info. */
-    Release
+    Release,
 }
 
 /** How much the optimizer does, as LLVM's levels. */
@@ -171,7 +169,8 @@ TargetOptions :: struct {
     /**
      * Hardware control-flow integrity (docs/compilation.md, Control-Flow Integrity): a landing pad at every function's
      * entry and after every call (endbr64 on x86-64, bti on AArch64), return addresses signed on AArch64 (pac-ret),
-     * and ELF notes saying the code has them and works with shadow stacks and the Guarded Control Stack. Each is a no-op
+     * and ELF notes saying the code has them and works with shadow stacks and the Guarded Control Stack. Each is a
+     * no-op
      * on a CPU without it. ELF targets only.
      */
     control_flow_integrity : bool = false,
@@ -346,7 +345,7 @@ TargetOutput :: struct {
  * @param inputs The output of each target it depends on; steps it depends on have no outputs, so they aren't here.
  * @return True to go on; false fails the build, after reporting why with report_error.
  */
-StepFunction :: alias fn(inputs: TargetOutput[]) -> bool
+StepFunction :: alias fn(inputs : TargetOutput[]) -> bool
 
 /**
  * A check's function: run on each target once it has been type checked, before code generation.
@@ -358,7 +357,7 @@ StepFunction :: alias fn(inputs: TargetOutput[]) -> bool
  * @param program The target's whole program; its values have the target's types, compared by name (see ConstantInfo).
  * @return True when the target passes; false fails that target, as reporting an error does.
  */
-CheckFunction :: alias fn(target: ptr[BuildOptions], program: ptr[ProgramInfo]) -> bool
+CheckFunction :: alias fn(target : ptr[BuildOptions], program : ptr[ProgramInfo]) -> bool
 
 /**
  * What compile-time code is allowed to do outside the compiler.
@@ -401,7 +400,7 @@ current_build_options : fn() -> BuildOptions : ---
  * @param location Where the target is reported as registered, for its errors; the caller's own by default.
  * @return The target's node, for steps to depend on.
  */
-add_target : fn(options: BuildOptions, location := #caller_location) -> BuildNode : ---
+add_target : fn(options : BuildOptions, location := #caller_location) -> BuildNode : ---
 
 /**
  * Register a step, run after everything in after has finished successfully; steps run once every target is done.
@@ -411,7 +410,7 @@ add_target : fn(options: BuildOptions, location := #caller_location) -> BuildNod
  * @param location Where the step is reported as registered; the caller's own by default.
  * @return The step's node, for later steps to depend on.
  */
-add_step : fn(step: StepFunction, after: BuildNode[], location := #caller_location) -> BuildNode : ---
+add_step : fn(step : StepFunction, after : BuildNode[], location := #caller_location) -> BuildNode : ---
 
 /**
  * Give every target registered so far.
@@ -428,7 +427,7 @@ all_targets : fn() -> BuildNode[] : ---
  *     an error, stops that target.
  * @param location Where the check is reported as registered; the caller's own by default.
  */
-add_check : fn(check: CheckFunction, location := #caller_location) : ---
+add_check : fn(check : CheckFunction, location := #caller_location) : ---
 
 /**
  * Give the value of a setting for the target currently being compiled.
@@ -437,7 +436,7 @@ add_check : fn(check: CheckFunction, location := #caller_location) : ---
  * @param default What to give when the target doesn't have that setting.
  * @return The setting's value, the last one given if it was given more than once; default if it wasn't given.
  */
-target_setting : fn(name: string, default := "") -> string : ---
+target_setting : fn(name : string, default := "") -> string : ---
 
 /**
  * Give what the compile-time code calling this is allowed to do outside the compiler.
@@ -456,7 +455,7 @@ build_permissions : fn() -> BuildPermissions : ---
  * @param format_string The message, with placeholders (docs/format_strings.md).
  * @param params The values for the placeholders, in order.
  */
-report_error : fn(location: SourceCodeLocation, format_string: string, params: any...) : ---
+report_error : fn(location : SourceCodeLocation, format_string : string, params : any...) : ---
 
 /**
  * Report a warning at location, which doesn't fail the build. Its code is hemera:W4001, which every warning reported
@@ -466,7 +465,7 @@ report_error : fn(location: SourceCodeLocation, format_string: string, params: a
  * @param format_string The message, with placeholders (docs/format_strings.md).
  * @param params The values for the placeholders, in order.
  */
-report_warning : fn(location: SourceCodeLocation, format_string: string, params: any...) : ---
+report_warning : fn(location : SourceCodeLocation, format_string : string, params : any...) : ---
 
 /** Whether a diagnostic is a warning, which doesn't fail the build, or an error, which does. */
 DiagnosticType :: enum {
@@ -489,5 +488,11 @@ DiagnosticType :: enum {
  *
  * A prefix or code that isn't one of those is an error, reported in its place.
  */
-report : fn(kind: DiagnosticType, prefix: string, code: string, location: SourceCodeLocation, format_string: string,
-    params: any...) : ---
+report : fn(
+    kind : DiagnosticType,
+    prefix : string,
+    code : string,
+    location : SourceCodeLocation,
+    format_string : string,
+    params : any...
+) : ---

@@ -13,8 +13,7 @@ package compiler
  * @param value The owner, moved in and dropped. Whatever it held, like an open file, is left as it is, so something
  *     else has to be responsible for it.
  */
-forget :: fn[T](value: T) {
-}
+forget :: fn[T](value : T) {}
 
 /**
  * Make a second owner of the same value, without its type knowing: for a type's own share function, which counts
@@ -24,7 +23,7 @@ forget :: fn[T](value: T) {
  * @param value The owner to copy, which stays an owner too.
  * @return A copy of it, a second owner of what it holds; both have to be released or moved on.
  */
-duplicate :: fn[T](value: ptr[T]) -> T {
+duplicate :: fn[T](value : ptr[T]) -> T {
     return value^
 }
 
@@ -35,7 +34,7 @@ duplicate :: fn[T](value: ptr[T]) -> T {
  * @param place Where the owner is; it's left zero, which owns nothing.
  * @return What place held, now owned by the caller.
  */
-take :: fn[T](place: ptr[mut T]) -> T {
+take :: fn[T](place : ptr[mut T]) -> T {
     value :: place^
     empty : T
     place^ = empty
@@ -48,4 +47,4 @@ take :: fn[T](place: ptr[mut T]) -> T {
  * @tparam T The owned type, which has to name a release function.
  * @param value The owner, moved in and released.
  */
-release : fn[T](value: T) : ---
+release : fn[T](value : T) : ---

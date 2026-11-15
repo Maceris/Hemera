@@ -9,21 +9,21 @@ package runtime
  */
 Logger :: struct {
     /** The logger's state, for its functions; null for one that keeps none. */
-    data: rawptr,
+    data : rawptr,
     /** Logs a message at the TRACE level. */
-    trace: LogFunction,
+    trace : LogFunction,
     /** Logs a message at the DEBUG level. */
-    debug: LogFunction,
+    debug : LogFunction,
     /** Logs a message at the INFO level. */
-    info: LogFunction,
+    info : LogFunction,
     /** Logs a message at the WARN level. */
-    warn: LogFunction,
+    warn : LogFunction,
     /** Logs a message at the ERROR level. */
-    error: LogFunction,
+    error : LogFunction,
     /** Logs a message at the FATAL level. */
-    fatal: LogFunction,
+    fatal : LogFunction,
     /** The logger's name, for telling loggers apart, like "discarding". */
-    name: string,
+    name : string,
 }
 
 /**
@@ -52,7 +52,7 @@ LogLevel :: enum {
  * @param params The values for the placeholders, in order.
  * @param location Where it was logged, which a logger may report with it; the caller's own by default.
  */
-LogFunction :: alias fn(format_string: string, params: any..., location := #caller_location)
+LogFunction :: alias fn(format_string : string, params : any..., location := #caller_location)
 
 /**
  * Log a message at the TRACE level, through the context's logger.
@@ -61,7 +61,7 @@ LogFunction :: alias fn(format_string: string, params: any..., location := #call
  * @param params The values for the placeholders, in order.
  * @param location Where it was logged, which the logger may report with it; the caller's own by default.
  */
-log_trace :: fn(format_string: string, params: any..., location := #caller_location) {
+log_trace :: fn(format_string : string, params : any..., location := #caller_location) {
     context.logger.trace(format_string, params, location)
 }
 
@@ -72,7 +72,7 @@ log_trace :: fn(format_string: string, params: any..., location := #caller_locat
  * @param params The values for the placeholders, in order.
  * @param location Where it was logged, which the logger may report with it; the caller's own by default.
  */
-log_debug :: fn(format_string: string, params: any..., location := #caller_location) {
+log_debug :: fn(format_string : string, params : any..., location := #caller_location) {
     context.logger.debug(format_string, params, location)
 }
 
@@ -83,7 +83,7 @@ log_debug :: fn(format_string: string, params: any..., location := #caller_locat
  * @param params The values for the placeholders, in order.
  * @param location Where it was logged, which the logger may report with it; the caller's own by default.
  */
-log_info :: fn(format_string: string, params: any..., location := #caller_location) {
+log_info :: fn(format_string : string, params : any..., location := #caller_location) {
     context.logger.info(format_string, params, location)
 }
 
@@ -94,7 +94,7 @@ log_info :: fn(format_string: string, params: any..., location := #caller_locati
  * @param params The values for the placeholders, in order.
  * @param location Where it was logged, which the logger may report with it; the caller's own by default.
  */
-log_warn :: fn(format_string: string, params: any..., location := #caller_location) {
+log_warn :: fn(format_string : string, params : any..., location := #caller_location) {
     context.logger.warn(format_string, params, location)
 }
 
@@ -105,7 +105,7 @@ log_warn :: fn(format_string: string, params: any..., location := #caller_locati
  * @param params The values for the placeholders, in order.
  * @param location Where it was logged, which the logger may report with it; the caller's own by default.
  */
-log_error :: fn(format_string: string, params: any..., location := #caller_location) {
+log_error :: fn(format_string : string, params : any..., location := #caller_location) {
     context.logger.error(format_string, params, location)
 }
 
@@ -118,7 +118,7 @@ log_error :: fn(format_string: string, params: any..., location := #caller_locat
  * @param params The values for the placeholders, in order.
  * @param location Where it was logged, which the logger may report with it; the caller's own by default.
  */
-log_fatal :: fn(format_string: string, params: any..., location := #caller_location) {
+log_fatal :: fn(format_string : string, params : any..., location := #caller_location) {
     context.logger.fatal(format_string, params, location)
 }
 
@@ -129,8 +129,7 @@ log_fatal :: fn(format_string: string, params: any..., location := #caller_locat
  * @param params Unused, so nothing is formatted.
  * @param location Unused.
  */
-discard_log : LogFunction : fn(format_string: string, params: any..., location := #caller_location) {
-}
+discard_log : LogFunction : fn(format_string : string, params : any..., location := #caller_location) {}
 
 /** A logger that drops every message, for MINIMAL_CONTEXT. */
 DISCARDING_LOGGER :: Logger.{

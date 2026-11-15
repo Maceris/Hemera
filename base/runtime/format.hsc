@@ -41,7 +41,7 @@ FormatSink :: struct {
     /** The buffer, or whatever emit writes to, passed to emit; it has to outlive the formatting. */
     target : rawptr,
     /** Add one byte to target; it can't fail, so a sink that's full drops what doesn't fit, or grows. */
-    emit : fn(target: rawptr, byte: u8),
+    emit : fn(target : rawptr, byte : u8),
 }
 
 /**
@@ -50,7 +50,7 @@ FormatSink :: struct {
  * @param character A character from a format string, any code point.
  * @return Whether it's <, > or ^.
  */
-is_format_alignment #no_context :: fn(character: char) -> bool {
+is_format_alignment #no_context :: fn(character : char) -> bool {
     return character == '<' || character == '>' || character == '^'
 }
 
@@ -60,7 +60,7 @@ is_format_alignment #no_context :: fn(character: char) -> bool {
  * @param character A character from a format string, any code point.
  * @return Whether it's d, x, X, b or o.
  */
-is_format_kind #no_context :: fn(character: char) -> bool {
+is_format_kind #no_context :: fn(character : char) -> bool {
     return character == 'd' || character == 'x' || character == 'X' || character == 'b' || character == 'o'
 }
 
@@ -70,7 +70,7 @@ is_format_kind #no_context :: fn(character: char) -> bool {
  * @param character A character from a format string, any code point.
  * @return Whether it's 0 to 9; other Unicode digits aren't.
  */
-is_format_digit #no_context :: fn(character: char) -> bool {
+is_format_digit #no_context :: fn(character : char) -> bool {
     return character >= '0' && character <= '9'
 }
 
@@ -89,7 +89,7 @@ is_format_digit #no_context :: fn(character: char) -> bool {
  * @return Whether they were well formed: true when there were none, and false when what's in the braces isn't the
  *     options' syntax or a . has no digits after it.
  */
-parse_format_spec #no_context :: fn(format: string, start: usize) -> (FormatSpec, usize, bool) {
+parse_format_spec #no_context :: fn(format : string, start : usize) -> (FormatSpec, usize, bool) {
     spec : FormatSpec
     spec.fill = cast[u8](' ')
     if start >= format.count || format[start] != '{' {
@@ -164,7 +164,7 @@ parse_format_spec #no_context :: fn(format: string, start: usize) -> (FormatSpec
  * @param sink Where they go.
  * @param text The bytes, which may be empty.
  */
-format_emit_text :: fn(sink: FormatSink, text: string) {
+format_emit_text :: fn(sink : FormatSink, text : string) {
     for character in text {
         sink.emit(sink.target, cast[u8](character))
     }
@@ -177,7 +177,7 @@ format_emit_text :: fn(sink: FormatSink, text: string) {
  * @param byte Any byte, added count times; for padding, the spec's fill.
  * @param count How many times, which may be 0.
  */
-format_emit_repeated :: fn(sink: FormatSink, byte: u8, count: usize) {
+format_emit_repeated :: fn(sink : FormatSink, byte : u8, count : usize) {
     for step in 0..<count {
         sink.emit(sink.target, byte)
     }
@@ -197,7 +197,14 @@ format_emit_repeated :: fn(sink: FormatSink, byte: u8, count: usize) {
  * @param numeric Whether it's a number, which pads with zeros when the spec says so, and is right-aligned by default
  *     rather than left.
  */
-format_padded :: fn(sink: FormatSink, spec: FormatSpec, sign: string, prefix: string, body: string, numeric: bool) {
+format_padded :: fn(
+    sink : FormatSink,
+    spec : FormatSpec,
+    sign : string,
+    prefix : string,
+    body : string,
+    numeric : bool
+) {
     length :: sign.count + prefix.count + body.count
     padding :: if spec.width > length { spec.width - length } else { 0 }
     if numeric && spec.zeros && spec.align == 0 {
@@ -223,7 +230,7 @@ format_padded :: fn(sink: FormatSink, spec: FormatSpec, sign: string, prefix: st
  * @param spec The options. A precision keeps at most that many bytes, which can cut a UTF-8 character in two.
  * @param text The text, which may be empty.
  */
-format_text :: fn(sink: FormatSink, spec: FormatSpec, text: string) {
+format_text :: fn(sink : FormatSink, spec : FormatSpec, text : string) {
     kept := text
     if spec.has_precision && spec.precision < text.count && text.count > 0 {
         kept = string_of(cast[ptr[u8]](text.data), spec.precision)
@@ -243,9 +250,12 @@ FORMAT_DIGITS :: "0123456789abcdef0123456789ABCDEF"
  *     negative zero is written -0.
  * @param magnitude The integer's absolute value, any u64.
  */
-format_integer :: fn(sink: FormatSink, spec: FormatSpec, negative: bool, magnitude: u64) {
+format_integer :: fn(sink : FormatSink, spec : FormatSpec, negative : bool, magnitude : u64) {
     kind :: spec.kind
-    base : u64 = if kind == cast[u8]('x') || kind == cast[u8]('X') { 16 } else if kind == cast[u8]('b') { 2 } else if kind == cast[u8]('o') { 8 } else { 10 }
+    base : u64 = if kind == cast[u8]('x') || kind == cast[u8]('X') {
+        16
+    }
+    else if kind == cast[u8]('b') { 2 } else if kind == cast[u8]('o') { 8 } else { 10 }
     upper : usize = if kind == cast[u8]('X') { 16 } else { 0 }
     // Collected lowest first, from the end
     digits : u8[64]
@@ -285,7 +295,7 @@ FormatWide :: struct {
  * @param value The integer, any u64.
  * @return The same integer as a FormatWide.
  */
-format_wide_of :: fn(value: u64) -> FormatWide {
+format_wide_of :: fn(value : u64) -> FormatWide {
     result : FormatWide
     result.limbs[0] = cast[u32](value & 0xffffffff)
     result.limbs[1] = cast[u32](value >> 32)
@@ -299,7 +309,7 @@ format_wide_of :: fn(value: u64) -> FormatWide {
  * @param factor The factor, small, like 2 or 10, so a limb times it plus a carry fits in a u64: at most 2^32.
  *     A product too large for 1280 bits fails an assertion, which no float's digits need.
  */
-format_wide_times :: fn(number: ptr[mut FormatWide], factor: u64) {
+format_wide_times :: fn(number : ptr[mut FormatWide], factor : u64) {
     carry : u64 = 0
     for &limb in number.limbs {
         product :: cast[u64](limb^) * factor + carry
@@ -315,7 +325,7 @@ format_wide_times :: fn(number: ptr[mut FormatWide], factor: u64) {
  * @param number The integer, replaced by number × 2^bits; a result too large for 1280 bits fails an assertion.
  * @param bits How many bits; each is a doubling, so it takes time in proportion.
  */
-format_wide_shift :: fn(number: ptr[mut FormatWide], bits: u64) {
+format_wide_shift :: fn(number : ptr[mut FormatWide], bits : u64) {
     for step in 0..<bits {
         format_wide_times(number, 2)
     }
@@ -328,7 +338,7 @@ format_wide_shift :: fn(number: ptr[mut FormatWide], bits: u64) {
  * @param b The other addend, the same way; which is which doesn't matter.
  * @return Their sum; a carry out of the top limb is dropped, which the numbers a float needs never make.
  */
-format_wide_add :: fn(a: FormatWide, b: FormatWide) -> FormatWide {
+format_wide_add :: fn(a : FormatWide, b : FormatWide) -> FormatWide {
     result : FormatWide
     carry : u64 = 0
     for limb, index in a.limbs {
@@ -345,7 +355,7 @@ format_wide_add :: fn(a: FormatWide, b: FormatWide) -> FormatWide {
  * @param a The integer subtracted from, replaced by a - b; it has to be at least b, or the result wraps.
  * @param b What's taken from a, at most a; it isn't changed.
  */
-format_wide_subtract :: fn(a: ptr[mut FormatWide], b: FormatWide) {
+format_wide_subtract :: fn(a : ptr[mut FormatWide], b : FormatWide) {
     borrow : u64 = 0
     for &limb, index in a.limbs {
         taken :: cast[u64](b.limbs[index]) + borrow
@@ -367,7 +377,7 @@ format_wide_subtract :: fn(a: ptr[mut FormatWide], b: FormatWide) {
  * @param b The right side, which a is compared against.
  * @return -1, 0 or 1 as a is less than, equal to or more than b.
  */
-format_wide_compare :: fn(a: FormatWide, b: FormatWide) -> int {
+format_wide_compare :: fn(a : FormatWide, b : FormatWide) -> int {
     for limb, index in a.limbs #reverse {
         if limb != b.limbs[index] {
             return if limb < b.limbs[index] { -1 } else { 1 }
@@ -394,7 +404,7 @@ format_wide_compare :: fn(a: FormatWide, b: FormatWide) -> int {
  *     Formats wider than an f64 need more than FormatWide and the 24 digits kept hold.
  * @see Steele and White, "How to Print Floating-Point Numbers Accurately" (PLDI 1990), FPP2.
  */
-format_shortest_float :: fn(sink: FormatSink, bits: u64, exponent_bits: u64, fraction_bits: u64) {
+format_shortest_float :: fn(sink : FormatSink, bits : u64, exponent_bits : u64, fraction_bits : u64) {
     one : u64 = 1
     exponent_mask :: (one << exponent_bits) - 1
     biased :: (bits >> fraction_bits) & exponent_mask
@@ -542,7 +552,7 @@ format_shortest_float :: fn(sink: FormatSink, bits: u64, exponent_bits: u64, fra
  * @param digits The digits, as the characters 0 to 9, at least one, the first not 0.
  * @param k The decimal exponent: the value is below 10^k and at least 10^(k - 1).
  */
-format_digits_shortest :: fn(sink: FormatSink, digits: u8[], k: i64) {
+format_digits_shortest :: fn(sink : FormatSink, digits : u8[], k : i64) {
     count :: cast[i64](digits.count)
     exponent :: k - 1
     magnitude :: if exponent < 0 { 0 - exponent } else { exponent }

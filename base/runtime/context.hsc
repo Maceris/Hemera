@@ -22,7 +22,7 @@ Context :: struct {
     /** What a failed assertion, or running out of memory where that isn't handled, calls. */
     assertion_handler : AssertionHandler,
     /** One slot for a program's own data, for programs like kernels where one owner is enough; null when unused. */
-    user_data: rawptr,
+    user_data : rawptr,
     /** Typed per-scope state from any number of libraries, see ContextExtension; null for none. */
     extensions : ptr[ContextExtension]?,
 }
@@ -59,7 +59,7 @@ ContextExtension :: struct {
  *     to stay valid as long as any context, thread or fiber has the node.
  * @return The node, which the caller keeps, often on its own stack, for as long as the context it's pushed in.
  */
-extension_node :: fn[T](data: ptr[T]) -> ContextExtension {
+extension_node :: fn[T](data : ptr[T]) -> ContextExtension {
     return ContextExtension.{T, data, context.extensions}
 }
 
@@ -71,7 +71,7 @@ extension_node :: fn[T](data: ptr[T]) -> ContextExtension {
  *     type of its data, is compared with.
  * @return The data of the innermost node with T for its key, or null when the chain has none.
  */
-get_extension :: fn[T](T: type) -> ptr[T]? {
+get_extension :: fn[T](T : type) -> ptr[T]? {
     node := context.extensions
     loop {
         current :: node or_break
@@ -98,9 +98,9 @@ get_extension :: fn[T](T: type) -> ptr[T]? {
  * @return The allocator's error without the memory for them, or null.
  */
 copy_extensions :: fn(
-    copy: ptr[mut Context],
+    copy : ptr[mut Context],
     allocator := context.allocator,
-    loc := #caller_location,
+    loc := #caller_location
 ) -> (mut ContextExtension[], AllocatorError?) {
     count : usize = 0
     walk := copy.extensions

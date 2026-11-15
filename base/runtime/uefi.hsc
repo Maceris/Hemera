@@ -76,12 +76,12 @@ import intrinsics from "base:intrinsics"
          * Reset the output device, given the protocol itself as this, and whether to test the device more thoroughly
          * as extended; not called by the runtime.
          */
-        reset : fn(this: rawptr, extended: bool) -> UefiStatus #calling_convention(.c) #no_context,
+        reset : fn(this : rawptr, extended : bool) -> UefiStatus #calling_convention(.c) #no_context,
         /**
          * Write text at the cursor, given the protocol itself as this and the text as UTF-16 (UCS-2) ending in a 0;
          * a line break takes a carriage return and a line feed both.
          */
-        output_string : fn(this: rawptr, text: ptr[u16]) -> UefiStatus #calling_convention(.c) #no_context,
+        output_string : fn(this : rawptr, text : ptr[u16]) -> UefiStatus #calling_convention(.c) #no_context,
     }
 
     /** EFI_BOOT_SERVICES, as far as Exit, the functions the runtime doesn't call kept as addresses. */
@@ -94,16 +94,25 @@ import intrinsics from "base:intrinsics"
          * AllocatePool: size bytes of memory of the kind given, like UEFI_LOADER_DATA, stored through buffer,
          * 8-byte aligned and not zeroed; EFI_SUCCESS, or an error without the memory.
          */
-        allocate_pool : fn(kind: u32, size: usize, buffer: ptr[mut rawptr]) -> UefiStatus #calling_convention(.c) #no_context,
+        allocate_pool : fn(
+            kind : u32,
+            size : usize,
+            buffer : ptr[mut rawptr]
+        ) -> UefiStatus #calling_convention(.c) #no_context,
         /** FreePool: a block allocate_pool gave, given back. */
-        free_pool : fn(buffer: rawptr) -> UefiStatus #calling_convention(.c) #no_context,
+        free_pool : fn(buffer : rawptr) -> UefiStatus #calling_convention(.c) #no_context,
         /** CreateEvent to StartImage, which the runtime doesn't call. */
         before_exit : rawptr[17],
         /**
          * Exit: the image ended, giving status, and data_size bytes of data (none here) to whoever started it; it
          * doesn't return for the running image.
          */
-        exit : fn(image: rawptr, status: UefiStatus, data_size: usize, data: rawptr) -> UefiStatus #calling_convention(.c) #no_context,
+        exit : fn(
+            image : rawptr,
+            status : UefiStatus,
+            data_size : usize,
+            data : rawptr
+        ) -> UefiStatus #calling_convention(.c) #no_context,
     }
 
     /**
@@ -139,12 +148,12 @@ import intrinsics from "base:intrinsics"
      *     InvalidArgument if alignment isn't a power of two. On an error, old_memory is left as it was.
      */
     pool_allocator_function : AllocatorFn : fn(
-        allocator_data: rawptr,
-        size: usize,
-        alignment: usize,
-        old_memory: rawptr,
-        old_size: usize,
-        location := #caller_location,
+        allocator_data : rawptr,
+        size : usize,
+        alignment : usize,
+        old_memory : rawptr,
+        old_size : usize,
+        location := #caller_location
     ) -> (mut u8[], AllocatorError?) {
         empty : mut u8[]
         services :: match uefi_system_table() {
@@ -168,7 +177,11 @@ import intrinsics from "base:intrinsics"
         }
         if old_memory != null {
             if size > 0 {
-                intrinsics.mem_copy(cast[mut rawptr](result.data), old_memory, if old_size < size { old_size } else { size })
+                intrinsics.mem_copy(
+                    cast[mut rawptr](result.data),
+                    old_memory,
+                    if old_size < size { old_size } else { size }
+                )
             }
             raw :: cast[ptr[usize]](cast[rawptr](cast[usize](old_memory) - 8))^
             _ = services.free_pool(cast[rawptr](raw))
@@ -191,7 +204,7 @@ import intrinsics from "base:intrinsics"
      * @param bytes The first byte, UTF-8, which only has to stay valid for the call.
      * @param count How many bytes; 0 writes nothing.
      */
-    os_write #no_context :: fn(stream: OutputStream, bytes: rawptr, count: usize) {
+    os_write #no_context :: fn(stream : OutputStream, bytes : rawptr, count : usize) {
         table :: uefi_system_table() or_return void
         out := table.console_out
         if stream != OutputStream.OUTPUT && cast[rawptr](table.standard_error) != null {
@@ -226,7 +239,8 @@ import intrinsics from "base:intrinsics"
                 length = 2
             }
             else if first & 0xf0 == 0xe0 && i + 2 < count {
-                character = (cast[u32](first & 0x0f) << 12) | (cast[u32](byte_at(bytes, i + 1) & 0x3f) << 6)
+                character = (cast[u32](first & 0x0f) << 12)
+                    | (cast[u32](byte_at(bytes, i + 1) & 0x3f) << 6)
                     | cast[u32](byte_at(bytes, i + 2) & 0x3f)
                 length = 3
             }
@@ -256,7 +270,7 @@ import intrinsics from "base:intrinsics"
      * @param index How far from bytes, in bytes; nothing is checked, so it has to be in range.
      * @return The byte at bytes + index, any value from 0 to 255.
      */
-    byte_at #no_context :: fn(bytes: rawptr, index: usize) -> u8 {
+    byte_at #no_context :: fn(bytes : rawptr, index : usize) -> u8 {
         return cast[ptr[u8]](cast[rawptr](cast[usize](bytes) + index))^
     }
 
@@ -267,9 +281,16 @@ import intrinsics from "base:intrinsics"
      *
      * @param code The program's result: 0 gives EFI_SUCCESS, and anything else EFI_ABORTED, the code itself lost.
      */
-    os_exit_process #no_context :: fn(code: u32) #never_returns {
+    os_exit_process #no_context :: fn(code : u32) #never_returns {
         match uefi_system_table() {
-            case Some(table) => _ = table.boot_services.exit(intrinsics.process_state().uefi_image, if code == 0 { UEFI_SUCCESS } else { UEFI_ABORTED }, 0, null)
+            case Some(
+                table
+            ) => _ = table.boot_services.exit(
+                intrinsics.process_state().uefi_image,
+                if code == 0 { UEFI_SUCCESS } else { UEFI_ABORTED },
+                0,
+                null
+            )
             case None => {}
         }
         intrinsics.trap()

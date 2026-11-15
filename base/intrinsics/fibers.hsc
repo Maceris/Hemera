@@ -41,7 +41,7 @@ uses_c_library : fn() -> bool : ---
  *
  * @param carrier The calling thread's carrier block, which has to stay alive as long as the thread runs.
  */
-set_thread_carrier : fn(carrier: ptr[mut runtime.CarrierBlock]) : ---
+set_thread_carrier : fn(carrier : ptr[mut runtime.CarrierBlock]) : ---
 
 /**
  * Load the carrier register with block, for code that starts without Hemera's startup code
@@ -51,7 +51,7 @@ set_thread_carrier : fn(carrier: ptr[mut runtime.CarrierBlock]) : ---
  * @param block The carrier block for this thread from now on, which has to stay alive while it's in the register.
  *     Every prologue reads block.stack_limit, so set that first.
  */
-set_carrier : fn(block: ptr[mut runtime.CarrierBlock]) : ---
+set_carrier : fn(block : ptr[mut runtime.CarrierBlock]) : ---
 
 /**
  * Start running a fiber that hasn't started yet, on its first stack segment.
@@ -65,7 +65,7 @@ set_carrier : fn(block: ptr[mut runtime.CarrierBlock]) : ---
  * @param fiber The fiber, set up with its function, data and first segment, and not started before.
  * @return .Yielded once the fiber suspends, or .Finished once its function returns.
  */
-fiber_start : fn(fiber: ptr[mut runtime.Fiber]) -> runtime.FiberExit : ---
+fiber_start : fn(fiber : ptr[mut runtime.Fiber]) -> runtime.FiberExit : ---
 
 /**
  * Resume a suspended fiber, on this carrier.
@@ -79,7 +79,7 @@ fiber_start : fn(fiber: ptr[mut runtime.Fiber]) -> runtime.FiberExit : ---
  * @param fiber The fiber, suspended by fiber_suspend, and not running on any other carrier.
  * @return .Yielded once the fiber suspends again, or .Finished once its function returns.
  */
-fiber_resume : fn(fiber: ptr[mut runtime.Fiber]) -> runtime.FiberExit : ---
+fiber_resume : fn(fiber : ptr[mut runtime.Fiber]) -> runtime.FiberExit : ---
 
 /**
  * Suspend the current fiber. Called on the fiber's own stack, by the scheduler's
@@ -99,7 +99,7 @@ fiber_resume : fn(fiber: ptr[mut runtime.Fiber]) -> runtime.FiberExit : ---
  *
  * @param fiber The current fiber, the one running this call.
  */
-fiber_suspend : fn(fiber: ptr[mut runtime.Fiber]) : ---
+fiber_suspend : fn(fiber : ptr[mut runtime.Fiber]) : ---
 
 /**
  * Run a fiber's function: never called directly, but needs a name.

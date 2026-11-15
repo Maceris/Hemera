@@ -34,13 +34,13 @@ Allocator :: struct #unrestricted {
  *     left as it was.
  */
 AllocatorFn :: alias fn(
-    allocator_data: rawptr,
-    size: usize,
-    alignment: usize,
-    old_memory: rawptr,
-    old_size: usize,
-    location:= #caller_location
-    )-> (mut u8[], AllocatorError?)
+    allocator_data : rawptr,
+    size : usize,
+    alignment : usize,
+    old_memory : rawptr,
+    old_size : usize,
+    location := #caller_location
+) -> (mut u8[], AllocatorError?)
 
 /** Why an allocator couldn't do what it was asked. */
 AllocatorError :: enum #backed_by(u8) {
@@ -61,11 +61,11 @@ SourceCodeLocation :: struct #unrestricted {
      * The file's path: base's files as <base>/..., std's as <std>/..., and every other relative to the folder of the
      * package being built, with / throughout (docs/compilation.md).
      */
-    file_path: string,
+    file_path : string,
     /** The name of the function the place is in. */
-    function: string,
+    function : string,
     /** The line in the file. */
-    line: u32,
+    line : u32,
     /** The column on the line. */
-    column: u16,
+    column : u16,
 }

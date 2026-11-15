@@ -36,7 +36,7 @@ FIBER_BLOCK_SIZE :: size_of(Fiber) + STACK_GUARD + FIBER_INITIAL_STACK_SIZE
  * @return The new segment, owned by the carrier from then on, or null when the carrier has no segment_allocator (its
  *     function is null) or the allocator has no memory; morestack then traps.
  */
-allocate_stack_segment #no_context :: fn(size: usize) -> ptr[mut StackSegment]? {
+allocate_stack_segment #no_context :: fn(size : usize) -> ptr[mut StackSegment]? {
     carrier : ptr[mut CarrierBlock] : intrinsics.carrier()
     allocator :: carrier.segment_allocator
     if cast[rawptr](allocator.function) == null {
@@ -188,10 +188,10 @@ FiberExit :: enum {
  * @return The allocator's error when either allocation failed, with nothing left allocated; null on success.
  */
 fiber_create :: fn(
-    function: ThreadFunction,
+    function : ThreadFunction,
     data #escaping #crosses_threads : any? = null,
     allocator := context.allocator,
-    loc := #caller_location,
+    loc := #caller_location
 ) -> (ptr[mut Fiber]?, AllocatorError?) {
     block, error :: new_array_aligned(u8, FIBER_BLOCK_SIZE, 16, allocator, loc)
     if error != null {
@@ -230,7 +230,7 @@ fiber_create :: fn(
  *
  * @param fiber The fiber to run, which is set Finished when its function returns.
  */
-fiber_run #no_context :: fn(fiber: ptr[mut Fiber]) {
+fiber_run #no_context :: fn(fiber : ptr[mut Fiber]) {
     push_context fiber_context from fiber.context {
         fiber.function(fiber.data)
     }
@@ -248,12 +248,12 @@ fiber_run #no_context :: fn(fiber: ptr[mut Fiber]) {
  * @param allocator The allocator fiber_create was given.
  * @param loc The caller's location, given to the allocator.
  */
-fiber_destroy :: fn(
-    fiber: ptr[Fiber],
-    allocator := context.allocator,
-    loc := #caller_location,
-) {
-    free_array(view_of(cast[ptr[ContextExtension]](fiber.extension_nodes), cast[usize](fiber.extension_count)), allocator, loc)
+fiber_destroy :: fn(fiber : ptr[Fiber], allocator := context.allocator, loc := #caller_location) {
+    free_array(
+        view_of(cast[ptr[ContextExtension]](fiber.extension_nodes), cast[usize](fiber.extension_count)),
+        allocator,
+        loc
+    )
     // The whole block fiber_create allocated, with its first stack segment: an allocator may tell blocks apart by size
     free_array_aligned(view_of(cast[ptr[u8]](fiber), FIBER_BLOCK_SIZE), 16, allocator, loc)
 }

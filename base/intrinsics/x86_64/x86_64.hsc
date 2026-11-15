@@ -48,8 +48,8 @@ RegisterFrame :: struct {
     r12 : u64, /**< The interrupted code's r12. */
     r11 : u64, /**< The interrupted code's r11; after a SYSCALL, its rflags, which the CPU put there. */
     r10 : u64, /**< The interrupted code's r10, a system call's fourth argument. */
-    r9 : u64, /**< The interrupted code's r9. */
-    r8 : u64, /**< The interrupted code's r8. */
+    r9  : u64, /**< The interrupted code's r9. */
+    r8  : u64, /**< The interrupted code's r8. */
     rbp : u64, /**< The interrupted code's rbp. */
     rdi : u64, /**< The interrupted code's rdi, a system call's first argument. */
     rsi : u64, /**< The interrupted code's rsi. */
@@ -129,20 +129,20 @@ read_rflags : fn() -> u64 : ---
  *
  * @param table Where the table is and its size; only read during the instruction, so it can be a local.
  */
-lgdt : fn(table: ptr[DescriptorTablePointer]) : ---
+lgdt : fn(table : ptr[DescriptorTablePointer]) : ---
 /**
  * Load the interrupt descriptor table register (lidt).
  *
  * @param table Where the table is and its size; only read during the instruction, so it can be a local. The table
  *     itself has to stay where it is while it's loaded.
  */
-lidt : fn(table: ptr[DescriptorTablePointer]) : ---
+lidt : fn(table : ptr[DescriptorTablePointer]) : ---
 /**
  * Load the task register (ltr), which marks the TSS descriptor busy.
  *
  * @param selector The selector of an available TSS descriptor in the GDT.
  */
-ltr : fn(selector: u16) : ---
+ltr : fn(selector : u16) : ---
 /**
  * Load cs with a far return, and ds, es, fs, gs and ss with data_selector, after lgdt.
  * fs and gs bases set through MSRs are reset, so set them after this.
@@ -150,7 +150,7 @@ ltr : fn(selector: u16) : ---
  * @param code_selector The 64-bit code segment's selector in the GDT.
  * @param data_selector The data segment's selector in the GDT.
  */
-load_segments : fn(code_selector, data_selector: u16) : ---
+load_segments : fn(code_selector, data_selector : u16) : ---
 /** Swap the gs base with the IA32_KERNEL_GS_BASE MSR (swapgs), on entering or leaving the kernel. */
 swapgs : fn() : ---
 
@@ -162,42 +162,42 @@ swapgs : fn() : ---
  * @param port The port, 0 to 65535.
  * @return What the device gave.
  */
-in_u8  : fn(port: u16) -> u8  : ---
+in_u8 : fn(port : u16) -> u8 : ---
 /**
  * Read two bytes from an I/O port (in).
  *
  * @param port The port, 0 to 65535.
  * @return What the device gave.
  */
-in_u16 : fn(port: u16) -> u16 : ---
+in_u16 : fn(port : u16) -> u16 : ---
 /**
  * Read four bytes from an I/O port (in).
  *
  * @param port The port, 0 to 65535.
  * @return What the device gave.
  */
-in_u32 : fn(port: u16) -> u32 : ---
+in_u32 : fn(port : u16) -> u32 : ---
 /**
  * Write a byte to an I/O port (out).
  *
  * @param port The port, 0 to 65535.
  * @param value What to write.
  */
-out_u8  : fn(port: u16, value: u8 ) : ---
+out_u8 : fn(port : u16, value : u8) : ---
 /**
  * Write two bytes to an I/O port (out).
  *
  * @param port The port, 0 to 65535.
  * @param value What to write.
  */
-out_u16 : fn(port: u16, value: u16) : ---
+out_u16 : fn(port : u16, value : u16) : ---
 /**
  * Write four bytes to an I/O port (out).
  *
  * @param port The port, 0 to 65535.
  * @param value What to write.
  */
-out_u32 : fn(port: u16, value: u32) : ---
+out_u32 : fn(port : u16, value : u32) : ---
 
 // System calls, from user mode
 
@@ -215,7 +215,7 @@ out_u32 : fn(port: u16, value: u32) : ---
  * @param f The sixth argument, in r9.
  * @return rax after the call: -4095 to -1, as an i64, are errors (-errno), and anything else is the call's result.
  */
-syscall : fn(number: u64, a: u64 = 0, b: u64 = 0, c: u64 = 0, d: u64 = 0, e: u64 = 0, f: u64 = 0) -> u64 : ---
+syscall : fn(number : u64, a : u64 = 0, b : u64 = 0, c : u64 = 0, d : u64 = 0, e : u64 = 0, f : u64 = 0) -> u64 : ---
 
 /** What system_call gives: rax, rdx and r8 after the call, whose meaning is the kernel's. */
 SystemCallResult :: struct {
@@ -238,7 +238,15 @@ SystemCallResult :: struct {
  * @param f The sixth argument, in r9.
  * @return The three registers the kernel answered in.
  */
-system_call : fn(number: u64, a: u64 = 0, b: u64 = 0, c: u64 = 0, d: u64 = 0, e: u64 = 0, f: u64 = 0) -> SystemCallResult : ---
+system_call : fn(
+    number : u64,
+    a : u64 = 0,
+    b : u64 = 0,
+    c : u64 = 0,
+    d : u64 = 0,
+    e : u64 = 0,
+    f : u64 = 0
+) -> SystemCallResult : ---
 
 /**
  * Start a thread with Linux's clone, which starts on stack by calling entry(argument), with the C convention.
@@ -254,8 +262,14 @@ system_call : fn(number: u64, a: u64 = 0, b: u64 = 0, c: u64 = 0, d: u64 = 0, e:
  * @param argument What entry is given as its one argument.
  * @return The new thread's ID, or -errno if clone failed, in which case no thread started.
  */
-clone_thread : fn(flags: u64, stack: rawptr, parent_tid: ptr[mut u32], child_tid: ptr[mut u32], entry: rawptr,
-    argument: rawptr) -> i64 : ---
+clone_thread : fn(
+    flags : u64,
+    stack : rawptr,
+    parent_tid : ptr[mut u32],
+    child_tid : ptr[mut u32],
+    entry : rawptr,
+    argument : rawptr
+) -> i64 : ---
 
 // Model-specific registers
 
@@ -265,14 +279,14 @@ clone_thread : fn(flags: u64, stack: rawptr, parent_tid: ptr[mut u32], child_tid
  * @param msr The register's number, like 0xC000_0080 for IA32_EFER; one the CPU doesn't have faults.
  * @return Its 64 bits.
  */
-rdmsr : fn(msr: u32) -> u64 : ---
+rdmsr : fn(msr : u32) -> u64 : ---
 /**
  * Write a model-specific register (wrmsr).
  *
  * @param msr The register's number; one the CPU doesn't have faults.
  * @param value Its 64 bits; reserved bits set fault.
  */
-wrmsr : fn(msr: u32, value: u64) : ---
+wrmsr : fn(msr : u32, value : u64) : ---
 
 // Control registers and paging
 
@@ -287,7 +301,7 @@ read_cr0 : fn() -> u64 : ---
  *
  * @param value Its new bits; changing PG or PE changes how every address is read from the next instruction on.
  */
-write_cr0 : fn(value: u64) : ---
+write_cr0 : fn(value : u64) : ---
 /**
  * Read CR2, in a page fault's handler.
  *
@@ -306,7 +320,7 @@ read_cr3 : fn() -> u64 : ---
  * @param value The physical address of the top-level page table, 4 KiB-aligned, with its flags or PCID in the low 12
  *     bits; with PCIDs on, bit 63 keeps that PCID's TLB entries.
  */
-write_cr3 : fn(value: u64) : ---
+write_cr3 : fn(value : u64) : ---
 /**
  * Read CR4.
  *
@@ -318,7 +332,7 @@ read_cr4 : fn() -> u64 : ---
  *
  * @param value Its new bits; setting one the CPU doesn't support faults.
  */
-write_cr4 : fn(value: u64) : ---
+write_cr4 : fn(value : u64) : ---
 /**
  * Read a debug register: DR0 to DR3, the breakpoints' linear addresses.
  *
@@ -348,25 +362,25 @@ read_dr7 : fn() -> u64 : ---
  *
  * @param value The address.
  */
-write_dr0 : fn(value: u64) : ---
+write_dr0 : fn(value : u64) : ---
 /** Write DR1, as write_dr0. */
-write_dr1 : fn(value: u64) : ---
+write_dr1 : fn(value : u64) : ---
 /** Write DR2, as write_dr0. */
-write_dr2 : fn(value: u64) : ---
+write_dr2 : fn(value : u64) : ---
 /** Write DR3, as write_dr0. */
-write_dr3 : fn(value: u64) : ---
+write_dr3 : fn(value : u64) : ---
 /**
  * Write DR6, the debug status, which the CPU never clears itself.
  *
  * @param value Its new bits; 0xffff0ff0 clears what a debug exception set.
  */
-write_dr6 : fn(value: u64) : ---
+write_dr6 : fn(value : u64) : ---
 /**
  * Write DR7, the debug control.
  *
  * @param value Its new bits; 0x400 (bit 10 is always 1) turns every breakpoint off.
  */
-write_dr7 : fn(value: u64) : ---
+write_dr7 : fn(value : u64) : ---
 /**
  * Leave a bootloader for what it loaded, never to come back: page_table loaded into CR3, the stack pointer set to
  * stack, and entry jumped to with argument as its first argument in the C convention of ELF programs (rdi), and a
@@ -377,20 +391,20 @@ write_dr7 : fn(value: u64) : ---
  * @param entry The address to jump to, under the new page table.
  * @param argument What entry gets in rdi.
  */
-enter : fn(page_table: u64, stack: u64, entry: u64, argument: u64) #never_returns : ---
+enter : fn(page_table : u64, stack : u64, entry : u64, argument : u64) #never_returns : ---
 /**
  * Flush the TLB entry for one page (invlpg), after changing its mapping.
  *
  * @param address Any address in the page, under the current page table. Only this CPU's TLB is flushed.
  */
-invlpg : fn(address: rawptr) : ---
+invlpg : fn(address : rawptr) : ---
 /**
  * Write the cache line containing address back to memory, if it's dirty, and drop it from every cache, for a
  * device that reads memory without snooping caches.
  *
  * @param address Any address in the line. Order it against later accesses with mfence.
  */
-clflush : fn(address: rawptr) : ---
+clflush : fn(address : rawptr) : ---
 /** Order every load and store before it before every one after it, clflush's among them (mfence). */
 mfence : fn() : ---
 
@@ -408,7 +422,7 @@ mfence : fn() : ---
  * @param handler The entry function. It's also the generic parameter, so it must be known at compile time.
  * @return The 256 stubs' addresses, read-only, in the program for its whole run.
  */
-entry_points : fn[handler](handler: (fn(frame: ptr[mut RegisterFrame]))) -> ptr[EntryPoints] : ---
+entry_points : fn[handler](handler : (fn(frame : ptr[mut RegisterFrame]))) -> ptr[EntryPoints] : ---
 
 /**
  * Restore every register from frame and return to user mode: swapgs, then sysretq when
@@ -417,7 +431,7 @@ entry_points : fn[handler](handler: (fn(frame: ptr[mut RegisterFrame]))) -> ptr[
  * @param frame The registers to return with, from an entry function or kept in a thread's structures; its rip, cs, ss
  *     and rflags have to be user mode's.
  */
-return_to_user #never_returns : fn(frame: ptr[RegisterFrame]) : ---
+return_to_user #never_returns : fn(frame : ptr[RegisterFrame]) : ---
 
 /**
  * Read the current gs base: rdgsbase if FSGSBASE is enabled, otherwise the IA32_GS_BASE MSR.
@@ -434,7 +448,7 @@ read_gs_base : fn() -> rawptr : ---
  * @param area Where they go: 64-byte aligned, and as large as CPUID leaf 0xD says for the components enabled.
  * @param mask Which components, as XCR0's bits; only those also enabled in XCR0 are saved.
  */
-xsave : fn(area: rawptr, mask: u64) : ---
+xsave : fn(area : rawptr, mask : u64) : ---
 /**
  * Save the state components selected by mask in the compacted format (xsavec), leaving out components in their
  * initial state.
@@ -442,7 +456,7 @@ xsave : fn(area: rawptr, mask: u64) : ---
  * @param area Where they go: 64-byte aligned, and as large as CPUID leaf 0xD says for the compacted format.
  * @param mask Which components, as XCR0's bits.
  */
-xsavec : fn(area: rawptr, mask: u64) : ---
+xsavec : fn(area : rawptr, mask : u64) : ---
 /**
  * Save the state components selected by mask (xsaveopt), skipping components unchanged since the last xrstor from the
  * same area.
@@ -450,7 +464,7 @@ xsavec : fn(area: rawptr, mask: u64) : ---
  * @param area Where they go, as for xsave; it has to be the area last restored from for the skipping to be right.
  * @param mask Which components, as XCR0's bits.
  */
-xsaveopt : fn(area: rawptr, mask: u64) : ---
+xsaveopt : fn(area : rawptr, mask : u64) : ---
 /**
  * Restore the state components selected by mask (xrstor), from an area one of the xsave functions wrote.
  *
@@ -458,21 +472,21 @@ xsaveopt : fn(area: rawptr, mask: u64) : ---
  * @param mask Which components, as XCR0's bits; those selected that the area holds no state for are set to their
  *     initial state.
  */
-xrstor : fn(area: rawptr, mask: u64) : ---
+xrstor : fn(area : rawptr, mask : u64) : ---
 /**
  * Read an extended control register (xgetbv).
  *
  * @param register Which one; 0 is XCR0, the enabled state components.
  * @return Its 64 bits.
  */
-xgetbv : fn(register: u32) -> u64 : ---
+xgetbv : fn(register : u32) -> u64 : ---
 /**
  * Write an extended control register (xsetbv), in ring 0.
  *
  * @param register Which one; 0 is XCR0.
  * @param value Its new bits; a combination the CPU doesn't support faults.
  */
-xsetbv : fn(register: u32, value: u64) : ---
+xsetbv : fn(register : u32, value : u64) : ---
 
 // Identification and timing
 
@@ -483,7 +497,7 @@ xsetbv : fn(register: u32, value: u64) : ---
  * @param subleaf A further choice for leaves that take one, in ecx; ignored by the rest.
  * @return The four registers it answered in.
  */
-cpuid : fn(leaf: u32, subleaf: u32 = 0) -> CpuidResult : ---
+cpuid : fn(leaf : u32, subleaf : u32 = 0) -> CpuidResult : ---
 /**
  * Read the time-stamp counter (rdtsc). Not serializing, so it may run before earlier instructions finish.
  *
@@ -517,7 +531,7 @@ rdrand : fn() -> u64? : ---
  * @param round_key This round's key.
  * @return The block after the round.
  */
-aes_encrypt_round : fn(state: v128, round_key: v128) -> v128 : ---
+aes_encrypt_round : fn(state : v128, round_key : v128) -> v128 : ---
 /**
  * Do the last encryption round (aesenclast), without MixColumns.
  *
@@ -525,7 +539,7 @@ aes_encrypt_round : fn(state: v128, round_key: v128) -> v128 : ---
  * @param round_key The last round's key.
  * @return The block after the last round: the ciphertext, when the earlier rounds used the same key schedule.
  */
-aes_encrypt_last : fn(state: v128, round_key: v128) -> v128 : ---
+aes_encrypt_last : fn(state : v128, round_key : v128) -> v128 : ---
 /**
  * Do one AES decryption round (aesdec).
  *
@@ -533,7 +547,7 @@ aes_encrypt_last : fn(state: v128, round_key: v128) -> v128 : ---
  * @param round_key This round's key, made for decryption by aes_inverse_mix.
  * @return The block after the round.
  */
-aes_decrypt_round : fn(state: v128, round_key: v128) -> v128 : ---
+aes_decrypt_round : fn(state : v128, round_key : v128) -> v128 : ---
 /**
  * Do the last decryption round (aesdeclast).
  *
@@ -541,14 +555,14 @@ aes_decrypt_round : fn(state: v128, round_key: v128) -> v128 : ---
  * @param round_key The first encryption round key, as it is, not through aes_inverse_mix.
  * @return The block after the last round: the plaintext, when the earlier rounds used the decryption schedule.
  */
-aes_decrypt_last : fn(state: v128, round_key: v128) -> v128 : ---
+aes_decrypt_last : fn(state : v128, round_key : v128) -> v128 : ---
 /**
  * Apply InvMixColumns to a round key (aesimc), to use an encryption round key for decryption.
  *
  * @param round_key An encryption round key, other than the first and last.
  * @return The key for aes_decrypt_round.
  */
-aes_inverse_mix : fn(round_key: v128) -> v128 : ---
+aes_inverse_mix : fn(round_key : v128) -> v128 : ---
 /**
  * Work out what expanding a key's next round key needs (aeskeygenassist).
  *
@@ -557,7 +571,7 @@ aes_inverse_mix : fn(round_key: v128) -> v128 : ---
  *     the instruction.
  * @return The substituted and rotated words, with round_constant xor'ed in, that the expansion mixes in.
  */
-aes_key_assist : fn(key: v128, round_constant: u8) -> v128 : ---
+aes_key_assist : fn(key : v128, round_constant : u8) -> v128 : ---
 /**
  * Multiply one 64-bit half of a by one of b without carries (pclmulqdq), as polynomials over GF(2), as GHASH does.
  *
@@ -566,7 +580,7 @@ aes_key_assist : fn(key: v128, round_constant: u8) -> v128 : ---
  * @param selector Which halves: bit 0 picks a's (0 low, 1 high), and bit 4 b's; a compile-time constant.
  * @return The 128-bit product.
  */
-carryless_multiply : fn(a: v128, b: v128, selector: u8) -> v128 : ---
+carryless_multiply : fn(a : v128, b : v128, selector : u8) -> v128 : ---
 
 /*
  * SHA-256 (the SHA extensions), on 32-bit lanes. Not in every x86-64 CPU, so a function using them is marked
@@ -583,7 +597,7 @@ carryless_multiply : fn(a: v128, b: v128, selector: u8) -> v128 : ---
  *     ignored.
  * @return The new A, B, E and F; the old A, B, E and F are the new C, D, G and H.
  */
-sha256_rounds2 : fn(cdgh: vector[u32, 4], abef: vector[u32, 4], message: vector[u32, 4]) -> vector[u32, 4] : ---
+sha256_rounds2 : fn(cdgh : vector[u32, 4], abef : vector[u32, 4], message : vector[u32, 4]) -> vector[u32, 4] : ---
 /**
  * Do the first half of working out the next four message words from the last eight (sha256msg1).
  *
@@ -591,7 +605,7 @@ sha256_rounds2 : fn(cdgh: vector[u32, 4], abef: vector[u32, 4], message: vector[
  * @param later The four words after earlier; only its lowest lane, the fifth oldest word, is used.
  * @return The partial sums, to add words 7 back to and give sha256_message2.
  */
-sha256_message1 : fn(earlier: vector[u32, 4], later: vector[u32, 4]) -> vector[u32, 4] : ---
+sha256_message1 : fn(earlier : vector[u32, 4], later : vector[u32, 4]) -> vector[u32, 4] : ---
 /**
  * Do the second half of working out the next four message words (sha256msg2).
  *
@@ -599,4 +613,4 @@ sha256_message1 : fn(earlier: vector[u32, 4], later: vector[u32, 4]) -> vector[u
  * @param last The last four words.
  * @return The next four message words.
  */
-sha256_message2 : fn(partial: vector[u32, 4], last: vector[u32, 4]) -> vector[u32, 4] : ---
+sha256_message2 : fn(partial : vector[u32, 4], last : vector[u32, 4]) -> vector[u32, 4] : ---

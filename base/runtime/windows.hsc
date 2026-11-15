@@ -28,7 +28,7 @@ import intrinsics from "base:intrinsics"
      * @param size The block's size in bytes.
      * @return The block, aligned to 16 bytes on 64-bit Windows, which HeapFree gives back; or null without the memory.
      */
-    HeapAlloc #foreign(KERNEL32) : fn(heap: rawptr, flags: u32, size: usize) -> rawptr : ---
+    HeapAlloc #foreign(KERNEL32) : fn(heap : rawptr, flags : u32, size : usize) -> rawptr : ---
     /**
      * Give a block back to the heap it came from.
      *
@@ -37,7 +37,7 @@ import intrinsics from "base:intrinsics"
      * @param memory The block, as HeapAlloc gave it, which mustn't be used after.
      * @return Nonzero if it was freed; 0 if not.
      */
-    HeapFree #foreign(KERNEL32) : fn(heap: rawptr, flags: u32, memory: rawptr) -> i32 : ---
+    HeapFree #foreign(KERNEL32) : fn(heap : rawptr, flags : u32, memory : rawptr) -> i32 : ---
     /**
      * Start a thread of this process, calling start(parameter) on its own stack.
      *
@@ -50,19 +50,19 @@ import intrinsics from "base:intrinsics"
      * @return The thread's handle, which CloseHandle closes, or null if it wasn't made.
      */
     CreateThread #foreign(KERNEL32) : fn(
-        attributes: rawptr,
-        stack_size: usize,
-        start: rawptr,
-        parameter: rawptr,
-        flags: u32,
-        id: rawptr,
+        attributes : rawptr,
+        stack_size : usize,
+        start : rawptr,
+        parameter : rawptr,
+        flags : u32,
+        id : rawptr
     ) -> rawptr : ---
     /**
      * End the calling thread, never returning.
      *
      * @param code The thread's exit code, which the runtime doesn't read.
      */
-    ExitThread #foreign(KERNEL32) : fn(code: u32) #never_returns : ---
+    ExitThread #foreign(KERNEL32) : fn(code : u32) #never_returns : ---
     /**
      * Wait until an object is signaled, like a thread ending, or time runs out.
      *
@@ -70,21 +70,21 @@ import intrinsics from "base:intrinsics"
      * @param milliseconds How long to wait at most, or INFINITE for as long as it takes.
      * @return WAIT_OBJECT_0 (0) if it was signaled; another value on a timeout or failure.
      */
-    WaitForSingleObject #foreign(KERNEL32) : fn(handle: rawptr, milliseconds: u32) -> u32 : ---
+    WaitForSingleObject #foreign(KERNEL32) : fn(handle : rawptr, milliseconds : u32) -> u32 : ---
     /**
      * Close a handle, which mustn't be used after.
      *
      * @param handle An open handle of a kind CloseHandle closes; not a pseudo-handle or a standard handle.
      * @return Nonzero if it was closed; 0 if not.
      */
-    CloseHandle #foreign(KERNEL32) : fn(handle: rawptr) -> i32 : ---
+    CloseHandle #foreign(KERNEL32) : fn(handle : rawptr) -> i32 : ---
     /**
      * Give the bounds of the calling thread's stack as it's reserved, not just what's committed.
      *
      * @param low Where its lowest address is stored, which it grows down towards.
      * @param high Where the address just past its top is stored.
      */
-    GetCurrentThreadStackLimits #foreign(KERNEL32) : fn(low: ptr[mut usize], high: ptr[mut usize]) : ---
+    GetCurrentThreadStackLimits #foreign(KERNEL32) : fn(low : ptr[mut usize], high : ptr[mut usize]) : ---
     /**
      * Allocate a thread-local storage slot, which every thread has its own value in, starting at null.
      *
@@ -97,7 +97,7 @@ import intrinsics from "base:intrinsics"
      * @param slot The slot's index, from TlsAlloc.
      * @return The value, null if the thread never set one.
      */
-    TlsGetValue #foreign(KERNEL32) : fn(slot: u32) -> rawptr : ---
+    TlsGetValue #foreign(KERNEL32) : fn(slot : u32) -> rawptr : ---
     /**
      * Set the calling thread's value in a thread-local storage slot.
      *
@@ -105,7 +105,7 @@ import intrinsics from "base:intrinsics"
      * @param value Any pointer-sized value, null included; it's stored, not read through.
      * @return Nonzero if it was set; 0 if not.
      */
-    TlsSetValue #foreign(KERNEL32) : fn(slot: u32, value: rawptr) -> i32 : ---
+    TlsSetValue #foreign(KERNEL32) : fn(slot : u32, value : rawptr) -> i32 : ---
     /**
      * Give one of the process's standard handles.
      *
@@ -113,7 +113,7 @@ import intrinsics from "base:intrinsics"
      * @return The handle, which isn't to be closed; null if the process has none, or INVALID_HANDLE_VALUE (all bits
      *     set) on a failure.
      */
-    GetStdHandle #foreign(KERNEL32) : fn(which: u32) -> rawptr : ---
+    GetStdHandle #foreign(KERNEL32) : fn(which : u32) -> rawptr : ---
     /**
      * Write bytes to a file or device, synchronously.
      *
@@ -124,7 +124,13 @@ import intrinsics from "base:intrinsics"
      * @param overlapped Null, for a synchronous write.
      * @return Nonzero if it succeeded; 0 if not.
      */
-    WriteFile #foreign(KERNEL32) : fn(file: rawptr, bytes: rawptr, count: u32, written: ptr[mut u32], overlapped: rawptr) -> i32 : ---
+    WriteFile #foreign(KERNEL32) : fn(
+        file : rawptr,
+        bytes : rawptr,
+        count : u32,
+        written : ptr[mut u32],
+        overlapped : rawptr
+    ) -> i32 : ---
     /**
      * Give a handle that stands for the calling process.
      *
@@ -138,7 +144,7 @@ import intrinsics from "base:intrinsics"
      * @param code Its exit code.
      * @return Nonzero if it was ended (for the calling process, it doesn't return); 0 if not.
      */
-    TerminateProcess #foreign(KERNEL32) : fn(process: rawptr, code: u32) -> i32 : ---
+    TerminateProcess #foreign(KERNEL32) : fn(process : rawptr, code : u32) -> i32 : ---
     /**
      * Give the process's command line, as one string.
      *
@@ -151,20 +157,20 @@ import intrinsics from "base:intrinsics"
      * @param count Where the count is stored.
      * @return Nonzero; it never fails on Windows XP or later.
      */
-    QueryPerformanceCounter #foreign(KERNEL32) : fn(count: ptr[mut i64]) -> i32 : ---
+    QueryPerformanceCounter #foreign(KERNEL32) : fn(count : ptr[mut i64]) -> i32 : ---
     /**
      * Read the performance counter's frequency, fixed while the system runs.
      *
      * @param frequency Where its counts per second are stored.
      * @return Nonzero; it never fails on Windows XP or later.
      */
-    QueryPerformanceFrequency #foreign(KERNEL32) : fn(frequency: ptr[mut i64]) -> i32 : ---
+    QueryPerformanceFrequency #foreign(KERNEL32) : fn(frequency : ptr[mut i64]) -> i32 : ---
     /**
      * Read the system's time, as precisely as it has it.
      *
      * @param time Where it's stored, as a FILETIME: 100 nanosecond ticks since 1601-01-01T00:00:00Z.
      */
-    GetSystemTimePreciseAsFileTime #foreign(KERNEL32) : fn(time: ptr[mut u64]) : ---
+    GetSystemTimePreciseAsFileTime #foreign(KERNEL32) : fn(time : ptr[mut u64]) : ---
     /**
      * Fill a buffer with random bytes.
      *
@@ -174,7 +180,7 @@ import intrinsics from "base:intrinsics"
      * @param flags BCRYPT_USE_SYSTEM_PREFERRED_RNG, for the system's preferred generator.
      * @return 0 (STATUS_SUCCESS) if it was filled; an NTSTATUS error if not.
      */
-    BCryptGenRandom #foreign(BCRYPT) : fn(algorithm: rawptr, buffer: rawptr, count: u32, flags: u32) -> i32 : ---
+    BCryptGenRandom #foreign(BCRYPT) : fn(algorithm : rawptr, buffer : rawptr, count : u32, flags : u32) -> i32 : ---
     /**
      * Sleep while a value is the same as compare's, until woken, time runs out, or spuriously.
      *
@@ -184,19 +190,24 @@ import intrinsics from "base:intrinsics"
      * @param milliseconds How long to wait at most, or INFINITE for as long as it takes.
      * @return Nonzero if woken, or the value differed; 0 on a timeout.
      */
-    WaitOnAddress #foreign(SYNCHRONIZATION) : fn(address: rawptr, compare: rawptr, size: usize, milliseconds: u32) -> i32 : ---
+    WaitOnAddress #foreign(SYNCHRONIZATION) : fn(
+        address : rawptr,
+        compare : rawptr,
+        size : usize,
+        milliseconds : u32
+    ) -> i32 : ---
     /**
      * Wake one thread waiting on an address with WaitOnAddress, if any is.
      *
      * @param address The address waited on.
      */
-    WakeByAddressSingle #foreign(SYNCHRONIZATION) : fn(address: rawptr) : ---
+    WakeByAddressSingle #foreign(SYNCHRONIZATION) : fn(address : rawptr) : ---
     /**
      * Wake every thread waiting on an address with WaitOnAddress.
      *
      * @param address The address waited on.
      */
-    WakeByAddressAll #foreign(SYNCHRONIZATION) : fn(address: rawptr) : ---
+    WakeByAddressAll #foreign(SYNCHRONIZATION) : fn(address : rawptr) : ---
 
     /** A wait's timeout that never comes: wait as long as it takes. */
     INFINITE : u32 : 0xffffffff
@@ -225,12 +236,12 @@ import intrinsics from "base:intrinsics"
      *     power of two. On an error, old_memory is left as it was.
      */
     heap_allocator_function : AllocatorFn : fn(
-        allocator_data: rawptr,
-        size: usize,
-        alignment: usize,
-        old_memory: rawptr,
-        old_size: usize,
-        location := #caller_location,
+        allocator_data : rawptr,
+        size : usize,
+        alignment : usize,
+        old_memory : rawptr,
+        old_size : usize,
+        location := #caller_location
     ) -> (mut u8[], AllocatorError?) {
         empty : mut u8[]
         heap :: GetProcessHeap()
@@ -251,7 +262,11 @@ import intrinsics from "base:intrinsics"
         }
         if old_memory != null {
             if size > 0 {
-                intrinsics.mem_copy(cast[mut rawptr](result.data), old_memory, if old_size < size { old_size } else { size })
+                intrinsics.mem_copy(
+                    cast[mut rawptr](result.data),
+                    old_memory,
+                    if old_size < size { old_size } else { size }
+                )
             }
             raw :: cast[ptr[usize]](cast[rawptr](cast[usize](old_memory) - 8))^
             HeapFree(heap, 0, cast[rawptr](raw))
@@ -273,7 +288,7 @@ import intrinsics from "base:intrinsics"
      * @param bytes The first byte, which only has to stay valid for the call.
      * @param count How many bytes; 0 writes nothing.
      */
-    os_write #no_context :: fn(stream: OutputStream, bytes: rawptr, count: usize) {
+    os_write #no_context :: fn(stream : OutputStream, bytes : rawptr, count : usize) {
         which := STD_ERROR_HANDLE
         if stream == OutputStream.OUTPUT {
             which = STD_OUTPUT_HANDLE
@@ -303,7 +318,7 @@ import intrinsics from "base:intrinsics"
      *
      * @param code The process's exit code.
      */
-    os_exit_process #no_context :: fn(code: u32) #never_returns {
+    os_exit_process #no_context :: fn(code : u32) #never_returns {
         TerminateProcess(GetCurrentProcess(), code)
         intrinsics.trap()
     }
@@ -317,7 +332,7 @@ import intrinsics from "base:intrinsics"
      * @return The arguments, each viewing text from allocator. Empty if the command line is, if memory runs out, or if
      *     it couldn't be converted.
      */
-    os_command_line_arguments :: fn(allocator: Allocator) -> string[] {
+    os_command_line_arguments :: fn(allocator : Allocator) -> string[] {
         empty : string[]
         line :: GetCommandLineW()
         length : usize = 0
@@ -357,11 +372,7 @@ import intrinsics from "base:intrinsics"
      * that's fixed while the system runs, and the precise system time for the wall clock, in 100
      * nanosecond ticks since 1601.
      */
-    SYSTEM_CLOCK :: Clock.{
-        data = null,
-        monotonic = system_monotonic,
-        wall = system_wall,
-    }
+    SYSTEM_CLOCK :: Clock.{data = null, monotonic = system_monotonic, wall = system_wall}
 
     /**
      * Read the monotonic clock, the performance counter, in nanoseconds.
@@ -370,7 +381,7 @@ import intrinsics from "base:intrinsics"
      * @return Nanoseconds since an unspecified start, like the system's boot, which never go back; 0 if the counter's
      *     frequency can't be read, since a monotonic time can't report an error.
      */
-    system_monotonic :: fn(data: mut rawptr) -> MonotonicTime {
+    system_monotonic :: fn(data : mut rawptr) -> MonotonicTime {
         count : i64 = 0
         frequency : i64 = 0
         QueryPerformanceCounter(&count)
@@ -394,7 +405,7 @@ import intrinsics from "base:intrinsics"
      * @return The time since 1970-01-01T00:00:00Z, as the system has it set, to 100 nanoseconds.
      * @error NotSynchronized The system's time is before 1970, so it can't have been set.
      */
-    system_wall :: fn(data: mut rawptr) -> Result[Instant, ClockError] {
+    system_wall :: fn(data : mut rawptr) -> Result[Instant, ClockError] {
         ticks : u64 = 0
         GetSystemTimePreciseAsFileTime(&ticks)
         if ticks < FILETIME_TO_UNIX {
@@ -405,10 +416,7 @@ import intrinsics from "base:intrinsics"
     }
 
     /** The system's random numbers, from its preferred generator, which is suitable for keys. */
-    SYSTEM_RANDOM :: Random.{
-        data = null,
-        fill = system_random_fill,
-    }
+    SYSTEM_RANDOM :: Random.{data = null, fill = system_random_fill}
 
     /** BCryptGenRandom's flag for the system's preferred generator, with no algorithm handle. */
     BCRYPT_USE_SYSTEM_PREFERRED_RNG : u32 : 2
@@ -422,7 +430,7 @@ import intrinsics from "base:intrinsics"
      * @param data Unused: the generator has no state of the program's.
      * @param bytes What's filled, all of it; empty fills nothing.
      */
-    system_random_fill :: fn(data: mut rawptr, bytes: mut u8[]) {
+    system_random_fill :: fn(data : mut rawptr, bytes : mut u8[]) {
         done : usize = 0
         loop {
             if done >= bytes.count {
@@ -470,7 +478,7 @@ import intrinsics from "base:intrinsics"
      * @param parameter The thread's Thread, as os_thread_start gave it.
      * @return Nothing: it never returns.
      */
-    windows_thread_entry #calling_convention(.c) #no_context :: fn(parameter: rawptr) -> u32 {
+    windows_thread_entry #calling_convention(.c) #no_context :: fn(parameter : rawptr) -> u32 {
         thread :: cast[ptr[mut Thread]](parameter)
         intrinsics.set_carrier(&thread.carrier)
         register_carrier(&thread.carrier)
@@ -500,7 +508,7 @@ import intrinsics from "base:intrinsics"
      *
      * @param carrier The calling thread's carrier block, which has to last as long as the thread.
      */
-    register_carrier #no_context :: fn(carrier: ptr[mut CarrierBlock]) {
+    register_carrier #no_context :: fn(carrier : ptr[mut CarrierBlock]) {
         slot :: &intrinsics.process_state().carrier_slot
         if slot^ == 0 {
             slot^ = TlsAlloc() + 1
@@ -562,7 +570,7 @@ import intrinsics from "base:intrinsics"
      * @param thread A thread os_thread_start started, joined only once; the Thread itself is left for the caller to
      *     free.
      */
-    os_thread_join :: fn(thread: ptr[mut Thread]) {
+    os_thread_join :: fn(thread : ptr[mut Thread]) {
         WaitForSingleObject(thread.handle, INFINITE)
         CloseHandle(thread.handle)
     }
@@ -576,7 +584,7 @@ import intrinsics from "base:intrinsics"
      * @param address The value to wait on.
      * @param expected The value it had when the caller decided to wait.
      */
-    wait_on_value :: fn(address: ptr[u32], expected: u32) {
+    wait_on_value :: fn(address : ptr[u32], expected : u32) {
         compare := expected
         WaitOnAddress(cast[rawptr](address), cast[rawptr](&compare), 4, INFINITE)
     }
@@ -586,7 +594,7 @@ import intrinsics from "base:intrinsics"
      *
      * @param address The value waited on.
      */
-    wake_one :: fn(address: ptr[u32]) {
+    wake_one :: fn(address : ptr[u32]) {
         WakeByAddressSingle(cast[rawptr](address))
     }
 
@@ -595,7 +603,7 @@ import intrinsics from "base:intrinsics"
      *
      * @param address The value waited on.
      */
-    wake_all :: fn(address: ptr[u32]) {
+    wake_all :: fn(address : ptr[u32]) {
         WakeByAddressAll(cast[rawptr](address))
     }
 }

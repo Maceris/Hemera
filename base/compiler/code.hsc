@@ -28,7 +28,7 @@ Code :: struct {
  * @param code The code, from a quote or one of the functions below.
  * @return The source, which parses back into the same tree.
  */
-code_text : fn(code: Code) -> string : ---
+code_text : fn(code : Code) -> string : ---
 
 /**
  * Make what #code evaluates to; the compiler writes the calls, for each quote.
@@ -38,7 +38,7 @@ code_text : fn(code: Code) -> string : ---
  *     number, boolean, character, string or enum member a literal of it.
  * @return A copy of the quote's tree, with each #insert in it replaced by its splice.
  */
-quote_code : fn(quote: u64, splices: any[]) -> Code : ---
+quote_code : fn(quote : u64, splices : any[]) -> Code : ---
 
 /*
  * Code made from values rather than quoted, for what a quote can't say, like a name from a table. Each comes from
@@ -54,7 +54,7 @@ quote_code : fn(quote: u64, splices: any[]) -> Code : ---
  * @return The name, which is an identifier, never anything else. If the joined text isn't one (letters, digits and
  *     _, not starting with a digit, and not a keyword), it's an error at location.
  */
-name : fn(parts: string..., location := #caller_location) -> Code : ---
+name : fn(parts : string..., location := #caller_location) -> Code : ---
 
 /**
  * Make a literal of a value.
@@ -63,7 +63,7 @@ name : fn(parts: string..., location := #caller_location) -> Code : ---
  * @param location Where an error in it is reported; the caller's own by default.
  * @return The literal, of the value's type.
  */
-literal : fn(value: any, location := #caller_location) -> Code : ---
+literal : fn(value : any, location := #caller_location) -> Code : ---
 
 /**
  * Make code of a type, as itself, so nothing is looked up by its name where it goes.
@@ -72,7 +72,7 @@ literal : fn(value: any, location := #caller_location) -> Code : ---
  * @param location Where an error in it is reported; the caller's own by default.
  * @return The type's code, for where a type goes, like -> #insert T.
  */
-type_code : fn(T: type, location := #caller_location) -> Code : ---
+type_code : fn(T : type, location := #caller_location) -> Code : ---
 
 /**
  * Make a list of code: inserted, its items go in its place, each one of what holds it, like arguments or statements.
@@ -82,7 +82,7 @@ type_code : fn(T: type, location := #caller_location) -> Code : ---
  * @param location Where an error in it is reported; the caller's own by default.
  * @return The list, empty when items is.
  */
-list : fn(items: Code[], location := #caller_location) -> Code : ---
+list : fn(items : Code[], location := #caller_location) -> Code : ---
 
 /**
  * Give the type a type's description is of, as a type value, for what takes a type, like a struct member's type from
@@ -91,7 +91,7 @@ list : fn(items: Code[], location := #caller_location) -> Code : ---
  * @param info A description from type_info_of, or reached through one.
  * @return The type it describes.
  */
-described_type : fn(info: ptr[TypeInfo]) -> type : ---
+described_type : fn(info : ptr[TypeInfo]) -> type : ---
 
 /**
  * Make a function type's parameters into a parameter list, as name: Type, for fn(#insert parameters(F)).
@@ -101,7 +101,7 @@ described_type : fn(info: ptr[TypeInfo]) -> type : ---
  * @return The parameters, in order. One without a name is called p and its place, like p0; arguments gives the same
  *     names.
  */
-parameters : fn(function: type, location := #caller_location) -> Code : ---
+parameters : fn(function : type, location := #caller_location) -> Code : ---
 
 /**
  * Make a function type's parameters' names into a list of arguments, for a call passing them on.
@@ -110,7 +110,7 @@ parameters : fn(function: type, location := #caller_location) -> Code : ---
  * @param location Where an error in it is reported; the caller's own by default.
  * @return The names, in order, as parameters names them.
  */
-arguments : fn(function: type, location := #caller_location) -> Code : ---
+arguments : fn(function : type, location := #caller_location) -> Code : ---
 
 /** What a piece of code is, for code that takes code, like a macro. */
 CodeKind :: enum {
@@ -146,7 +146,7 @@ CodeKind :: enum {
  *     as name() and literal() would make them; Expression for any other single expression, and for a value that isn't
  *     code at all.
  */
-code_kind : fn(code: Code) -> CodeKind : ---
+code_kind : fn(code : Code) -> CodeKind : ---
 
 /**
  * Give a name's text.
@@ -154,7 +154,7 @@ code_kind : fn(code: Code) -> CodeKind : ---
  * @param code Any code; only a Name has text to give.
  * @return The name's text when code is a Name; none for other code.
  */
-identifier_of : fn(code: Code) -> string? : ---
+identifier_of : fn(code : Code) -> string? : ---
 
 /**
  * Give the items of code that has them.
@@ -163,7 +163,7 @@ identifier_of : fn(code: Code) -> string? : ---
  * @return Each item of statements, a list, fields, variants, members, patterns or cases, in order, each its own Code;
  *     empty for other code.
  */
-items_of : fn(code: Code) -> Code[] : ---
+items_of : fn(code : Code) -> Code[] : ---
 
 /**
  * Give where code was written, or made.
@@ -171,4 +171,4 @@ items_of : fn(code: Code) -> Code[] : ---
  * @param code Any code, quoted or made.
  * @return The quote's location, or for code from name, literal and the like, where that was called.
  */
-location_of : fn(code: Code) -> SourceCodeLocation : ---
+location_of : fn(code : Code) -> SourceCodeLocation : ---

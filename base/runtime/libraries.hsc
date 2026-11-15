@@ -145,7 +145,7 @@ bind_libraries :: fn() {
  * @param b The hash a is compared with, only read; which is which doesn't matter.
  * @return True when all 32 bytes are the same. Not constant-time: hashes here aren't secret.
  */
-same_hash #no_context :: fn(a: u8[32], b: u8[32]) -> bool {
+same_hash #no_context :: fn(a : u8[32], b : u8[32]) -> bool {
     for byte, i in a {
         if byte != b[i] {
             return false
@@ -162,7 +162,7 @@ same_hash #no_context :: fn(a: u8[32], b: u8[32]) -> bool {
  * @param import The import that can't be bound, named in the message.
  * @param why Why not, finishing the sentence after "it", like "doesn't export it".
  */
-refuse_library #no_context :: fn(import: LibraryImport, why: string) #never_returns {
+refuse_library #no_context :: fn(import : LibraryImport, why : string) #never_returns {
     buffer := output_buffer(.ERROR)
     output_text(&buffer, "can't bind ")
     output_text(&buffer, import.name)
@@ -182,7 +182,7 @@ refuse_library #no_context :: fn(import: LibraryImport, why: string) #never_retu
      * @param name The DLL's path, a null-terminated ANSI string.
      * @return The module's handle, or null when it couldn't be loaded.
      */
-    LoadLibraryA #foreign(KERNEL32) : fn(name: rawptr) -> rawptr : ---
+    LoadLibraryA #foreign(KERNEL32) : fn(name : rawptr) -> rawptr : ---
     /**
      * Find an exported symbol of a loaded DLL (kernel32's GetProcAddress).
      *
@@ -190,7 +190,7 @@ refuse_library #no_context :: fn(import: LibraryImport, why: string) #never_retu
      * @param name The symbol's name, a null-terminated ANSI string.
      * @return The symbol's address, or null when the module has no such export.
      */
-    GetProcAddress #foreign(KERNEL32) : fn(module: rawptr, name: rawptr) -> rawptr : ---
+    GetProcAddress #foreign(KERNEL32) : fn(module : rawptr, name : rawptr) -> rawptr : ---
 
     /**
      * Load a library with Windows' loader, which looks beside the program first, and find its record by name.
@@ -201,7 +201,7 @@ refuse_library #no_context :: fn(import: LibraryImport, why: string) #never_retu
      * @return Its interface record, the symbol hemera_interface, in the library's memory; or null when the name is
      *     too long, Windows couldn't load it, or it has no hemera_interface.
      */
-    os_load_library :: fn(name: string) -> ptr[LibraryInterface]? {
+    os_load_library :: fn(name : string) -> ptr[LibraryInterface]? {
         path : u8[1024]
         if name.count + 1 > path.count {
             return null
@@ -235,7 +235,7 @@ refuse_library #no_context :: fn(import: LibraryImport, why: string) #never_retu
      *     loaded.
      * @return Its interface record, in the library's memory, or null when it couldn't be loaded or has none.
      */
-    os_load_library :: fn(name: string) -> ptr[LibraryInterface]? {
+    os_load_library :: fn(name : string) -> ptr[LibraryInterface]? {
         return linux_load_library(name)
     }
 }
@@ -247,7 +247,7 @@ refuse_library #no_context :: fn(import: LibraryImport, why: string) #never_retu
      * @param name The library's file, which isn't looked for.
      * @return Always null: the library can't be loaded.
      */
-    os_load_library :: fn(name: string) -> ptr[LibraryInterface]? {
+    os_load_library :: fn(name : string) -> ptr[LibraryInterface]? {
         return null
     }
 }

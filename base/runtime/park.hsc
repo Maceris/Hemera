@@ -67,7 +67,7 @@ current_waiter :: fn() -> ptr[mut Waiter] {
  * @param waiter The waiter, from current_waiter, which isn't on any list yet: its link is cleared, and its state set
  *     to WAITER_WAITING with release ordering, so a wake from then on isn't lost.
  */
-prepare_wait :: fn(waiter: ptr[mut Waiter]) {
+prepare_wait :: fn(waiter : ptr[mut Waiter]) {
     waiter.next = null
     intrinsics.atomic_store_u32_release(&waiter.state, WAITER_WAITING)
 }
@@ -114,7 +114,7 @@ park :: fn(waiter #escaping : ptr[mut Waiter]) {
  *     parked yet returns from park at once when it does. Once woken, its owner may reuse it for its next wait, so the
  *     caller mustn't touch it after this. A parked fiber's waiter whose fiber has no scheduler is only marked woken.
  */
-wake :: fn(waiter: ptr[mut Waiter]) {
+wake :: fn(waiter : ptr[mut Waiter]) {
     // Read first: once woken, a thread's waiter may be used for its next wait at once
     on_fiber :: waiter.on_fiber
     old :: intrinsics.interlocked_exchange_u32(&waiter.state, WAITER_WOKEN)
