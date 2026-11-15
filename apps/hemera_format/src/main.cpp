@@ -23,7 +23,8 @@
 #endif
 
 /*
- * hemera-format [--check | --write] [path...]: lays Hemera files out to the style rules (docs/formatting.md).
+ * hemera-format [--check | --write] [--threads=N] [path...]: lays Hemera files out to the style rules
+ * (docs/formatting.md).
  *
  * With no path it formats standard input to standard output. A path is a file or a folder, whose .hsc files are
  * all formatted, folders inside it too. --check writes nothing and lists the files that would change; --write
@@ -55,11 +56,12 @@ namespace {
 	};
 
 	void usage(std::ostream& out) {
-		out << "Usage: hemera-format [--check | --write] [path...]\n"
+		out << "Usage: hemera-format [--check | --write] [--threads=N] [path...]\n"
 			"  Lays Hemera files out to the style rules. With no path, standard input to standard output.\n"
 			"  A folder's .hsc files are all formatted, folders inside it too.\n"
 			"  --check  write nothing; list the files that would change, and exit 1 if any would\n"
 			"  --write  write each file that changes\n"
+			"  --threads=N  format N files at once; one per processor without it\n"
 			"  Without either, one file is formatted to standard output.\n";
 	}
 
@@ -119,6 +121,8 @@ namespace {
 
 	int run(int argc, char* argv[]) {
 		Mode mode = Mode::PRINT;
+		// How many files are formatted at once: one per processor unless --threads says
+		size_t threads = std::max(1u, std::thread::hardware_concurrency());
 		std::vector<std::filesystem::path> paths;
 		for (int i = 1; i < argc; ++i) {
 			const std::string_view arg = argv[i];
@@ -127,6 +131,19 @@ namespace {
 			}
 			else if (arg == "--write") {
 				mode = Mode::WRITE;
+			}
+			else if (arg.starts_with("--threads=")) {
+				const std::string_view count = arg.substr(std::string_view("--threads=").size());
+				threads = 0;
+				bool valid = !count.empty() && count.size() <= 4;
+				for (const char digit : count) {
+					valid = valid && digit >= '0' && digit <= '9';
+					threads = valid ? threads * 10 + static_cast<size_t>(digit - '0') : 0;
+				}
+				if (!valid || threads == 0) {
+					std::cerr << std::format("hemera-format: --threads takes a count of 1 or more, not {}\n", count);
+					return EXIT_ERROR;
+				}
 			}
 			else if (arg == "--help" || arg == "-h") {
 				usage(std::cout);
@@ -191,14 +208,14 @@ namespace {
 				format_file(results[i]);
 			}
 		};
-		const size_t thread_count = std::min<size_t>(std::max(1u, std::thread::hardware_concurrency()), results.size());
-		std::vector<std::thread> threads;
+		const size_t thread_count = std::min(threads, results.size());
+		std::vector<std::thread> workers;
 		for (size_t i = 1; i < thread_count; ++i) {
-			threads.emplace_back(work);
+			workers.emplace_back(work);
 		}
 		work();
-		for (std::thread& thread : threads) {
-			thread.join();
+		for (std::thread& worker : workers) {
+			worker.join();
 		}
 
 		int status = all_found ? 0 : EXIT_ERROR;

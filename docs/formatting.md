@@ -125,7 +125,8 @@ hemera-format --write path/to/folder
 
 With no path, it formats standard input to standard output. A path is a file or a folder, whose `.hsc` files are all
 formatted, folders inside it too, several at once. `--check` writes nothing and lists the files that would change;
-`--write` writes them. Without either, one file goes to standard output. It exits with 0 when every file was already
+`--write` writes them. Without either, one file goes to standard output. `--threads=N` formats N files at once,
+rather than one per processor. It exits with 0 when every file was already
 formatted or was written, 1 when `--check` found one that would change, and 2 for an error, which leaves that file as it
 was. A file keeps its line endings, going by its first one.
 
