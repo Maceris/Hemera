@@ -63,6 +63,13 @@ namespace hemera {
 			// The line just read was longer than a column can count, and was cut short (E2007)
 			bool line_too_long;
 			/*
+			 * Byte offsets in the input (Token::offset): where current_line starts, where the line after it starts, and
+			 * just past the last character taken, which is where a token ends
+			 */
+			uint32_t line_offset = 0;
+			uint32_t next_line_offset = 0;
+			uint32_t last_end = 0;
+			/*
 			 * Where the lines read so far, but not yet reported, have bytes that aren't UTF-8 (E2008) or a
 			 * bidirectional control (E2009), in the order they're found; the next token reports them
 			 */

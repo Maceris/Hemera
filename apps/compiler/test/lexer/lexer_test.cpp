@@ -536,6 +536,38 @@ TEST(LexerTests, CrlfLexesAsLf)
 	EXPECT_EQ(text_errors("a :: 1\rb :: 2\n"), (std::vector<std::string>{ "(1,7) E2002" }));
 }
 
+/*
+ * Each token's offset and length pick out its text in the file's bytes: after a byte order mark, through CRLF and LF
+ * lines, multibyte names and strings, a comment to the end of its line (without the line ending) and one over two
+ * lines, and multiline string lines. A token from no file has no span.
+ */
+TEST(LexerTests, TokenSpans)
+{
+	const std::string text = "\xEF\xBB\xBF" "name :: \"t\xC3\xA9xt\" // note\r\n/* block\r\n */ \xC3\xA9t\xC3\xA9 :: 2.5\n"
+		"\\\\ line one\n\\\\ two\nx :: 1";
+	EXPECT_EQ(text_errors(text), std::vector<std::string>{});
+	hemera::reset_reporting_storage();
+	StringCacheGuard string_cache;
+	Allocator<> alloc;
+	MyVector<Token> output;
+	std::istringstream input_stream(text);
+	hemera::lexer::lex(input_stream, output, alloc, "text", true);
+
+	std::vector<std::string> spans;
+	for (const Token& token : output) {
+		ASSERT_LE(static_cast<size_t>(token.offset) + token.length, text.size());
+		spans.push_back(text.substr(token.offset, token.length));
+	}
+	EXPECT_EQ(spans, (std::vector<std::string>{ "name", ":", ":", "\"t\xC3\xA9xt\"", "// note", "/* block\r\n */",
+		"\xC3\xA9t\xC3\xA9", ":", ":", "2.5", "\\\\ line one", "\\\\ two", "x", ":", ":", "1", "" }));
+	ASSERT_FALSE(output.empty());
+	EXPECT_EQ(output[0].offset, 3u);
+	EXPECT_EQ(output[output.size() - 1].type, TokenType::END_OF_FILE);
+
+	EXPECT_EQ(Token(TokenType::IDENTIFIER, 0, 1).offset, Token::NO_SPAN);
+	hemera::reset_reporting_storage();
+}
+
 TEST(LexerTests, ManyTokenTest)
 {
 	auto reporting = hemera::DisableReportingForBlock();

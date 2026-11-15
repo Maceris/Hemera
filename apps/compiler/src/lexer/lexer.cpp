@@ -75,14 +75,17 @@ namespace hemera::lexer {
 	/*
 	 * Reads the next line, without its line ending. Sources are read as they are on disk, so a line ending in CRLF
 	 * comes with its CR, which goes with the LF as the line's ending. A CR with no LF after it, inside a line or at the
-	 * end of the file, stays in the line, an error where it's lexed (E2002).
+	 * end of the file, stays in the line, an error where it's lexed (E2002). consumed gets the bytes the line took in
+	 * the input, its line ending included, which is where the next line starts.
 	 */
-	static bool read_line(std::istream& input_stream, MyString& line) {
+	static bool read_line(std::istream& input_stream, MyString& line, uint32_t& consumed) {
 		if (!std::getline(input_stream, line)) {
 			return false;
 		}
 		// getline stopped at an LF unless it reached the end of the input
-		if (!input_stream.eof() && !line.empty() && line.back() == '\r') {
+		const bool ended = !input_stream.eof();
+		consumed = static_cast<uint32_t>(std::min<size_t>(line.size() + (ended ? 1 : 0), UINT32_MAX));
+		if (ended && !line.empty() && line.back() == '\r') {
 			line.pop_back();
 		}
 		return true;
@@ -95,9 +98,12 @@ namespace hemera::lexer {
 		 * still needs the current line to copy its text from.
 		 */
 		MyString line;
-		if (!read_line(input_stream, line)) {
+		uint32_t consumed = 0;
+		if (!read_line(input_stream, line, consumed)) {
 			return false;
 		}
+		tokenizer.line_offset = tokenizer.next_line_offset;
+		tokenizer.next_line_offset += consumed;
 		tokenizer.line_number += 1;
 		check_line(tokenizer, line);
 		tokenizer.current_line = line;
@@ -151,6 +157,7 @@ namespace hemera::lexer {
 		}
 		char result = tokenizer.current_line[tokenizer.column_number];
 		tokenizer.column_number += 1;
+		tokenizer.last_end = tokenizer.line_offset + tokenizer.column_number;
 		return result;
 	}
 
@@ -200,6 +207,8 @@ namespace hemera::lexer {
 		report_text_problems(tokenizer, file_path);
 		uint32_t start_line = tokenizer.line_number;
 		uint16_t start_column = tokenizer.column_number;
+		// Where start_line starts in the input, for the token's offset
+		uint32_t start_line_offset = tokenizer.line_offset;
 		TokenType result_type = TokenType::END_OF_FILE;
 		MyString* token_contents = string_alloc.new_object<MyString>();
 
@@ -892,6 +901,7 @@ namespace hemera::lexer {
 				if (next_line(tokenizer, input_stream)) {
 					start_line += 1;
 					start_column = 0;
+					start_line_offset = tokenizer.line_offset;
 					goto switch_start;
 				}
 				state = State::end;
@@ -1266,7 +1276,10 @@ namespace hemera::lexer {
 			token_contents = nullptr;
 		}
 
-		return Token{ result_type, start_column, start_line, interned_contents };
+		// Its span: from where it starts to just past its last character, which is before any line ending it took
+		const uint32_t offset = start_line_offset + start_column;
+		const uint32_t length = tokenizer.last_end > offset ? tokenizer.last_end - offset : 0;
+		return Token{ result_type, start_column, start_line, interned_contents, offset, length };
 	}
 
 	void lex_file(const std::string& file_path, MyVector<Token>& output,
@@ -1289,10 +1302,14 @@ namespace hemera::lexer {
 		bool include_comments) {
 
 		Tokenizer tokenizer{};
-		read_line(input_stream, tokenizer.current_line);
-		// A byte order mark, which says the file is UTF-8, isn't part of the text
+		uint32_t consumed = 0;
+		read_line(input_stream, tokenizer.current_line, consumed);
+		tokenizer.next_line_offset = consumed;
+		// A byte order mark, which says the file is UTF-8, isn't part of the text, but its bytes are counted in offsets
 		if (tokenizer.current_line.starts_with("\xEF\xBB\xBF")) {
 			tokenizer.current_line.erase(0, 3);
+			tokenizer.line_offset = 3;
+			tokenizer.last_end = 3;
 		}
 		check_line(tokenizer, tokenizer.current_line);
 

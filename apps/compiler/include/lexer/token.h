@@ -123,13 +123,23 @@ namespace hemera {
 	};
 
 	struct Token {
+		// The offset of a token that comes from no file, like one compile-time code made: it has no span
+		static constexpr uint32_t NO_SPAN = UINT32_MAX;
+
 		TokenType type;
 		uint16_t column_number;
 		uint32_t line_number;
+		/*
+		 * Where the token's text is in its file, in bytes from the file's start, a byte order mark and CRLF line endings
+		 * counted as they are on disk; NO_SPAN for a token from no file. length is its text's, in bytes, without the
+		 * line ending a line comment or a multiline string's line ends at; 0 for the end of the file.
+		 */
+		uint32_t offset;
+		uint32_t length;
 		InternedString value;
 
 		Token(TokenType type, uint16_t column_number, uint32_t line_number,
-			InternedString value = nullptr);
+			InternedString value = nullptr, uint32_t offset = NO_SPAN, uint32_t length = 0);
 		Token(const Token& other);
 		Token(Token&& other) noexcept;
 		~Token();
