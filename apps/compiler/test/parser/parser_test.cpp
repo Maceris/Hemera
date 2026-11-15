@@ -17,6 +17,7 @@
 #include "lexer/token.h"
 #include "../string_cache_guard.h"
 #include "parser/parser.h"
+#include "parser/formatting.h"
 #include "parser/printing.h"
 #include "front_end/documentation.h"
 
@@ -171,6 +172,150 @@ TEST(ParserSmoke, BaseAndStd)
  * every file the parser takes in base, std and the scenarios: the printer knows every shape the
  * parser makes. Files that don't parse, like the error scenarios, are left out.
  */
+namespace {
+	// The files formatting and printing are checked against: base, std and the scenarios.
+	std::vector<std::filesystem::path> round_trip_files()
+	{
+		std::filesystem::path test_root = std::filesystem::path(__FILE__).remove_filename().append("..");
+		std::filesystem::path root = std::filesystem::path(test_root).append("..").append("..").append("..");
+		std::vector<std::filesystem::path> folders = {
+			std::filesystem::path(root).append("base"),
+			std::filesystem::path(root).append("std"),
+			std::filesystem::path(test_root).append("parser").append("valid_scenarios"),
+			std::filesystem::path(test_root).append("front_end").append("scenarios"),
+			std::filesystem::path(test_root).append("back_end").append("scenarios"),
+		};
+		std::vector<std::filesystem::path> files;
+		for (const std::filesystem::path& folder : folders) {
+			for (const auto& file : std::filesystem::recursive_directory_iterator(folder)) {
+				if (file.is_regular_file() && file.path().extension() == ".hsc") {
+					files.push_back(std::filesystem::canonical(file.path()));
+				}
+			}
+		}
+		std::sort(files.begin(), files.end());
+		return files;
+	}
+
+	// A comment's words, without the spaces its lines start or end with, which re-indenting changes.
+	std::string comment_words(std::string_view text)
+	{
+		std::string out;
+		size_t start = 0;
+		while (start <= text.size()) {
+			size_t end = text.find('\n', start);
+			if (end == std::string_view::npos) {
+				end = text.size();
+			}
+			std::string_view line = text.substr(start, end - start);
+			while (!line.empty() && (line.front() == ' ' || line.front() == '\t')) {
+				line.remove_prefix(1);
+			}
+			while (!line.empty() && (line.back() == ' ' || line.back() == '\t' || line.back() == '\r')) {
+				line.remove_suffix(1);
+			}
+			out += line;
+			out += '\n';
+			start = end + 1;
+		}
+		return out;
+	}
+
+	struct Lexed {
+		std::vector<std::string> comments;
+		std::string tree;
+		bool parsed = false;
+	};
+
+	// source's comments' words, in order, and its tree as dump writes it.
+	Lexed lex_and_parse(const std::string& source, const std::string& file_path)
+	{
+		Lexed lexed;
+		hemera::reset_reporting_storage();
+		Allocator<> alloc;
+		MyVector<Token> all_tokens;
+		std::istringstream stream(source);
+		hemera::lexer::lex(stream, all_tokens, alloc, file_path, true);
+		MyVector<Token> tokens;
+		for (const Token& token : all_tokens) {
+			if (TokenType::COMMENT_BLOCK == token.type || TokenType::COMMENT_LINE == token.type) {
+				lexed.comments.push_back(comment_words(source.substr(token.offset, token.length)));
+			}
+			else {
+				tokens.push_back(token);
+			}
+		}
+		Allocator<> node_alloc;
+		hemera::ast::QuoteTable quotes;
+		hemera::ast::Node* ast = hemera::parser::file(file_path, tokens, node_alloc, &quotes);
+		lexed.parsed = ast != nullptr && hemera::error_count() == 0;
+		if (lexed.parsed) {
+			lexed.tree = hemera::ast::dump(ast);
+		}
+		return lexed;
+	}
+}
+
+/*
+ * Formatting a file (parser/formatting.h) keeps every comment, once each and in order, and the tree it parses to,
+ * for every file the parser takes in base, std and the scenarios.
+ */
+TEST(ParserSmoke, FormattingKeepsCommentsAndTrees)
+{
+	hemera::disable_reporting_printing();
+	StringCacheGuard string_cache;
+
+	size_t formatted_count = 0;
+	size_t failures = 0;
+	for (const std::filesystem::path& path : round_trip_files()) {
+		const std::string file_path = path.generic_string();
+		std::ifstream file_stream(path, std::ios::binary);
+		const std::string source((std::istreambuf_iterator<char>(file_stream)), std::istreambuf_iterator<char>());
+		const Lexed before = lex_and_parse(source, file_path);
+		if (!before.parsed) {
+			continue;
+		}
+		hemera::reset_reporting_storage();
+		const hemera::formatting::Result result = hemera::formatting::format_source(source, file_path, SIZE_MAX);
+		formatted_count += 1;
+		std::string problem;
+		if (!result.parsed) {
+			problem = "didn't format";
+		}
+		else if (!result.lost_comments.empty()) {
+			problem = std::format("lost {} comments, the first at byte {}", result.lost_comments.size(), result.lost_comments[0]);
+		}
+		else {
+			const Lexed after = lex_and_parse(result.text, file_path + " (formatted)");
+			if (!after.parsed) {
+				problem = "formatted as something that doesn't parse";
+			}
+			else if (after.tree != before.tree) {
+				problem = "formatted as a different tree";
+			}
+			else if (after.comments != before.comments) {
+				size_t i = 0;
+				while (i < before.comments.size() && i < after.comments.size() && before.comments[i] == after.comments[i]) {
+					++i;
+				}
+				problem = std::format("has {} comments formatted, {} before; the {}th differs:\n{}\n--- formatted as\n{}",
+					after.comments.size(), before.comments.size(), i + 1, i < before.comments.size() ? before.comments[i] : "",
+					i < after.comments.size() ? after.comments[i] : "");
+			}
+		}
+		if (problem.empty()) {
+			continue;
+		}
+		if (++failures <= 5) {
+			ADD_FAILURE() << std::format("{} {}:\n{}", file_path, problem, result.text);
+		}
+		else {
+			ADD_FAILURE() << std::format("{} {}", file_path, problem);
+		}
+	}
+	EXPECT_GT(formatted_count, 100);
+}
+
 TEST(ParserSmoke, PrintingRoundTrips)
 {
 	hemera::disable_reporting_printing();
@@ -427,48 +572,34 @@ TEST(ParserSmoke, DISABLED_PrintSource)
 }
 
 /*
- * Writes what the printer makes of every file PrintingRoundTrips reads into the folder HEMERA_PRINT_ALL_TO
- * names, each at its path under the repository root, for comparing one printer's output with another's.
- * Run with --gtest_also_run_disabled_tests.
+ * Writes what formatting makes of every file FormattingKeepsCommentsAndTrees reads into the folder
+ * HEMERA_FORMAT_ALL_TO names, each at its path under the repository root, for comparing with the files or
+ * with another version's. HEMERA_FORMAT_WIDTH sets the width, 120 if it isn't set. Run with
+ * --gtest_also_run_disabled_tests.
  */
-TEST(ParserSmoke, DISABLED_PrintAll)
+TEST(ParserSmoke, DISABLED_FormatAll)
 {
-	const char* to = std::getenv("HEMERA_PRINT_ALL_TO");
-	ASSERT_NE(to, nullptr) << "Set HEMERA_PRINT_ALL_TO to a folder";
+	const char* to = std::getenv("HEMERA_FORMAT_ALL_TO");
+	ASSERT_NE(to, nullptr) << "Set HEMERA_FORMAT_ALL_TO to a folder";
+	const char* width_text = std::getenv("HEMERA_FORMAT_WIDTH");
+	const size_t width = width_text != nullptr ? std::stoull(width_text) : hemera::formatting::LINE_WIDTH;
 	hemera::disable_reporting_printing();
 	StringCacheGuard string_cache;
 
-	std::filesystem::path test_root = std::filesystem::path(__FILE__).remove_filename().append("..");
-	std::filesystem::path root = std::filesystem::canonical(std::filesystem::path(test_root).append("..").append("..").append(".."));
-	std::vector<std::filesystem::path> folders = {
-		std::filesystem::path(root).append("base"),
-		std::filesystem::path(root).append("std"),
-		std::filesystem::path(test_root).append("parser").append("valid_scenarios"),
-		std::filesystem::path(test_root).append("front_end").append("scenarios"),
-		std::filesystem::path(test_root).append("back_end").append("scenarios"),
-	};
-	for (const std::filesystem::path& folder : folders) {
-		for (const auto& file : std::filesystem::recursive_directory_iterator(folder)) {
-			if (!file.is_regular_file() || file.path().extension() != ".hsc") {
-				continue;
-			}
-			const std::filesystem::path file_path = std::filesystem::canonical(file.path());
-			hemera::reset_reporting_storage();
-			Allocator<> alloc;
-			MyVector<Token> tokens;
-			std::ifstream file_stream(file_path, std::ios::binary);
-			hemera::lexer::lex(file_stream, tokens, alloc, file_path.generic_string());
-			Allocator<> node_alloc;
-			hemera::ast::QuoteTable quotes;
-			hemera::ast::Node* ast = hemera::parser::file(file_path.generic_string(), tokens, node_alloc, &quotes);
-			if (ast == nullptr || hemera::error_count() != 0) {
-				continue;
-			}
-			std::filesystem::path out_path = std::filesystem::path(to) / std::filesystem::relative(file_path, root);
-			std::filesystem::create_directories(out_path.parent_path());
-			std::ofstream out(out_path, std::ios::binary);
-			out << hemera::ast::source_of(ast, &quotes);
+	const std::filesystem::path root = std::filesystem::canonical(
+		std::filesystem::path(__FILE__).remove_filename().append("..").append("..").append("..").append(".."));
+	for (const std::filesystem::path& path : round_trip_files()) {
+		std::ifstream file_stream(path, std::ios::binary);
+		const std::string source((std::istreambuf_iterator<char>(file_stream)), std::istreambuf_iterator<char>());
+		hemera::reset_reporting_storage();
+		const hemera::formatting::Result result = hemera::formatting::format_source(source, path.generic_string(), width);
+		if (!result.parsed) {
+			continue;
 		}
+		std::filesystem::path out_path = std::filesystem::path(to) / std::filesystem::relative(path, root);
+		std::filesystem::create_directories(out_path.parent_path());
+		std::ofstream out(out_path, std::ios::binary);
+		out << result.text;
 	}
 }
 

@@ -93,6 +93,7 @@ SET(HEADER_FILES
   ${INCLUDE_DIR}/middle_end/build.h
   ${INCLUDE_DIR}/middle_end/code_values.h
   ${INCLUDE_DIR}/parser/ast_types.h
+  ${INCLUDE_DIR}/parser/formatting.h
   ${INCLUDE_DIR}/parser/layout.h
   ${INCLUDE_DIR}/parser/parser.h
   ${INCLUDE_DIR}/parser/printing.h
@@ -140,6 +141,7 @@ SET(SOURCE_FILES
   ${SOURCE_DIR}/middle_end/build.cpp
   ${SOURCE_DIR}/middle_end/code_values.cpp
   ${SOURCE_DIR}/parser/ast_types.cpp
+  ${SOURCE_DIR}/parser/formatting.cpp
   ${SOURCE_DIR}/parser/layout.cpp
   ${SOURCE_DIR}/parser/parser.cpp
   ${SOURCE_DIR}/parser/printing.cpp
@@ -298,3 +300,10 @@ IF(MSVC)
 ENDIF()
 
 gtest_discover_tests(HemeraTest)
+
+# What a program built on the compiler's library compiles with, for apps/hemera_format and apps/hemera_lsp, which are
+# directories of their own
+SET(HEMERA_TOOL_DEFINITIONS ${HEMERA_DEFINITIONS} CACHE INTERNAL "")
+SET(HEMERA_TOOL_OPTIONS ${HEMERA_OPTIONS} ${HEMERA_WARNING_OPTIONS} CACHE INTERNAL "")
+SET(HEMERA_TOOL_MANIFEST ${HEMERA_MANIFEST} CACHE INTERNAL "")
+SET(HEMERA_TOOL_RUNTIME_LIBRARY ${CMAKE_MSVC_RUNTIME_LIBRARY} CACHE INTERNAL "")
