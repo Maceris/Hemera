@@ -7,6 +7,9 @@
 python vendor/vulkan/_generator/generate.py [path/to/vk.xml]
 ```
 
+Its last step formats the files with `hemera-format`: the one `HEMERA_FORMAT` names, or the one on `PATH`, or the
+repository's Release build's. So `hemera-format --check vendor/vulkan` passes on what it writes.
+
 `check_layouts.py` checks the result against the C headers (`vulkan_core.h`, `vulkan_beta.h` and every platform's,
 with `windows.h` and stand-ins for the other platforms' headers): it builds a C program and a Hemera program that
 print every struct's size, alignment and field offsets, and compares them. It needs clang and the Release compiler:
