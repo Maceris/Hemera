@@ -12,8 +12,8 @@ SET(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
 
 ADD_SUBDIRECTORY(apps/compiler)
 
-# The formatter and the language server, once they have a CMakeLists.txt of their own
-FOREACH(HEMERA_TOOL hemera_format hemera_lsp)
+# The formatter, the language server and the VS Code extension, once they have a CMakeLists.txt of their own
+FOREACH(HEMERA_TOOL hemera_format hemera_lsp hemera_vscode)
   IF(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/apps/${HEMERA_TOOL}/CMakeLists.txt)
     ADD_SUBDIRECTORY(apps/${HEMERA_TOOL})
   ENDIF()

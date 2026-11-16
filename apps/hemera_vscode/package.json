@@ -1,0 +1,73 @@
+{
+  "name": "hemera",
+  "displayName": "Hemera",
+  "description": "Hemera's syntax, and its compiler's errors and warnings as you open and save files, through hemera-lsp.",
+  "version": "0.0.1",
+  "publisher": "hemera",
+  "license": "SEE LICENSE IN LICENSE",
+  "private": true,
+  "engines": {
+    "vscode": "^1.82.0"
+  },
+  "categories": [
+    "Programming Languages",
+    "Linters"
+  ],
+  "main": "./extension.js",
+  "activationEvents": [],
+  "contributes": {
+    "languages": [
+      {
+        "id": "hemera",
+        "aliases": [
+          "Hemera"
+        ],
+        "extensions": [
+          ".hsc"
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "hemera",
+        "scopeName": "source.hemera",
+        "path": "./syntaxes/hemera.tmLanguage.json"
+      }
+    ],
+    "configuration": {
+      "title": "Hemera",
+      "properties": {
+        "hemera.serverPath": {
+          "type": "string",
+          "default": "hemera-lsp",
+          "description": "The language server, hemera-lsp: a path, or a name looked for on the PATH."
+        },
+        "hemera.compilerPath": {
+          "type": "string",
+          "default": "hemera",
+          "description": "The compiler the language server checks files with: a path, or a name looked for on the PATH."
+        },
+        "hemera.root": {
+          "type": "string",
+          "default": "",
+          "description": "The package checked for a file in the workspace, like a build package's folder, relative to the first workspace folder or absolute. Empty checks each file's own folder."
+        },
+        "hemera.arguments": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "description": "More of the compiler's flags for each check, like --setting=name=value."
+        }
+      }
+    }
+  },
+  "dependencies": {
+    "vscode-languageclient": "9.0.1"
+  },
+  "devDependencies": {
+    "@vscode/vsce": "4.1.0"
+  }
+}

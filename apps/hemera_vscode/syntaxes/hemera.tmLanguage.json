@@ -1,0 +1,229 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "Hemera",
+  "scopeName": "source.hemera",
+  "patterns": [
+    {
+      "include": "#comments"
+    },
+    {
+      "include": "#strings"
+    },
+    {
+      "include": "#characters"
+    },
+    {
+      "include": "#directives"
+    },
+    {
+      "include": "#numbers"
+    },
+    {
+      "include": "#declarations"
+    },
+    {
+      "include": "#keywords"
+    },
+    {
+      "include": "#types"
+    },
+    {
+      "include": "#calls"
+    },
+    {
+      "include": "#operators"
+    }
+  ],
+  "repository": {
+    "comments": {
+      "patterns": [
+        {
+          "include": "#block_comment"
+        },
+        {
+          "name": "comment.line.double-slash.hemera",
+          "begin": "//",
+          "end": "$"
+        }
+      ]
+    },
+    "block_comment": {
+      "comment": "Block comments nest",
+      "name": "comment.block.hemera",
+      "begin": "/\\*",
+      "end": "\\*/",
+      "patterns": [
+        {
+          "include": "#block_comment"
+        },
+        {
+          "name": "storage.type.class.doc.hemera",
+          "match": "(?<=^|\\s|\\*)@[A-Za-z_][A-Za-z0-9_]*"
+        }
+      ]
+    },
+    "strings": {
+      "comment": "A multiline string is a string literal a line, so one rule covers both",
+      "name": "string.quoted.double.hemera",
+      "begin": "\"",
+      "end": "\"|$",
+      "patterns": [
+        {
+          "name": "constant.character.escape.hemera",
+          "match": "\\\\(u\\{[0-9A-Fa-f]{1,6}\\}|.)"
+        },
+        {
+          "name": "constant.other.placeholder.hemera",
+          "match": "%(\\d+)?(\\{[^}]*\\})?"
+        }
+      ]
+    },
+    "characters": {
+      "name": "string.quoted.single.hemera",
+      "begin": "'",
+      "end": "'|$",
+      "patterns": [
+        {
+          "name": "constant.character.escape.hemera",
+          "match": "\\\\(u\\{[0-9A-Fa-f]{1,6}\\}|.)"
+        }
+      ]
+    },
+    "directives": {
+      "name": "keyword.other.directive.hemera",
+      "match": "#[A-Za-z_][A-Za-z0-9_]*"
+    },
+    "numbers": {
+      "patterns": [
+        {
+          "name": "constant.numeric.hex.hemera",
+          "match": "\\b0x[0-9A-Fa-f][0-9A-Fa-f_]*[A-Za-z]*\\b"
+        },
+        {
+          "name": "constant.numeric.binary.hemera",
+          "match": "\\b0b[01][01_]*[A-Za-z]*\\b"
+        },
+        {
+          "name": "constant.numeric.octal.hemera",
+          "match": "\\b0o[0-7][0-7_]*[A-Za-z]*\\b"
+        },
+        {
+          "name": "constant.numeric.decimal.hemera",
+          "match": "\\b[0-9][0-9_]*(\\.[0-9][0-9_]*)?([eE]-?[0-9][0-9_]*)?[A-Za-z]*\\b"
+        }
+      ]
+    },
+    "declarations": {
+      "comment": "name :: fn, name :: struct and the like: the name is what's declared",
+      "patterns": [
+        {
+          "match": "\\b([A-Za-z_][A-Za-z0-9_]*)\\s*(::)\\s*(?=(#[A-Za-z_]+\\s*)*fn\\b)",
+          "captures": {
+            "1": {
+              "name": "entity.name.function.hemera"
+            },
+            "2": {
+              "name": "keyword.operator.declaration.hemera"
+            }
+          }
+        },
+        {
+          "match": "\\b([A-Za-z_][A-Za-z0-9_]*)\\s*(::)\\s*(?=(distinct\\s+)?(struct|enum|union|alias)\\b)",
+          "captures": {
+            "1": {
+              "name": "entity.name.type.hemera"
+            },
+            "2": {
+              "name": "keyword.operator.declaration.hemera"
+            }
+          }
+        }
+      ]
+    },
+    "keywords": {
+      "patterns": [
+        {
+          "name": "keyword.control.hemera",
+          "match": "\\b(break|case|continue|defer|else|for|give|if|loop|match|or_break|or_continue|or_else|or_return|return|switch|while|with|compute)\\b"
+        },
+        {
+          "name": "keyword.other.hemera",
+          "match": "\\b(auto_cast|bit_cast|cast|distinct|enum|fn|is_error|is_none|is_ok|is_some|mut|push_context|struct|union|using)\\b"
+        },
+        {
+          "name": "constant.language.hemera",
+          "match": "\\b(true|false|null|void)\\b"
+        },
+        {
+          "comment": "Contextual: keywords where they start their construct",
+          "match": "^\\s*(package|import)\\b",
+          "captures": {
+            "1": {
+              "name": "keyword.other.hemera"
+            }
+          }
+        },
+        {
+          "match": "\\b(as|from)\\b(?=\\s*(\"|[A-Za-z_]))",
+          "captures": {
+            "1": {
+              "name": "keyword.other.hemera"
+            }
+          }
+        },
+        {
+          "match": "\\b(alias)\\b(?=\\s+[A-Za-z_\\[(])",
+          "captures": {
+            "1": {
+              "name": "keyword.other.hemera"
+            }
+          }
+        },
+        {
+          "match": "(?<=\\bbreak\\s)\\s*(all)\\b",
+          "captures": {
+            "1": {
+              "name": "keyword.control.hemera"
+            }
+          }
+        },
+        {
+          "match": "(?<=[A-Za-z0-9_)\\]])\\s+(in)\\s+(?=[^=])",
+          "captures": {
+            "1": {
+              "name": "keyword.control.hemera"
+            }
+          }
+        },
+        {
+          "name": "variable.language.hemera",
+          "match": "\\bcontext\\b"
+        }
+      ]
+    },
+    "types": {
+      "name": "support.type.builtin.hemera",
+      "match": "\\b(b8|b16|b32|b64|bool|i8|i16|i32|i64|i128|int|u8|u16|u32|u64|u128|uint|uintptr|usize|f16|f32|f64|c32|c64|c128|q64|q128|q256|i16be|i32be|i64be|i128be|u16be|u32be|u64be|u128be|i16le|i32le|i64le|i128le|u16le|u32le|u64le|u128le|f16be|f32be|f64be|f16le|f32le|f64le|string|cstring|ptr|rawptr|relptr8|relptr16|relptr32|relptr64|any|type)\\b"
+    },
+    "calls": {
+      "match": "\\b([A-Za-z_][A-Za-z0-9_]*)\\s*(?=\\()",
+      "captures": {
+        "1": {
+          "name": "entity.name.function.call.hemera"
+        }
+      }
+    },
+    "operators": {
+      "patterns": [
+        {
+          "name": "keyword.operator.declaration.hemera",
+          "match": "::|:="
+        },
+        {
+          "name": "keyword.operator.hemera",
+          "match": "->|=>|\\.\\.[<=]?|==|!=|<=|>=|&&|\\|\\||<<|>>|[-+*/%&|^~!<>=?]"
+        }
+      ]
+    }
+  }
+}
