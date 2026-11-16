@@ -14,6 +14,7 @@
 #include "documents.h"
 #include "index.h"
 #include "parsing.h"
+#include "serve_client.h"
 
 #include "llvm/Support/JSON.h"
 
@@ -30,6 +31,8 @@ namespace hemera::lsp {
 		std::string root;
 		// More of the compiler's flags, like --setting=name=value, put before the package's path
 		std::vector<std::string> arguments;
+		// The most memory the long-lived checker (hemera --serve) may use before it starts again, in MB; 0 for no limit
+		size_t checker_memory_mb = 8192;
 	};
 
 	/*
@@ -44,7 +47,13 @@ namespace hemera::lsp {
 		using Send = std::function<void(llvm::json::Value message)>;
 
 		// launch runs the compiler for each check; launch_process, unless a test gives another
-		explicit Server(Send send, Launch launch = launch_process);
+		/*
+		 * A check of everything runs hemera as a process of its own, and a quick check of a saved file's targets
+		 * through hemera --serve, which keeps the build between them (docs/editor.md).
+		 */
+		explicit Server(Send send);
+		// Every check through launch, as tests give it
+		Server(Send send, Launch launch);
 		~Server();
 
 		/*
@@ -137,6 +146,9 @@ namespace hemera::lsp {
 		// Why the request being answered failed, set by what answers it, which is answered as an error instead
 		std::optional<std::string> refusal;
 		// Last, so it's stopped before what its thread uses goes
+		// hemera --serve, for quick checks, made again when the compiler or its memory limit changes; null in tests
+		std::shared_ptr<ServeClient> serve_client;
+		bool serving = false;
 		std::unique_ptr<Checker> checker;
 
 		void respond(const llvm::json::Value& id, llvm::json::Value result);

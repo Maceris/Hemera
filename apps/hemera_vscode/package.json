@@ -53,6 +53,11 @@
           "default": "",
           "description": "The package checked for a file in the workspace, like a build package's folder, relative to the first workspace folder or absolute. Empty checks each file's own folder."
         },
+        "hemera.checkerMemory": {
+          "type": "number",
+          "default": 8192,
+          "description": "The most memory, in MB, the long-lived checker (hemera --serve) may use before it's started again. 0 for no limit."
+        },
         "hemera.arguments": {
           "type": "array",
           "items": {

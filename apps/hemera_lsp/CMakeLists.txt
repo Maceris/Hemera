@@ -14,6 +14,8 @@ ADD_LIBRARY(HemeraLspLib STATIC
   src/parsing.h
   src/protocol.cpp
   src/protocol.h
+  src/serve_client.cpp
+  src/serve_client.h
   src/server.cpp
   src/server.h
   src/uri.cpp

@@ -29,6 +29,27 @@ namespace hemera::lsp {
 		checker = std::make_unique<Checker>(std::move(launch), [this](const CheckJob& job, const RunResult& result) { checked(job, result); });
 	}
 
+	Server::Server(Send send) : send(std::move(send)) {
+		prepare_parsing();
+		serving = true;
+		serve_client = std::make_shared<ServeClient>(settings.compiler_path, settings.checker_memory_mb);
+		// A quick check, of some targets, through hemera --serve; a check of everything, a process of its own
+		Launch launch = [this](const std::vector<std::string>& arguments) -> std::unique_ptr<Run> {
+			const bool quick = std::any_of(arguments.begin(), arguments.end(),
+				[](const std::string& argument) { return argument.starts_with("--targets="); });
+			if (!quick) {
+				return launch_process(arguments);
+			}
+			std::shared_ptr<ServeClient> client;
+			{
+				std::lock_guard<std::mutex> lock(state);
+				client = serve_client;
+			}
+			return launch_through(std::move(client), arguments);
+		};
+		checker = std::make_unique<Checker>(std::move(launch), [this](const CheckJob& job, const RunResult& result) { checked(job, result); });
+	}
+
 	Server::~Server() {
 		// Its thread calls back into the server, so it goes first
 		checker.reset();
@@ -269,6 +290,13 @@ namespace hemera::lsp {
 					read.arguments.push_back(text->str());
 				}
 			}
+		}
+		if (const std::optional<int64_t> memory = hemera->getInteger("checkerMemory"); memory.has_value() && *memory >= 0) {
+			read.checker_memory_mb = static_cast<size_t>(*memory);
+		}
+		// Another compiler, or limit, is another long-lived checker
+		if (serving && (read.compiler_path != settings.compiler_path || read.checker_memory_mb != settings.checker_memory_mb)) {
+			serve_client = std::make_shared<ServeClient>(read.compiler_path, read.checker_memory_mb);
 		}
 		settings = std::move(read);
 		base_folder = find_base_folder(settings.compiler_path);

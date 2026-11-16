@@ -16,6 +16,7 @@ function serverSettings() {
         compilerPath: settings.get("compilerPath"),
         root: settings.get("root"),
         arguments: settings.get("arguments"),
+        checkerMemory: settings.get("checkerMemory"),
     };
 }
 
