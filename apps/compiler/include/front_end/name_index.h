@@ -18,6 +18,7 @@
 namespace hemera {
 
 	struct Declaration;
+	struct Options;
 	struct ProgramInfo;
 	struct TypeInfo;
 	struct Walk;
@@ -90,10 +91,23 @@ namespace hemera {
 	};
 
 	/*
-	 * program's declarations and the uses recorded while it was checked, added to index: every declaration it has,
-	 * locals and fields included, and the uses in files under root_folder (the root package's folder, either
-	 * separator), so a build's targets merge into one index. Code made while compiling, like what #insert puts in,
-	 * is left out, as it isn't where its tokens say. A use's target is its generic declaration, not an instance.
+	 * program's declarations and the uses recorded while it was checked, added to index, so a build's targets merge
+	 * into one: every declaration it has, locals and fields included, and the uses in its own code, which is every
+	 * file but base's, std's and vendor's, unless it's under the root package's folder (options.input). Code made while
+	 * compiling, like what #insert puts in, is left out, as it isn't where its tokens say. A use of a generic's
+	 * instance is a use of the generic.
 	 */
-	void add_to_index(NameIndex& index, ProgramInfo& program, std::string_view root_folder);
+	void add_to_index(NameIndex& index, ProgramInfo& program, const Options& options);
+
+	/*
+	 * index as JSON (docs/compilation.md, The Name Index): its files, its declarations, and its uses, each a file's
+	 * number, an offset, a length and a declaration's number.
+	 */
+	std::string index_json(const NameIndex& index);
+
+	/*
+	 * index_json written to path, replacing what's there. Reports E6000 at path and returns false if it can't be
+	 * written.
+	 */
+	bool write_index(const NameIndex& index, const std::string& path);
 }

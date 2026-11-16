@@ -657,6 +657,11 @@ namespace hemera {
          * everything else that would go there goes to standard error (docs/compilation.md, Diagnostics as JSON).
          */
         bool diagnostics_json = false;
+        /*
+         * --index=file: where the name index goes when the run ends (docs/compilation.md, The Name Index); empty for
+         * no index, which records nothing.
+         */
+        std::string index_path;
         /// <summary>
         /// Warnings not shown, and warnings made errors (--allow, --deny): prefix:code, prefix:* or *
         /// (docs/compilation.md, Allowing and Denying Warnings).

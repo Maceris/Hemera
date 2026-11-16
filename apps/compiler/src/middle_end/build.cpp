@@ -14,6 +14,7 @@
 #include "error/reporting.h"
 #include "front_end/front_end.h"
 #include "front_end/info.h"
+#include "front_end/name_index.h"
 #include "hmir/hmir_dialect.h"
 #include "middle_end/generate.h"
 #include "util/phase_timer.h"
@@ -96,7 +97,7 @@ namespace hemera {
 	 * its memory. Then the build's steps. Each target's program stays for the rest of the build, since the
 	 * build's code may hold its types.
 	 */
-	bool build_targets(ProgramInfo* build, const Options& build_options, Allocator<>& alloc) {
+	bool build_targets(ProgramInfo* build, const Options& build_options, Allocator<>& alloc, NameIndex* index) {
 		BuildRegistry& registry = build_registry();
 		const size_t count = registry.targets.size();
 		std::vector<std::unique_ptr<ReportScope>> scopes;
@@ -109,9 +110,12 @@ namespace hemera {
 		std::mutex allocating;
 		std::mutex checking;
 		std::mutex reporting;
+		// Each target's program and options, for its part of the name index once they're all done
+		std::vector<ProgramInfo*> programs(count, nullptr);
+		std::vector<Options*> programs_options(count, nullptr);
 		size_t printed = 0;
 
-		auto build_one = [&](BuildTarget& target) -> bool {
+		auto build_one = [&](size_t i, BuildTarget& target) -> bool {
 			Options* options = nullptr;
 			ProgramInfo* program = nullptr;
 			mlir::ModuleOp* mlir_module = nullptr;
@@ -134,6 +138,11 @@ namespace hemera {
 			}
 			{
 				PhaseTimer timer(options->time_phases, std::format("check {}", std::filesystem::path(options->output_name).filename().string()));
+				if (index != nullptr) {
+					program->name_uses = std::make_shared<NameUses>();
+					programs[i] = program;
+					programs_options[i] = options;
+				}
 				kick_off_processing(program, options);
 			}
 			if (error_count() != 0) {
@@ -166,7 +175,7 @@ namespace hemera {
 					return;
 				}
 				set_report_scope(scopes[i].get());
-				const bool built = build_one(registry.targets[i]);
+				const bool built = build_one(i, registry.targets[i]);
 				set_report_scope(nullptr);
 				std::scoped_lock<std::mutex> lock(reporting);
 				succeeded[i] = built;
@@ -188,6 +197,13 @@ namespace hemera {
 			}
 			for (std::thread& worker : workers) {
 				worker.join();
+			}
+		}
+		if (index != nullptr) {
+			for (size_t i = 0; i < count; ++i) {
+				if (programs[i] != nullptr) {
+					add_to_index(*index, *programs[i], *programs_options[i]);
+				}
 			}
 		}
 		const bool worked = std::all_of(succeeded.begin(), succeeded.end(), [](char built) { return built != 0; });

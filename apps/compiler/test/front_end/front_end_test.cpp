@@ -1632,13 +1632,14 @@ static std::string where(const hemera::IndexPlace& place) {
 			line_start = i + 1;
 		}
 	}
-	return std::format("{}:{}:{}", std::filesystem::path(place.file).filename().string(), line, place.offset - line_start + 1);
+	const std::string name = std::filesystem::path(place.file).filename().string();
+	return std::format("{}:{}:{}", name, line, place.offset - line_start + 1);
 }
 
 /*
- * The name index (docs/compilation.md, The Name Index): each use in the root package, of a declaration in another
- * package or file, a generic's instances, a field and a local, lands on where it's declared, and each declaration
- * has its kind, type and doc comment.
+ * The name index (docs/compilation.md, The Name Index): each use in the program's own code, of a declaration in
+ * another package or file, a generic's instances, a field and a local, lands on where it's declared, and each
+ * declaration has its kind, type and doc comment.
  */
 TEST(FrontEnd, IndexesWhatNamesReferTo)
 {
@@ -1650,7 +1651,9 @@ TEST(FrontEnd, IndexesWhatNamesReferTo)
 	std::vector<hemera::ErrorCode> errors = process_package(fixture, scenario("name_index/main"));
 	ASSERT_TRUE(errors.empty()) << reported(errors);
 	hemera::NameIndex index;
-	hemera::add_to_index(index, *fixture.program_info, std::filesystem::canonical(scenario("name_index/main")).generic_string());
+	hemera::Options options;
+	options.input = std::filesystem::canonical(scenario("name_index/main"));
+	hemera::add_to_index(index, *fixture.program_info, options);
 
 	std::set<std::string> uses;
 	for (const auto& [use, target] : index.uses) {
@@ -1681,9 +1684,10 @@ TEST(FrontEnd, IndexesWhatNamesReferTo)
 	}
 	// Only names: a call keeps its value at its (, which isn't a use
 	EXPECT_FALSE(uses.contains("main.hsc:14:19 -> main.hsc:7:1"));
-	// Uses are only in the root package: shapes.hsc's own aren't there
-	for (const std::string& use : uses) {
-		EXPECT_FALSE(use.starts_with("shapes.hsc")) << use;
+	// Uses in the program's own code count, another package's included, but not in base, std or vendor
+	EXPECT_TRUE(uses.contains("shapes.hsc:18:30 -> shapes.hsc:6:5"));
+	for (const auto& [use, target] : index.uses) {
+		EXPECT_FALSE(use.file.starts_with("<base>")) << use.file;
 	}
 
 	std::map<std::string, const hemera::IndexDeclaration*> declarations;

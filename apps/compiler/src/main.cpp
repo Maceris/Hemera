@@ -18,6 +18,7 @@
 #include "cmd_line/options.h"
 #include "error/reporting.h"
 #include "front_end/front_end.h"
+#include "front_end/name_index.h"
 #include "hmir/hmir_dialect.h"
 #include "middle_end/build.h"
 #include "middle_end/generate.h"
@@ -93,6 +94,12 @@ namespace hemera {
 		ProgramInfo* program_info = main_alloc.new_object<ProgramInfo>(
 			&mlir_context, &mlir_builder, &mlir_module);
 
+		// --index: names are recorded while checking, then written when the run ends
+		std::unique_ptr<NameIndex> index = options->index_path.empty() ? nullptr : std::make_unique<NameIndex>();
+		if (index != nullptr) {
+			program_info->name_uses = std::make_shared<NameUses>();
+		}
+
 		{
 			PhaseTimer timer(options->time_phases, "check");
 			kick_off_processing(program_info, options);
@@ -103,10 +110,18 @@ namespace hemera {
 		}
 		// A build package registers targets while it's checked, and is only what builds them
 		else if (!build_registry().targets.empty() || !build_registry().steps.empty()) {
-			rc = build_targets(program_info, *options, main_alloc) ? 0 : -1;
+			rc = build_targets(program_info, *options, main_alloc, index.get()) ? 0 : -1;
 		}
 		else if (!finish_program(options, program_info, mlir_module)) {
 			rc = -1;
+		}
+
+		// Written whether the run worked or not: an editor wants what's known
+		if (index != nullptr) {
+			add_to_index(*index, *program_info, *options);
+			if (!write_index(*index, options->index_path)) {
+				rc = -1;
+			}
 		}
 
 		destroy_reporting_storage();

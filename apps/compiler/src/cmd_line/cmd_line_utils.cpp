@@ -520,6 +520,7 @@ namespace hemera {
 			case hemera::arg_parse::SETTING:
 			case hemera::arg_parse::OVERLAY:
 			case hemera::arg_parse::DIAGNOSTICS:
+			case hemera::arg_parse::INDEX:
 			case hemera::arg_parse::ALLOW_WARNINGS:
 			case hemera::arg_parse::DENY_WARNINGS:
 			case hemera::arg_parse::SHOW_INSERTED:
@@ -1017,6 +1018,9 @@ namespace hemera {
 					output.overlays.emplace_back(overlay_key(std::filesystem::path(std::string(value.substr(0, equals)))),
 						std::string(value.substr(equals + 1)));
 				}
+				break;
+			case hemera::arg_parse::INDEX:
+				output.index_path = std::string(option_with_value.values[0]);
 				break;
 			case hemera::arg_parse::DIAGNOSTICS:
 				if (option_with_value.values[0] == "json") {

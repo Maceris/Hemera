@@ -16,6 +16,7 @@
 #include "error/reporting.h"
 #include "front_end/front_end.h"
 #include "front_end/info.h"
+#include "front_end/name_index.h"
 #include "hmir/hmir_dialect.h"
 #include "middle_end/build.h"
 #include "middle_end/generate.h"
@@ -1223,6 +1224,55 @@ TEST(Build, ChecksTargetsWithoutBuildingThem)
 	ASSERT_EQ(warnings.size(), 1u);
 	EXPECT_TRUE(warnings[0].ends_with(". checked app")) << warnings[0];
 	EXPECT_TRUE(std::filesystem::is_empty(output_folder)) << "a check writes nothing";
+
+	hemera::reset_build_registry();
+	module.erase();
+}
+
+// hemera --index on a build package: each target's names recorded while it's checked, merged into one index.
+TEST(Build, IndexesEveryTarget)
+{
+	hemera::reset_reporting_storage();
+	StringCacheGuard string_cache;
+	hemera::reset_build_registry();
+
+	mlir::MLIRContext context;
+	context.loadDialect<mlir::BuiltinDialect>();
+	context.loadDialect<hmir::HemeraDialect>();
+	mlir::OpBuilder builder(&context);
+	mlir::ModuleOp module = mlir::ModuleOp::create(builder, builder.getUnknownLoc(), "build");
+	auto program_info = std::make_unique<hemera::ProgramInfo>(&context, &builder, &module);
+	program_info->name_uses = std::make_shared<hemera::NameUses>();
+
+	const std::filesystem::path output_folder = std::filesystem::path(HEMERA_TEST_OUTPUT_DIR) / "build_package_indexed";
+	std::filesystem::create_directories(output_folder);
+	hemera::Options options;
+	options.input = std::filesystem::canonical(scenario("build_package") / "build");
+	options.output_name = (output_folder / "build").string();
+	options.settings = { { "output", (output_folder / "app").string() }, { "answer", "42" } };
+	options.build_extent = hemera::BuildExtent::CHECK;
+
+	hemera::kick_off_processing(program_info.get(), &options);
+	ASSERT_EQ(hemera::error_count(), 0) << "first error: " << static_cast<int>(hemera::error_list()->front());
+	hemera::Allocator<> alloc;
+	hemera::NameIndex index;
+	EXPECT_TRUE(hemera::build_targets(program_info.get(), options, alloc, &index));
+	hemera::add_to_index(index, *program_info, options);
+
+	// Uses in the build's own code and in its target's, which isn't under the build's folder
+	size_t in_build = 0;
+	size_t in_app = 0;
+	for (const auto& [use, target] : index.uses) {
+		in_build += use.file.ends_with("build/build.hsc") ? 1 : 0;
+		in_app += use.file.ends_with("app/app.hsc") ? 1 : 0;
+		EXPECT_TRUE(index.declarations.contains(target)) << use.file << ":" << use.offset;
+	}
+	EXPECT_GT(in_build, 0u);
+	EXPECT_GT(in_app, 0u);
+	// And it's JSON that names both files
+	const std::string json = hemera::index_json(index);
+	EXPECT_TRUE(json.starts_with("{\"version\":1,\"files\":["));
+	EXPECT_NE(json.find("app/app.hsc\""), std::string::npos);
 
 	hemera::reset_build_registry();
 	module.erase();

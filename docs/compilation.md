@@ -174,6 +174,34 @@ Standard output carries those lines and nothing else. Everything else that would
 instead: the compiler's other output, and what compile-time code prints, whether through `base` or through a C library
 it calls. So a reader can take every line of standard output as a diagnostic.
 
+### The Name Index
+
+`hemera --index=file` writes down what each name in the program refers to, for tools like an editor's go to
+definition: every declaration, and every use of one. Names are resolved as they're checked, so it's usually given with
+`--check`. It's written when the run ends, whether it worked or not, and covers whatever was checked by then. For a
+build package, it's the build's own code and every target's, merged.
+
+```
+{"version":1,"files":["D:/project/main.hsc","D:/project/shapes.hsc"],
+ "declarations":[
+ {"file":1,"name":[52,5],"span":[52,96],"kind":"type","brief":"A point on the plane."},
+ {"file":1,"name":[63,1],"span":[63,70],"kind":"field","type":"int"}],
+ "uses":[
+ [0,140,5,0],
+ [0,212,1,1]]}
+```
+
+* `files` are the files it mentions, by their paths on disk with `/` throughout, or `<base>/...` for `base`'s.
+* Each declaration has its file's number, its name's offset and length, and the first and last byte of its tokens,
+  all in bytes from the file's start. Its `kind` is `function`, `type`, `constant`, `field` or `local`. It has its
+  `type` as errors write it, except a type's, and its doc comment's `brief`, `details` and `tags`, each tag its kind,
+  name and text, when it has one.
+* Each use is a file's number, the offset and length of the name used, and the number of the declaration it names,
+  counting from 0. A use of a generic's instance is a use of the generic.
+* Uses are only in the program's own code: not in `base`, `std` or `vendor`, unless the package being built is in one
+  of them. Every declaration a use names is there, wherever it is.
+* What compile-time code put in, like `#insert`'s code, isn't indexed, as it isn't where its tokens say it is.
+
 ### Allowing and Denying Warnings
 
 A warning can be allowed, so it isn't shown, or denied, so it's an error that keeps its code and fails the build.

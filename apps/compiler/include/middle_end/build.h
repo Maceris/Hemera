@@ -11,6 +11,8 @@
 
 namespace hemera {
 
+	struct NameIndex;
+
 	struct Options;
 	struct ProgramInfo;
 
@@ -125,10 +127,11 @@ namespace hemera {
 
 	/// <summary>
 	/// A build package's targets, each compiled in turn in this process (checked, run through the build's checks,
-	/// generated and linked), then its steps.
+	/// generated and linked), then its steps. With an index, each target's names are recorded while it's checked, and
+	/// added to it once every target is done (--index).
 	/// </summary>
 	/// <returns>Whether everything worked.</returns>
-	bool build_targets(ProgramInfo* build, const Options& build_options, Allocator<>& alloc);
+	bool build_targets(ProgramInfo* build, const Options& build_options, Allocator<>& alloc, NameIndex* index = nullptr);
 
 	/// <summary>
 	/// The options to compile a target with, from what the build package gave and the build's own options.

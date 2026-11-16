@@ -1,10 +1,15 @@
 #include "front_end/name_index.h"
 
 #include <algorithm>
+#include <filesystem>
+#include <format>
+#include <fstream>
 #include <limits>
 #include <string_view>
 
 #include "hemera_errors.h"
+#include "cmd_line/options.h"
+#include "error/reporting.h"
 #include "front_end/checking.h"
 #include "front_end/documentation.h"
 #include "front_end/front_end.h"
@@ -56,6 +61,16 @@ namespace hemera {
 			NameIndex& index;
 			ProgramInfo& program;
 			std::string root;
+			// The built-in packages' folders, base's as <base>, whose uses aren't counted unless they're under root
+			std::vector<std::string> libraries;
+
+			// Whether uses in file are counted: in the program's own code, or under the root package's folder
+			bool counts(const std::string& file) const {
+				if (within(file, root)) {
+					return true;
+				}
+				return std::none_of(libraries.begin(), libraries.end(), [&](const std::string& library) { return within(file, library); });
+			}
 
 			// Whether node is parsed where its tokens say, with a span, rather than made while compiling
 			bool placed(const ast::Node* node) const {
@@ -208,7 +223,7 @@ namespace hemera {
 					return;
 				}
 				const std::string file = file_of(original(declaration));
-				const bool uses_counted = within(file, root);
+				const bool uses_counted = counts(file);
 				// A name alone is in nodes, and one at the head of a chain, like a in a.b, in heads
 				for (const auto* table : { &checked->nodes, &checked->heads }) {
 					for (const auto& [node, value] : *table) {
@@ -260,7 +275,7 @@ namespace hemera {
 						continue;
 					}
 					const std::string file = with_slashes(file_path_of(use.package_path, use.file_name));
-					if (!within(file, root)) {
+					if (!counts(file)) {
 						continue;
 					}
 					const std::optional<IndexPlace> target = use.declaration != nullptr ? add_declaration(use.declaration)
@@ -274,11 +289,114 @@ namespace hemera {
 		};
 	}
 
-	void add_to_index(NameIndex& index, ProgramInfo& program, std::string_view root_folder) {
-		std::string root = with_slashes(std::string(root_folder));
-		while (root.size() > 1 && root.back() == '/') {
-			root.pop_back();
+	// A folder with / throughout, without one at its end
+	static std::string folder_text(const std::filesystem::path& folder) {
+		std::string text = with_slashes(folder.string());
+		while (text.size() > 1 && text.back() == '/') {
+			text.pop_back();
 		}
-		Indexer{ index, program, std::move(root) }.run();
+		return text;
+	}
+
+	void add_to_index(NameIndex& index, ProgramInfo& program, const Options& options) {
+		std::vector<std::string> libraries{ "<base>" };
+		for (const BuiltinPackage builtin : { BuiltinPackage::STD, BuiltinPackage::VENDOR }) {
+			if (auto found = options.builtin_paths.find(builtin); found != options.builtin_paths.end()) {
+				std::error_code error;
+				libraries.push_back(folder_text(std::filesystem::weakly_canonical(found->second, error)));
+			}
+		}
+		Indexer{ index, program, folder_text(options.input), std::move(libraries) }.run();
+	}
+
+	// text as a JSON string, quotes included
+	static std::string json_text(std::string_view text) {
+		std::string out = "\"";
+		for (const char c : text) {
+			switch (c) {
+			case '"': out += "\\\""; break;
+			case '\\': out += "\\\\"; break;
+			case '\n': out += "\\n"; break;
+			case '\r': out += "\\r"; break;
+			case '\t': out += "\\t"; break;
+			default:
+				if (static_cast<unsigned char>(c) < 0x20) {
+					out += std::format("\\u{:04x}", static_cast<unsigned char>(c));
+				}
+				else {
+					out += c;
+				}
+			}
+		}
+		return out + "\"";
+	}
+
+	std::string index_json(const NameIndex& index) {
+		// Each file once, numbered in order, and each declaration numbered in order
+		std::map<std::string, size_t> files;
+		for (const auto& [place, declaration] : index.declarations) {
+			files.emplace(place.file, 0);
+		}
+		for (const auto& [place, target] : index.uses) {
+			files.emplace(place.file, 0);
+		}
+		std::string out = "{\"version\":1,\"files\":[";
+		size_t number = 0;
+		for (auto& [file, file_number] : files) {
+			out += (number == 0 ? "" : ",") + json_text(file);
+			file_number = number++;
+		}
+		out += "],\"declarations\":[";
+		std::map<IndexPlace, size_t> numbers;
+		for (const auto& [place, declaration] : index.declarations) {
+			out += numbers.empty() ? "\n" : ",\n";
+			numbers.emplace(place, numbers.size());
+			out += std::format("{{\"file\":{},\"name\":[{},{}],\"span\":[{},{}],\"kind\":{}", files[place.file], place.offset,
+				place.length, declaration.start, declaration.end, json_text(declaration.kind));
+			if (!declaration.type.empty()) {
+				out += ",\"type\":" + json_text(declaration.type);
+			}
+			if (!declaration.brief.empty()) {
+				out += ",\"brief\":" + json_text(declaration.brief);
+			}
+			if (!declaration.details.empty()) {
+				out += ",\"details\":" + json_text(declaration.details);
+			}
+			if (!declaration.tags.empty()) {
+				out += ",\"tags\":[";
+				for (size_t i = 0; i < declaration.tags.size(); ++i) {
+					const IndexDeclaration::Tag& tag = declaration.tags[i];
+					out += std::format("{}[{},{},{}]", i == 0 ? "" : ",", json_text(tag.tag), json_text(tag.name), json_text(tag.text));
+				}
+				out += "]";
+			}
+			out += "}";
+		}
+		out += "],\"uses\":[";
+		bool first = true;
+		for (const auto& [place, target] : index.uses) {
+			auto found = numbers.find(target);
+			if (found == numbers.end()) {
+				continue;
+			}
+			out += std::format("{}[{},{},{},{}]", first ? "\n" : ",\n", files[place.file], place.offset, place.length, found->second);
+			first = false;
+		}
+		return out + "]}\n";
+	}
+
+	bool write_index(const NameIndex& index, const std::string& path) {
+		std::ofstream file(path, std::ios::binary | std::ios::trunc);
+		if (!file.is_open()) {
+			report_error(ErrorCode::E6000, path, 0, 0, "the name index couldn't be written");
+			return false;
+		}
+		const std::string json = index_json(index);
+		file.write(json.data(), static_cast<std::streamsize>(json.size()));
+		if (!file) {
+			report_error(ErrorCode::E6000, path, 0, 0, "the name index couldn't be written");
+			return false;
+		}
+		return true;
 	}
 }
