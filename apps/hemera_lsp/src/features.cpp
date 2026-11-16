@@ -205,6 +205,106 @@ namespace hemera::lsp {
 		};
 	}
 
+	namespace {
+
+		// A fold from line start to line end, counting from 0, of kind comment or imports, or with no kind for code
+		Object fold(uint32_t start, uint32_t end, std::string_view kind = {}) {
+			Object made{ { "startLine", start }, { "endLine", end } };
+			if (!kind.empty()) {
+				made["kind"] = std::string(kind);
+			}
+			return made;
+		}
+
+		// The line a token ends on, counting from 0: its start's, plus the line ends inside it
+		uint32_t last_line(const Token& token, std::string_view text) {
+			uint32_t line = token.line_number - 1;
+			if (token.offset != Token::NO_SPAN) {
+				const std::string_view inside = text.substr(token.offset, token.length);
+				line += static_cast<uint32_t>(std::count(inside.begin(), inside.end(), '\n'));
+			}
+			return line;
+		}
+
+		bool is_import(const Token& token) {
+			return TokenType::IDENTIFIER == token.type && token.column_number == 0 && token.value != nullptr
+				&& std::string_view(*token.value) == "import";
+		}
+	}
+
+	Array folding_ranges(const ParsedDocument& document) {
+		Array folds;
+		if (!document.lexed) {
+			return folds;
+		}
+		// Brackets, matched as they're closed; a stray closing one is passed over
+		std::vector<const Token*> open;
+		for (const Token& token : document.tokens) {
+			if (TokenType::SYM_LBRACE == token.type || TokenType::SYM_LBRACK == token.type || TokenType::SYM_LPAREN == token.type) {
+				open.push_back(&token);
+				continue;
+			}
+			const TokenType opener = TokenType::SYM_RBRACE == token.type ? TokenType::SYM_LBRACE
+				: TokenType::SYM_RBRACK == token.type ? TokenType::SYM_LBRACK
+				: TokenType::SYM_RPAREN == token.type ? TokenType::SYM_LPAREN : TokenType::END_OF_FILE;
+			if (TokenType::END_OF_FILE == opener || open.empty() || open.back()->type != opener) {
+				continue;
+			}
+			const uint32_t start = open.back()->line_number - 1;
+			open.pop_back();
+			// To the line before the match's, which stays in sight
+			if (token.line_number >= 2 && token.line_number - 2 > start) {
+				folds.push_back(fold(start, token.line_number - 2));
+			}
+		}
+		// Block comments over several lines, and runs of line comments
+		for (size_t i = 0; i < document.comments.size(); ++i) {
+			const Token& comment = document.comments[i];
+			const uint32_t start = comment.line_number - 1;
+			if (TokenType::COMMENT_BLOCK == comment.type) {
+				const uint32_t end = last_line(comment, document.text);
+				if (end > start) {
+					folds.push_back(fold(start, end, "comment"));
+				}
+				continue;
+			}
+			size_t last = i;
+			while (last + 1 < document.comments.size() && TokenType::COMMENT_LINE == document.comments[last + 1].type
+				&& document.comments[last + 1].line_number == document.comments[last].line_number + 1) {
+				++last;
+			}
+			if (last > i) {
+				folds.push_back(fold(start, document.comments[last].line_number - 1, "comment"));
+			}
+			i = last;
+		}
+		// Imports in a row: each on a line of its own, the next one starting the line after the last one's tokens
+		for (size_t i = 0; i < document.tokens.size(); ++i) {
+			if (!is_import(document.tokens[i])) {
+				continue;
+			}
+			const uint32_t start = document.tokens[i].line_number - 1;
+			uint32_t end = start;
+			size_t at = i;
+			for (;;) {
+				// Past this import's tokens, to the next line's first
+				const uint32_t line = document.tokens[at].line_number;
+				while (at < document.tokens.size() && document.tokens[at].line_number == line) {
+					++at;
+				}
+				if (at >= document.tokens.size() || !is_import(document.tokens[at])) {
+					break;
+				}
+				end = document.tokens[at].line_number - 1;
+			}
+			if (end > start) {
+				folds.push_back(fold(start, end, "imports"));
+			}
+			i = at;
+		}
+		return folds;
+	}
+
 	Array document_symbols(const ParsedDocument& document, Encoding encoding) {
 		if (document.tree == nullptr) {
 			return Array{};

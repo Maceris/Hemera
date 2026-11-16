@@ -311,6 +311,7 @@ namespace hemera::lsp {
 				} },
 				{ "documentFormattingProvider", true },
 				{ "documentSymbolProvider", true },
+				{ "foldingRangeProvider", true },
 			} },
 			{ "serverInfo", Object{ { "name", "hemera-lsp" }, { "version", VERSION_STR } } },
 		};
@@ -466,6 +467,11 @@ namespace hemera::lsp {
 		const std::optional<std::string> uri = document_uri(params);
 		if (method == "textDocument/formatting") {
 			return uri.has_value() ? format(*uri) : Value(Array{});
+		}
+		if (method == "textDocument/foldingRange") {
+			// This version, from its tokens, whether it parses or not (decision 4)
+			const Parses* parses_of = uri.has_value() ? parsed(*uri) : nullptr;
+			return parses_of != nullptr ? folding_ranges(*parses_of->current) : Value(Array{});
 		}
 		if (method == "textDocument/documentSymbol") {
 			// The last version that parsed, when this one doesn't (decision 4)

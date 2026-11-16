@@ -37,4 +37,12 @@ namespace hemera::lsp {
 	 * token, closing brace included; its selection range is its name. Empty for a document with no tree.
 	 */
 	llvm::json::Array document_symbols(const ParsedDocument& document, Encoding encoding);
+
+	/*
+	 * textDocument/foldingRange's answer, from the document's tokens alone, so a document that lexed folds whether
+	 * it parsed or not: a {, [ or ( whose match is on a later line, to the line before the match's, so the match
+	 * stays in sight; a block comment over several lines; two or more line comments on lines in a row; and two or
+	 * more imports in a row. Lines count from 0. Empty for a document that didn't lex.
+	 */
+	llvm::json::Array folding_ranges(const ParsedDocument& document);
 }

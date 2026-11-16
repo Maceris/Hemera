@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <filesystem>
 #include <format>
 #include <fstream>
@@ -555,6 +556,64 @@ TEST(Server, DocumentSymbolsKeepTheLastVersionThatParsed) {
 	});
 
 	EXPECT_EQ(7u, symbols_of(session, uri).size());
+}
+
+namespace {
+
+	// textDocument/foldingRange's answer for uri, each as "start-end kind"
+	std::vector<std::string> folds_of(Session& session, const std::string& uri) {
+		session.request(12, "textDocument/foldingRange", Object{ { "textDocument", Object{ { "uri", uri } } } });
+		std::vector<std::string> found;
+		const Value* result = session.last().get("result");
+		if (result != nullptr && result->getAsArray() != nullptr) {
+			for (const Value& fold : *result->getAsArray()) {
+				const Object& object = *fold.getAsObject();
+				found.push_back(std::format("{}-{} {}", *object.getInteger("startLine"), *object.getInteger("endLine"),
+					object.getString("kind").value_or("code").str()));
+			}
+		}
+		return found;
+	}
+
+	const std::string FOLDED =
+		"package main\n"                       // 0
+		"\n"                                   // 1
+		"import runtime from \"base:runtime\"\n" // 2
+		"import compiler from \"base:compiler\"\n" // 3
+		"\n"                                   // 4
+		"/*\n"                                 // 5
+		" * A block comment\n"                 // 6
+		" */\n"                                // 7
+		"// One line\n"                        // 8
+		"// and another\n"                     // 9
+		"main :: fn() -> int {\n"              // 10
+		"    values :: int.[\n"                // 11
+		"        1,\n"                         // 12
+		"        2,\n"                         // 13
+		"    ]\n"                              // 14
+		"    return 0 // trailing\n"           // 15
+		"}\n"                                  // 16
+		"short :: fn() { }\n";                 // 17
+}
+
+TEST(Server, FoldingCoversBracketsCommentsAndImports) {
+	Session session;
+	session.initialize();
+	const std::string uri = "file:///d%3A/project/main.hsc";
+	session.notify("textDocument/didOpen", document(uri, FOLDED, 1));
+
+	std::vector<std::string> folds = folds_of(session, uri);
+	std::sort(folds.begin(), folds.end());
+	EXPECT_EQ((std::vector<std::string>{ "10-15 code", "11-13 code", "2-3 imports", "5-7 comment", "8-9 comment" }), folds);
+}
+
+TEST(Server, FoldingWorksWhileAFileDoesNotParse) {
+	Session session;
+	session.initialize();
+	const std::string uri = "file:///d%3A/project/main.hsc";
+	session.notify("textDocument/didOpen", document(uri, "package main\n\nbroken :: fn( {\n    x\n    y\n}\n", 1));
+
+	EXPECT_EQ((std::vector<std::string>{ "2-4 code" }), folds_of(session, uri));
 }
 
 TEST(TokenEnd, CoversWordsStringsAndSingleCharacters) {
