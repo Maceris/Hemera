@@ -531,6 +531,31 @@ Sharing parsed files between targets is planned.
 ones a saved file is in. The build's steps don't run then, as they'd want every target. A name the build has no
 target for is an error (E4047).
 
+### A Long-Lived Compiler
+
+`hemera --serve` is a compiler that stays running and checks what it's asked to, for tools like an editor, which
+would otherwise check a build package's own code again with every check. It reads a request, a JSON object, from each
+line of standard input: `{"arguments": ["--check", "--targets=kernel", "src/build"]}`, with the arguments a `hemera`
+run would take. It answers on standard output with that check's diagnostics, one JSON object a line, as
+`--diagnostics=json` prints them, then `{"done":true,"exit":0,"restart":false}`: the exit code `hemera` would have
+given, and whether it should be started again before the next request, which it asks once it's using more memory
+than `--memory-limit=MB` allows. What else it, or compile-time code, prints goes to standard error.
+
+The first check of a build package keeps the build: its program, the packages `compiler.load_package` loaded, and the
+targets it registered. A later check reuses it, checking only the targets, while nothing it was worked out from has
+changed:
+
+* the arguments, but for `--targets`, `--overlay`, `--index` and `--diagnostics`, which can differ;
+* the bytes of every file the build read, and the files in each of its packages' folders;
+* what each folder `compiler.subfolders` listed lists now;
+* each package `load_package` loaded, which is checked again if its files changed, and still counts as the same if
+  it reports nothing and its constants are what they were, which is what the build could have read of it.
+
+The build's own diagnostics are reported again with each check that reuses it. Any other check is answered
+`{"done":false,"restart":true}` without running, for a compiler started afresh to answer, so every answer is what a
+fresh `hemera` would give. A build whose compile-time code reads other files than these wouldn't see them change.
+Each check's targets are freed once it's done.
+
 ## Compile-Time Permissions
 
 Compile-time code can't run other programs or write outside the output folder unless the command line grants it

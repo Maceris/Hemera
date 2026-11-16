@@ -37,6 +37,7 @@ It gives `.hsc` files Hemera's syntax highlighting, brackets and comments, and s
 | `hemera.compilerPath` | The compiler, `hemera` by default, the same way. |
 | `hemera.root` | The package checked for a file in the workspace, like a build package's folder: relative to the first workspace folder, or absolute. Empty, the default, checks each file's own folder. |
 | `hemera.arguments` | More of the compiler's flags for each check, like `--setting=name=value` for a build package's settings. |
+| `hemera.checkerMemory` | The most memory, in MB, the long-lived checker may use before it's started again: 8192 by default, 0 for no limit. |
 
 A change to `hemera.serverPath` restarts the server; the others apply from the next check.
 
@@ -60,6 +61,9 @@ in a build, a build package's checks included, and nothing is written but what t
 In a build package, saving a file checks just the targets that read it first, which the last check's
 [name index](compilation.md#the-name-index) says, so its diagnostics come in a few seconds, then every target, for the
 rest and a new index. Until the first check of everything, which opening a file starts, each check is of everything.
+The quick check goes to a compiler the server keeps running, [`hemera --serve`](compilation.md#a-long-lived-compiler),
+which keeps the build package's own check from one to the next, so after the first, a save's diagnostics take about
+as long as checking its targets. It starts again when it's asked to, or uses more memory than `hemera.checkerMemory`.
 
 Checking as you type isn't done: a large build package can take tens of seconds to check in full, so checks come with
 opening and saving.
@@ -108,5 +112,5 @@ notifications, UTF-8 positions when the client offers them, else UTF-16, and `te
 `textDocument/documentSymbol`, `textDocument/foldingRange`, `textDocument/definition`, `textDocument/hover`,
 `textDocument/references`, `textDocument/prepareRename` and `textDocument/rename`. Its settings come in initialize's
 `initializationOptions`, and later in `workspace/didChangeConfiguration`'s `settings.hemera`, as an object with
-`compilerPath`, `root` and `arguments`, named as above without `hemera.`. It exits 0 after `shutdown` and `exit`, and 1
-when `exit`, or the end of its standard input, comes without `shutdown` before it.
+`compilerPath`, `root`, `arguments` and `checkerMemory`, named as above without `hemera.`. It exits 0 after
+`shutdown` and `exit`, and 1 when `exit`, or the end of its standard input, comes without `shutdown` before it.
