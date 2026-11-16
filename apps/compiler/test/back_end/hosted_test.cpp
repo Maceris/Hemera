@@ -1397,6 +1397,87 @@ static std::vector<std::string> lines_of(const std::string& text) {
 	return lines;
 }
 
+// hemera --serve's answers to a file of requests, one a line, each request's lines, the done line last.
+static std::vector<std::vector<std::string>> serve_requests(std::string_view name, const std::vector<std::string>& requests) {
+	const std::filesystem::path folder = std::filesystem::path(HEMERA_TEST_OUTPUT_DIR) / name;
+	std::filesystem::create_directories(folder);
+	const std::filesystem::path input = folder / "requests.txt";
+	{
+		std::ofstream file(input, std::ios::binary);
+		for (const std::string& request : requests) {
+			file << request << "\n";
+		}
+	}
+	const CompilerRun run = run_compiler(name, std::format("--serve < \"{}\"", input.string()));
+	std::vector<std::vector<std::string>> answers(1);
+	for (const std::string& line : lines_of(run.output)) {
+		answers.back().push_back(line);
+		if (line.find("\"done\"") != std::string::npos) {
+			answers.emplace_back();
+		}
+	}
+	answers.pop_back();
+	return answers;
+}
+
+// A request for a check of folder, with more arguments before it, as JSON.
+static std::string check_request(const std::filesystem::path& folder, const std::vector<std::string>& more = {}) {
+	std::string arguments = "\"--check\"";
+	for (const std::string& argument : more) {
+		arguments += ",\"" + argument + "\"";
+	}
+	std::string path = folder.generic_string();
+	return std::format("{{\"arguments\":[{},\"{}\"]}}", arguments, path);
+}
+
+/*
+ * hemera --serve keeps a build package's state between checks: the same check again reuses it, as does one whose
+ * target changed, but one whose build package changed asks to be restarted.
+ */
+TEST(Serve, KeepsABuildPackageWhileItsTheSame)
+{
+	const std::filesystem::path build = std::filesystem::canonical(scenario("build_package") / "build");
+	const std::filesystem::path app = std::filesystem::canonical(scenario("build_package") / "app" / "app.hsc");
+	const std::filesystem::path folder = std::filesystem::path(HEMERA_TEST_OUTPUT_DIR) / "serve_build";
+	std::filesystem::create_directories(folder);
+	const std::filesystem::path app_changed = folder / "app.hsc";
+	const std::filesystem::path build_changed = folder / "build.hsc";
+	{
+		std::ofstream file(app_changed, std::ios::binary);
+		file << read_file(app) << "\nadded :: fn() -> int {\n    return 1\n}\n";
+	}
+	{
+		std::ofstream file(build_changed, std::ios::binary);
+		file << read_file(build / "build.hsc") << "\n// changed\n";
+	}
+	const std::string output = std::format("--setting=output={},answer=42", (folder / "app").generic_string());
+	const auto answers = serve_requests("serve_build", {
+		check_request(build, { output }),
+		check_request(build, { output }),
+		check_request(build, { output, std::format("--overlay={}={}", app.generic_string(), app_changed.generic_string()) }),
+		check_request(build, { output, std::format("--overlay={}={}", (build / "build.hsc").generic_string(), build_changed.generic_string()) }),
+	});
+
+	ASSERT_EQ(answers.size(), 4u);
+	for (size_t i = 0; i < 3; ++i) {
+		EXPECT_EQ(answers[i].back(), "{\"done\":true,\"exit\":0,\"restart\":false}") << i;
+		// The build's check's warning, kept and reported again, and its target's check's
+		EXPECT_EQ(answers[i].size(), 2u) << i;
+	}
+	EXPECT_EQ(answers[3].back(), "{\"done\":false,\"restart\":true}");
+}
+
+// hemera --serve keeps nothing of a program that isn't a build package: a second check asks to be restarted.
+TEST(Serve, RestartsForAnotherProgram)
+{
+	const std::filesystem::path program = std::filesystem::canonical(scenario("check_runs_statements"));
+	const auto answers = serve_requests("serve_program", { check_request(program), check_request(program) });
+
+	ASSERT_EQ(answers.size(), 2u);
+	EXPECT_EQ(answers[0].back(), "{\"done\":true,\"exit\":0,\"restart\":false}");
+	EXPECT_EQ(answers[1].back(), "{\"done\":false,\"restart\":true}");
+}
+
 #ifdef _WIN32
 /*
  * hemera --diagnostics=json: standard output holds the diagnostics as JSON, a line each, and nothing else; what

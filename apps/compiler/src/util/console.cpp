@@ -7,6 +7,7 @@
 #include <fcntl.h>
 #include <io.h>
 #include <Windows.h>
+#include <Psapi.h>
 #else
 #include <unistd.h>
 #endif
@@ -77,6 +78,11 @@ namespace hemera {
 		}
 		return stream;
 	}
+
+	size_t memory_in_use() {
+		PROCESS_MEMORY_COUNTERS counters{};
+		return GetProcessMemoryInfo(GetCurrentProcess(), &counters, sizeof(counters)) ? counters.WorkingSetSize : 0;
+	}
 #else
 	void use_utf8_console() {}
 
@@ -101,6 +107,19 @@ namespace hemera {
 			return nullptr;
 		}
 		return stream;
+	}
+
+	size_t memory_in_use() {
+		// /proc/self/statm's second number is the resident set, in pages
+		std::FILE* statm = std::fopen("/proc/self/statm", "r");
+		if (statm == nullptr) {
+			return 0;
+		}
+		unsigned long size = 0;
+		unsigned long resident = 0;
+		const bool read = std::fscanf(statm, "%lu %lu", &size, &resident) == 2;
+		std::fclose(statm);
+		return read ? static_cast<size_t>(resident) * static_cast<size_t>(sysconf(_SC_PAGESIZE)) : 0;
 	}
 #endif
 }

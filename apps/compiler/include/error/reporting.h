@@ -259,4 +259,17 @@ namespace hemera {
 	 * diagnostics change: other output, like --time-phases', goes where it did.
 	 */
 	void print_diagnostics_as_json(std::FILE* stream);
+
+	/*
+	 * line, without its end, written to the JSON stream (print_diagnostics_as_json) with an end and flushed, after
+	 * any diagnostic before it, as a long-lived compiler says it's done a check (hemera --serve). Nothing without one.
+	 */
+	void write_protocol_line(std::string_view line);
+
+	/*
+	 * A diagnostic reported again as it was, kept and printed as it was the first time, even if this one's been
+	 * reported, as a long-lived compiler does for what it kept from an earlier check (hemera --serve). An error
+	 * counts as one.
+	 */
+	void report_again(const Diagnostic& diagnostic);
 }

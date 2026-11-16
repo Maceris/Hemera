@@ -22,6 +22,7 @@
 #include "hmir/hmir_dialect.h"
 #include "middle_end/build.h"
 #include "middle_end/generate.h"
+#include "middle_end/serve.h"
 #include "memory/thread_safe_queue.h"
 #include "util/console.h"
 #include "util/crash_dump.h"
@@ -51,6 +52,10 @@ namespace hemera {
 		if (argc == 3 && std::string_view(argv[1]).starts_with("--check-interface=")) {
 			return check_interface(std::string(std::string_view(argv[1]).substr(std::string_view("--check-interface=").size())), argv[2],
 				std::cout);
+		}
+		// hemera --serve: a compiler that stays running, checking what it's asked to (middle_end/serve.h)
+		if (argc >= 2 && std::string_view(argv[1]) == "--serve") {
+			return serve(argc, argv);
 		}
 		Logger::init();
 		Allocator<> main_alloc;

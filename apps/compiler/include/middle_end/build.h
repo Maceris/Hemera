@@ -152,4 +152,29 @@ namespace hemera {
 	/// </summary>
 	bool run_build_steps(ProgramInfo* build, const Options& build_options);
 
+	/*
+	 * Each folder compile-time code listed with compiler.subfolders, by its canonical path, and the subfolders it
+	 * found, in the order it asked, so a long-lived compiler can tell whether a build would find the same targets
+	 * (hemera --serve).
+	 */
+	std::vector<std::pair<std::string, std::vector<std::string>>> folder_listings();
+
+	// The programs compiler.load_package loaded, which last as long as the compiler does.
+	std::vector<ProgramInfo*> loaded_program_list();
+
+	// The same, each with the folder it was loaded from, by its canonical path.
+	std::vector<std::pair<std::string, ProgramInfo*>> loaded_package_programs();
+
+	/*
+	 * What compile-time code can read of the package load_package loaded from folder, through find_constant: each of
+	 * its constants, by name, with its type and value, as text, to compare with another time's. A value is written
+	 * as its bytes but for a string's, so one holding a pointer is never the same. Empty if nothing was loaded there.
+	 */
+	std::string loaded_constants(const std::string& folder);
+
+	/*
+	 * The package load_package loaded from folder checked again from the start, reading overlays (--overlay), in
+	 * place of the program it had, which is freed, but for its types. Nothing if nothing was loaded there.
+	 */
+	void reload_package(const std::string& folder, const std::vector<std::pair<std::string, std::string>>& overlays);
 }

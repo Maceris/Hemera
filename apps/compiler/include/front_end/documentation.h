@@ -82,6 +82,12 @@ namespace hemera {
 	/// </summary>
 	bool first_documentation_check(std::string_view file_path, uint32_t line, uint16_t column);
 
+	/*
+	 * Forgets which documentation comments were checked, so the next check of a file checks them again, as a
+	 * long-lived compiler's next check does (hemera --serve).
+	 */
+	void forget_documentation_checks();
+
 	/// <summary>
 	/// Whether a comment's text is a documentation comment's: one opened with two stars, or two stars and a less-than,
 	/// but not three stars, and not an empty comment.

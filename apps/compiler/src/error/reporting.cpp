@@ -644,6 +644,32 @@ namespace hemera {
 			std::format("{}({},{}): {}: {}", file, line_number, column_number, kind, text));
 	}
 
+	void write_protocol_line(std::string_view line) {
+		std::lock_guard<std::mutex> lock(cout_mutex);
+		if (json_stream != nullptr) {
+			std::fwrite(line.data(), 1, line.size(), json_stream);
+			std::fputc('\n', json_stream);
+			std::fflush(json_stream);
+		}
+	}
+
+	void report_again(const Diagnostic& diagnostic) {
+		if (!reporting_enabled) {
+			return;
+		}
+		const std::string_view kind = Severity::ERROR == diagnostic.severity ? "error"
+			: Severity::WARNING == diagnostic.severity ? "warning" : "info";
+		const std::string line = diagnostic.code.empty()
+			? std::format("{}({},{}): {}: {}", diagnostic.file, diagnostic.line, diagnostic.column, kind, diagnostic.message)
+			: std::format("{}({},{}): {} {}:{}: {}", diagnostic.file, diagnostic.line, diagnostic.column, kind, diagnostic.prefix,
+				diagnostic.code, diagnostic.message);
+		if (Severity::ERROR == diagnostic.severity) {
+			// Counted, under compile-time code's code, as it isn't the compiler's own one any more
+			log_error(ErrorCode::E4029, diagnostic.message);
+		}
+		emit(diagnostic, line);
+	}
+
 	size_t error_count() {
 		if (current_scope != nullptr) {
 			std::lock_guard<std::mutex> lock(current_scope->mutex);

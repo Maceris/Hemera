@@ -667,6 +667,11 @@ namespace hemera {
          * them, and the build's steps don't run; empty for every target and the steps.
          */
         std::vector<std::string> only_targets;
+        /*
+         * A build's targets' programs are freed once its targets are checked, for a compiler that goes on to check
+         * again (hemera --serve); otherwise they're kept until it ends.
+         */
+        bool free_targets = false;
         /// <summary>
         /// Warnings not shown, and warnings made errors (--allow, --deny): prefix:code, prefix:* or *
         /// (docs/compilation.md, Allowing and Denying Warnings).

@@ -12253,6 +12253,13 @@ namespace hemera {
 			return *loaded;
 		}
 
+		// Each folder compiler.subfolders listed, and what it found, in order, for a long-lived compiler (hemera --serve)
+		std::mutex listings_mutex;
+		std::vector<std::pair<std::string, std::vector<std::string>>>& listings() {
+			static auto* kept = new std::vector<std::pair<std::string, std::vector<std::string>>>();
+			return *kept;
+		}
+
 		// A folder compile-time code gave: relative to the calling file's package, or absolute.
 		std::filesystem::path folder_from(Call& call, std::string_view folder) {
 			std::filesystem::path given(folder);
@@ -12989,6 +12996,10 @@ namespace hemera {
 					}
 				}
 				std::sort(found.begin(), found.end());
+				{
+					std::scoped_lock<std::mutex> lock(listings_mutex);
+					listings().emplace_back(folder.string(), found);
+				}
 				uint8_t* names = data.allocate(16 * std::max<size_t>(found.size(), 1), 8);
 				for (size_t i = 0; i < found.size(); ++i) {
 					data.write_text_at(names + i * 16, found[i]);
@@ -14263,5 +14274,126 @@ namespace hemera {
 		define_stack_walker(*result, options);
 		end_stack_at_entry(*result, options);
 		return result;
+	}
+
+	std::vector<std::pair<std::string, std::vector<std::string>>> folder_listings() {
+		std::scoped_lock<std::mutex> lock(listings_mutex);
+		return listings();
+	}
+
+	std::vector<ProgramInfo*> loaded_program_list() {
+		std::scoped_lock<std::mutex> lock(loaded_mutex);
+		std::vector<ProgramInfo*> programs;
+		for (const auto& [folder, loaded] : loaded_programs()) {
+			programs.push_back(loaded.program);
+		}
+		return programs;
+	}
+
+	std::vector<std::pair<std::string, ProgramInfo*>> loaded_package_programs() {
+		std::scoped_lock<std::mutex> lock(loaded_mutex);
+		std::vector<std::pair<std::string, ProgramInfo*>> programs;
+		for (const auto& [folder, loaded] : loaded_programs()) {
+			programs.emplace_back(folder, loaded.program);
+		}
+		return programs;
+	}
+
+	std::string loaded_constants(const std::string& folder) {
+		LoadedProgram loaded;
+		{
+			std::scoped_lock<std::mutex> lock(loaded_mutex);
+			auto found = loaded_programs().find(folder);
+			if (found == loaded_programs().end()) {
+				return {};
+			}
+			loaded = found->second;
+		}
+		CompileTimeData& data = compile_time_data(loaded.program);
+		Call call{ "", nullptr, nullptr, 0, nullptr, std::string(), nullptr, loaded.program, loaded.options, data };
+		const std::vector<Declaration*> constants = constants_of(loaded.program, folder);
+		const auto values = constant_values(call, constants);
+		std::string described;
+		for (size_t i = 0; i < constants.size(); ++i) {
+			const auto [type, value] = values[i];
+			described += std::format("{} : {} = ", text_of(constants[i]->name), type != nullptr ? to_string(type) : std::string("?"));
+			const TypeInfo* base = type != nullptr ? get_base_type(type) : nullptr;
+			if (value == nullptr || base == nullptr) {
+				described += "?";
+			}
+			else if (TypeInfoVariant::STRING == base->variant) {
+				described += std::format("\"{}\"", read_string(value));
+			}
+			else {
+				// Its bytes: a value holding a pointer compares as different, which only costs a check
+				for (size_t byte = 0; byte < base->size; ++byte) {
+					described += std::format("{:02x}", value[byte]);
+				}
+			}
+			described += "\n";
+		}
+		return described;
+	}
+
+	void reload_package(const std::string& folder, const std::vector<std::pair<std::string, std::string>>& overlays) {
+		LoadedProgram old;
+		{
+			std::scoped_lock<std::mutex> lock(loaded_mutex);
+			auto found = loaded_programs().find(folder);
+			if (found == loaded_programs().end()) {
+				return;
+			}
+			old = found->second;
+		}
+		// Checked afresh as it was, but reading what's given now
+		LoadedProgram loaded;
+		loaded.options = new Options();
+		Options& options = *loaded.options;
+		options.input = old.options->input;
+		options.output_name = old.options->output_name;
+		options.entry = old.options->entry;
+		options.startup_code = old.options->startup_code;
+		options.install_path = old.options->install_path;
+		options.builtin_paths = old.options->builtin_paths;
+		options.settings = old.options->settings;
+		options.architecture = old.options->architecture;
+		options.os = old.options->os;
+		options.object_format = old.options->object_format;
+		options.environment = old.options->environment;
+		options.vendor = old.options->vendor;
+		options.overlays = overlays;
+		auto* context = new mlir::MLIRContext();
+		context->loadDialect<mlir::BuiltinDialect>();
+		context->loadDialect<mlir::func::FuncDialect>();
+		context->loadDialect<::hmir::HemeraDialect>();
+		auto* builder = new mlir::OpBuilder(context);
+		auto* module = new mlir::ModuleOp(mlir::ModuleOp::create(builder->getUnknownLoc(), "loaded"));
+		loaded.program = new ProgramInfo(context, builder, module);
+		kick_off_processing(loaded.program, loaded.options);
+		{
+			std::scoped_lock<std::mutex> lock(loaded_mutex);
+			loaded_programs()[folder] = loaded;
+		}
+		/*
+		 * The old one freed, but its types: what the build wrote about them, while it ran, is kept by their
+		 * addresses, so they're kept for as long as the compiler runs
+		 */
+		static std::mutex kept_types_mutex;
+		static auto* kept_types = new std::vector<std::unique_ptr<TypeInfo>>();
+		{
+			std::scoped_lock<std::mutex> lock(kept_types_mutex);
+			std::vector<std::unique_ptr<TypeInfo>>& owned = old.program->names.owned_types;
+			kept_types->insert(kept_types->end(), std::make_move_iterator(owned.begin()), std::make_move_iterator(owned.end()));
+			owned.clear();
+		}
+		mlir::ModuleOp* old_module = old.program->module;
+		mlir::OpBuilder* old_builder = old.program->op_builder;
+		mlir::MLIRContext* old_context = old.program->context;
+		delete old.program;
+		old_module->erase();
+		delete old_module;
+		delete old_builder;
+		delete old_context;
+		delete old.options;
 	}
 }

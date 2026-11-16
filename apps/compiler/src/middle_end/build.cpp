@@ -17,6 +17,7 @@
 #include "front_end/name_index.h"
 #include "hmir/hmir_dialect.h"
 #include "middle_end/generate.h"
+#include "middle_end/reflection.h"
 #include "util/phase_timer.h"
 
 #include "llvm/IR/LLVMContext.h"
@@ -111,9 +112,20 @@ namespace hemera {
 		std::mutex allocating;
 		std::mutex checking;
 		std::mutex reporting;
-		// Each target's program and options, for its part of the name index once they're all done
+		// Each target's program and options, for its part of the name index once they're all done, and what it was made with
 		std::vector<ProgramInfo*> programs(count, nullptr);
 		std::vector<Options*> programs_options(count, nullptr);
+		struct Made {
+			mlir::MLIRContext* context = nullptr;
+			mlir::OpBuilder* builder = nullptr;
+			mlir::ModuleOp* module = nullptr;
+		};
+		std::vector<Made> made(count);
+		// What a target did last time is forgotten, as a long-lived compiler builds them again (hemera --serve)
+		for (BuildTarget& target : registry.targets) {
+			target.built = false;
+			target.output.clear();
+		}
 		size_t printed = 0;
 
 		auto build_one = [&](size_t i, BuildTarget& target) -> bool {
@@ -137,12 +149,13 @@ namespace hemera {
 				std::scoped_lock<std::mutex> lock(allocating);
 				program = alloc.new_object<ProgramInfo>(mlir_context, mlir_builder, mlir_module);
 			}
+			programs[i] = program;
+			programs_options[i] = options;
+			made[i] = Made{ mlir_context, mlir_builder, mlir_module };
 			{
 				PhaseTimer timer(options->time_phases, std::format("check {}", std::filesystem::path(options->output_name).filename().string()));
 				if (index != nullptr) {
 					program->name_uses = std::make_shared<NameUses>();
-					programs[i] = program;
-					programs_options[i] = options;
 				}
 				kick_off_processing(program, options);
 			}
@@ -221,7 +234,39 @@ namespace hemera {
 		const bool worked = std::all_of(succeeded.begin(), succeeded.end(), [](char built) { return built != 0; });
 		// A check (--check) stops at its targets, as does building some of them: the steps would use them all
 		if (BuildExtent::CHECK == build_options.build_extent || !only.empty()) {
-			return worked && error_count() == 0;
+			const bool built = worked && error_count() == 0;
+			/*
+			 * Each target's program freed, for a compiler that goes on to check them again (hemera --serve), but its
+			 * types: the build's descriptions of them, from its checks, are kept by their addresses. The build's
+			 * constants worked out for them go, being kept by their declarations' addresses.
+			 */
+			if (build_options.free_targets) {
+				CompileTimeData& data = compile_time_data(build);
+				{
+					std::scoped_lock<std::mutex> lock(data.constant_values_mutex);
+					data.constant_values.clear();
+				}
+				static std::mutex kept_types_mutex;
+				static auto* kept_types = new std::vector<std::unique_ptr<TypeInfo>>();
+				for (size_t i = 0; i < count; ++i) {
+					if (programs[i] == nullptr) {
+						continue;
+					}
+					{
+						std::scoped_lock<std::mutex> lock(kept_types_mutex);
+						std::vector<std::unique_ptr<TypeInfo>>& owned = programs[i]->names.owned_types;
+						kept_types->insert(kept_types->end(), std::make_move_iterator(owned.begin()), std::make_move_iterator(owned.end()));
+						owned.clear();
+					}
+					programs[i]->~ProgramInfo();
+					programs_options[i]->~Options();
+					made[i].module->erase();
+					delete made[i].module;
+					delete made[i].builder;
+					delete made[i].context;
+				}
+			}
+			return built;
 		}
 		return run_build_steps(build, build_options) && worked && error_count() == 0;
 	}

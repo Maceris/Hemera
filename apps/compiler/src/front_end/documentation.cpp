@@ -339,11 +339,25 @@ namespace hemera {
 		return result;
 	}
 
+	namespace {
+
+		std::mutex checked_mutex;
+
+		// The documentation comments checked so far, by file and where they are
+		std::set<std::tuple<std::string, uint32_t, uint16_t>>& checked_comments() {
+			static auto* checked = new std::set<std::tuple<std::string, uint32_t, uint16_t>>();
+			return *checked;
+		}
+	}
+
 	bool first_documentation_check(std::string_view file_path, uint32_t line, uint16_t column) {
-		static std::mutex checked_mutex;
-		static auto* checked = new std::set<std::tuple<std::string, uint32_t, uint16_t>>();
 		std::scoped_lock<std::mutex> lock(checked_mutex);
-		return checked->insert({ key_of(file_path), line, column }).second;
+		return checked_comments().insert({ key_of(file_path), line, column }).second;
+	}
+
+	void forget_documentation_checks() {
+		std::scoped_lock<std::mutex> lock(checked_mutex);
+		checked_comments().clear();
 	}
 
 	std::optional<Documentation> documentation_at(std::string_view file_path, uint32_t line, uint16_t column) {

@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstddef>
 #include <cstdio>
 
 namespace hemera {
@@ -25,4 +26,7 @@ namespace hemera {
 	 * start; the stream stays open until the process ends.
 	 */
 	std::FILE* take_standard_output();
+
+	// How much memory the process is using, in bytes: its working set on Windows, its resident set elsewhere.
+	size_t memory_in_use();
 }
