@@ -87,6 +87,8 @@ namespace hemera::lsp {
 		bool exited = false;
 		// Whether the client was told the compiler couldn't run, which it's told once
 		bool told_cannot_run = false;
+		// Counts changes of settings: a check made under older ones is left out when it finishes
+		uint64_t generation = 0;
 		// For each root checked, the URIs it published diagnostics for, to clear any it no longer has
 		std::map<std::string, std::set<std::string>> published;
 		// Last, so it's stopped before what its thread uses goes

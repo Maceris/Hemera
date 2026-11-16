@@ -125,7 +125,8 @@ namespace hemera::lsp {
 	}
 
 	void Server::notification(std::string_view method, const Object* params) {
-		std::optional<std::string> to_check;
+		std::vector<std::string> to_check;
+		std::vector<Value> clearing;
 		{
 			std::lock_guard<std::mutex> lock(state);
 			if (method == "exit") {
@@ -141,7 +142,7 @@ namespace hemera::lsp {
 				const Object* document = params->getObject("textDocument");
 				const std::optional<llvm::StringRef> text = document->getString("text");
 				open_documents.open(*uri, text.has_value() ? text->str() : std::string(), document->getInteger("version").value_or(0));
-				to_check = uri;
+				to_check.push_back(*uri);
 			}
 			else if (method == "textDocument/didChange" && uri.has_value()) {
 				// Whole-document sync: the last change is the whole text
@@ -153,7 +154,7 @@ namespace hemera::lsp {
 				}
 			}
 			else if (method == "textDocument/didSave" && uri.has_value()) {
-				to_check = uri;
+				to_check.push_back(*uri);
 			}
 			else if (method == "textDocument/didClose" && uri.has_value()) {
 				open_documents.close(*uri);
@@ -161,11 +162,30 @@ namespace hemera::lsp {
 			else if (method == "workspace/didChangeConfiguration") {
 				const Object* all = params != nullptr ? params->getObject("settings") : nullptr;
 				read_settings(all != nullptr ? all->getObject("hemera") : nullptr);
+				/*
+				 * Other settings can check a file through another root, whose diagnostics would never clear what the old
+				 * one's published: everything is cleared, what's still running is left out (generation), and every open
+				 * document is checked again.
+				 */
+				++generation;
+				for (const auto& [root, uris] : published) {
+					for (const std::string& published_uri : uris) {
+						clearing.push_back(Object{ { "jsonrpc", "2.0" }, { "method", "textDocument/publishDiagnostics" },
+							{ "params", Object{ { "uri", published_uri }, { "diagnostics", Array{} } } } });
+					}
+				}
+				published.clear();
+				for (const auto& [key, open] : open_documents.all()) {
+					to_check.push_back(open.uri);
+				}
 			}
 			// Anything else, like $/ notifications, needs nothing
 		}
-		if (to_check.has_value()) {
-			check(*to_check);
+		for (Value& message : clearing) {
+			send(std::move(message));
+		}
+		for (const std::string& uri : to_check) {
+			check(uri);
 		}
 	}
 
@@ -301,6 +321,7 @@ namespace hemera::lsp {
 				return;
 			}
 			job.root = root_for(document->path);
+			job.generation = generation;
 			job.arguments = { settings.compiler_path, "--check", "--diagnostics=json" };
 			job.arguments.insert(job.arguments.end(), settings.arguments.begin(), settings.arguments.end());
 			// Each open document whose text isn't what's on disk is read from a file of its own instead
@@ -355,6 +376,9 @@ namespace hemera::lsp {
 		std::vector<Value> messages;
 		{
 			std::lock_guard<std::mutex> lock(state);
+			if (job.generation != generation) {
+				return;
+			}
 			if (!result.started) {
 				if (!told_cannot_run) {
 					told_cannot_run = true;

@@ -323,6 +323,29 @@ TEST(Server, TheRootSettingAppliesInsideTheWorkspace) {
 	EXPECT_EQ("/elsewhere/lib", session.server.root_for("/elsewhere/lib/lib.hsc"));
 }
 
+TEST(Server, ChangingSettingsClearsAndChecksAgain) {
+	const std::string folder = fresh_folder("settings");
+	std::filesystem::create_directories(folder + "/src");
+	const std::string path = folder + "/src/main.hsc";
+	write_file(path, MAIN_TEXT);
+	Session session;
+	// Checked through its own folder, which reports an error the build package doesn't
+	session.output = diagnostic_line(path, 4, 11);
+	session.initialize({}, {}, Array{ Object{ { "uri", hemera::lsp::uri_from_path(folder) }, { "name", "root" } } });
+	const std::string uri = hemera::lsp::uri_from_path(path);
+	session.notify("textDocument/didOpen", document(uri, MAIN_TEXT, 1));
+	ASSERT_EQ(1u, session.published().size());
+	session.output = "";
+	session.notify("workspace/didChangeConfiguration", Object{ { "settings", Object{ { "hemera", Object{ { "root", "build" } } } } } });
+
+	const std::vector<Object> published = session.published();
+	ASSERT_EQ(2u, published.size());
+	EXPECT_EQ(uri, published[1].getString("uri"));
+	EXPECT_TRUE(published[1].getArray("diagnostics")->empty());
+	ASSERT_EQ(2u, session.commands.size());
+	EXPECT_EQ(hemera::lsp::path_key(folder + "/build"), hemera::lsp::path_key(session.commands[1].back()));
+}
+
 TEST(Server, ACompilerThatCannotRunIsReportedOnce) {
 	const std::string folder = fresh_folder("cannot_run");
 	const std::string path = folder + "/main.hsc";

@@ -74,6 +74,8 @@ namespace hemera::lsp {
 		std::string root;
 		std::vector<std::string> arguments;
 		std::vector<std::string> temporaries;
+		// Which of the server's settings it was made under, so a result from before they changed is left out
+		uint64_t generation = 0;
 	};
 
 	/*
