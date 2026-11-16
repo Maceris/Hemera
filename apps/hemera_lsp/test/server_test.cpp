@@ -1,13 +1,21 @@
+#include <filesystem>
+#include <format>
+#include <fstream>
+#include <memory>
+#include <mutex>
 #include <string>
 #include <vector>
 
 #include "gtest/gtest.h"
 
 #include "server.h"
+#include "uri.h"
 
 #include "llvm/Support/JSON.h"
 
 using hemera::lsp::Encoding;
+using hemera::lsp::Run;
+using hemera::lsp::RunResult;
 using hemera::lsp::Server;
 using llvm::json::Array;
 using llvm::json::Object;
@@ -15,10 +23,39 @@ using llvm::json::Value;
 
 namespace {
 
-	// A server whose messages to the client are kept, in order
+	// A run that's already over, with what a fake compiler printed
+	class FinishedRun : public Run {
+	public:
+		explicit FinishedRun(RunResult result) : result(std::move(result)) {}
+		RunResult wait() override { return result; }
+		void stop() override {}
+
+	private:
+		RunResult result;
+	};
+
+	/*
+	 * A server whose messages to the client are kept, in order, with a fake compiler: each check prints output, and
+	 * its command is kept.
+	 */
 	struct Session {
+		std::mutex mutex;
 		std::vector<Value> sent;
-		Server server{ [this](Value message) { sent.push_back(std::move(message)); } };
+		std::vector<std::vector<std::string>> commands;
+		std::string output;
+		bool starts = true;
+		Server server{ [this](Value message) {
+			std::lock_guard<std::mutex> lock(mutex);
+			sent.push_back(std::move(message));
+		}, [this](const std::vector<std::string>& arguments) -> std::unique_ptr<Run> {
+			std::lock_guard<std::mutex> lock(mutex);
+			commands.push_back(arguments);
+			RunResult result;
+			result.started = starts;
+			result.output = output;
+			result.error = starts ? "" : "couldn't find hemera on the PATH";
+			return std::make_unique<FinishedRun>(result);
+		} };
 
 		bool request(int64_t id, std::string method, Object params = {}) {
 			return server.handle(Object{ { "jsonrpc", "2.0" }, { "id", id }, { "method", std::move(method) }, { "params", std::move(params) } });
@@ -28,8 +65,9 @@ namespace {
 			return server.handle(Object{ { "jsonrpc", "2.0" }, { "method", std::move(method) }, { "params", std::move(params) } });
 		}
 
-		void initialize(Array encodings = {}) {
-			request(1, "initialize", Object{ { "capabilities", Object{ { "general", Object{ { "positionEncodings", std::move(encodings) } } } } } });
+		void initialize(Array encodings = {}, Object options = {}, Array folders = {}) {
+			request(1, "initialize", Object{ { "capabilities", Object{ { "general", Object{ { "positionEncodings", std::move(encodings) } } } } },
+				{ "initializationOptions", std::move(options) }, { "workspaceFolders", std::move(folders) } });
 			notify("initialized");
 		}
 
@@ -42,12 +80,47 @@ namespace {
 			const Object* error = last().getObject("error");
 			return error != nullptr ? error->getInteger("code").value_or(0) : 0;
 		}
+
+		// The diagnostics published, each publishDiagnostics' params, in order
+		std::vector<Object> published() {
+			server.wait_for_checks();
+			std::lock_guard<std::mutex> lock(mutex);
+			std::vector<Object> found;
+			for (const Value& message : sent) {
+				const Object* object = message.getAsObject();
+				if (object->getString("method") == llvm::StringRef("textDocument/publishDiagnostics")) {
+					found.push_back(*object->getObject("params"));
+				}
+			}
+			return found;
+		}
 	};
 
 	Object document(std::string uri, std::string text, int64_t version) {
 		return Object{ { "textDocument", Object{ { "uri", std::move(uri) }, { "languageId", "hemera" }, { "version", version },
 			{ "text", std::move(text) } } } };
 	}
+
+	// A folder of the test's own, emptied, with / throughout
+	std::string fresh_folder(const std::string& name) {
+		const std::filesystem::path folder = std::filesystem::temp_directory_path() / "hemera_lsp_test" / name;
+		std::filesystem::remove_all(folder);
+		std::filesystem::create_directories(folder);
+		return std::filesystem::canonical(folder).generic_string();
+	}
+
+	void write_file(const std::string& path, const std::string& text) {
+		std::ofstream file(path, std::ios::binary);
+		file << text;
+	}
+
+	// A diagnostic as the compiler prints it with --diagnostics=json
+	std::string diagnostic_line(const std::string& file, int line, int column, const std::string& message = "Type mismatch") {
+		return std::format(R"({{"severity":"error","code":"hemera:E4015","file":"{}","line":{},"column":{},"message":"{}"}})", file, line,
+			column, message) + "\n";
+	}
+
+	const std::string MAIN_TEXT = "package main\n\nmain :: fn() -> int {\n    return \"\xC3\xA9t\xC3\xA9\"\n}\n";
 }
 
 TEST(Server, InitializeAnswersWithCapabilities) {
@@ -134,7 +207,8 @@ TEST(Server, KeepsOpenDocumentsInStep) {
 		{ "contentChanges", Array{ Object{ { "text", "second" } } } },
 	});
 
-	const hemera::lsp::Document* open = session.server.documents().find_path("d:/project/main.hsc");
+	const hemera::lsp::Documents documents = session.server.documents();
+	const hemera::lsp::Document* open = documents.find_path("d:/project/main.hsc");
 	ASSERT_NE(nullptr, open);
 	EXPECT_EQ("second", open->text);
 	EXPECT_EQ(2, open->version);
@@ -151,4 +225,130 @@ TEST(Server, NotificationsAfterShutdownAreDropped) {
 	session.notify("textDocument/didOpen", document("file:///d%3A/main.hsc", "text", 1));
 
 	EXPECT_TRUE(session.server.documents().all().empty());
+}
+
+TEST(Server, OpeningAFileChecksItsFolder) {
+	const std::string folder = fresh_folder("opening");
+	const std::string path = folder + "/main.hsc";
+	write_file(path, MAIN_TEXT);
+	Session session;
+	session.output = diagnostic_line(path, 4, 11);
+	session.initialize();
+	const std::string uri = hemera::lsp::uri_from_path(path);
+	session.notify("textDocument/didOpen", document(uri, MAIN_TEXT, 1));
+
+	const std::vector<Object> published = session.published();
+	ASSERT_EQ(1u, session.commands.size());
+	ASSERT_EQ(4u, session.commands[0].size());
+	EXPECT_EQ((std::vector<std::string>{ "hemera", "--check", "--diagnostics=json" }),
+		std::vector<std::string>(session.commands[0].begin(), session.commands[0].begin() + 3));
+	EXPECT_EQ(hemera::lsp::path_key(folder), hemera::lsp::path_key(session.commands[0][3]));
+	ASSERT_EQ(1u, published.size());
+	EXPECT_EQ(uri, published[0].getString("uri"));
+	const Array& diagnostics = *published[0].getArray("diagnostics");
+	ASSERT_EQ(1u, diagnostics.size());
+	const Object& diagnostic = *diagnostics[0].getAsObject();
+	EXPECT_EQ(1, diagnostic.getInteger("severity"));
+	EXPECT_EQ("hemera:E4015", diagnostic.getString("code"));
+	EXPECT_EQ("Type mismatch", diagnostic.getString("message"));
+	// "été" is 7 bytes, 5 UTF-16 code units with its quotes
+	const Object& range = *diagnostic.getObject("range");
+	EXPECT_EQ(3, range.getObject("start")->getInteger("line"));
+	EXPECT_EQ(11, range.getObject("start")->getInteger("character"));
+	EXPECT_EQ(3, range.getObject("end")->getInteger("line"));
+	EXPECT_EQ(16, range.getObject("end")->getInteger("character"));
+}
+
+TEST(Server, UnsavedTextIsOverlaid) {
+	const std::string folder = fresh_folder("overlaid");
+	const std::string path = folder + "/main.hsc";
+	write_file(path, MAIN_TEXT);
+	Session session;
+	session.initialize();
+	session.notify("textDocument/didOpen", document(hemera::lsp::uri_from_path(path), "package main\n", 1));
+	session.published();
+
+	ASSERT_EQ(1u, session.commands.size());
+	const std::vector<std::string>& command = session.commands[0];
+	ASSERT_EQ(5u, command.size());
+	// --overlay=path=file, where path has no = of its own
+	ASSERT_TRUE(command[3].starts_with("--overlay=")) << command[3];
+	const std::string overlay = command[3].substr(std::string_view("--overlay=").size());
+	const size_t equals = overlay.find('=');
+	ASSERT_NE(std::string::npos, equals) << command[3];
+	EXPECT_EQ(hemera::lsp::path_key(path), hemera::lsp::path_key(overlay.substr(0, equals)));
+	// The buffer's file is gone once the check is done
+	EXPECT_FALSE(std::filesystem::exists(overlay.substr(equals + 1)));
+}
+
+TEST(Server, FilesWithoutDiagnosticsAreCleared) {
+	const std::string folder = fresh_folder("cleared");
+	const std::string path = folder + "/main.hsc";
+	write_file(path, MAIN_TEXT);
+	Session session;
+	session.output = diagnostic_line(path, 4, 11);
+	session.initialize();
+	const std::string uri = hemera::lsp::uri_from_path(path);
+	session.notify("textDocument/didOpen", document(uri, MAIN_TEXT, 1));
+	session.published();
+	session.output = "";
+	session.notify("textDocument/didSave", Object{ { "textDocument", Object{ { "uri", uri } } } });
+
+	const std::vector<Object> published = session.published();
+	ASSERT_EQ(2u, published.size());
+	EXPECT_EQ(uri, published[1].getString("uri"));
+	EXPECT_TRUE(published[1].getArray("diagnostics")->empty());
+}
+
+TEST(Server, ADiagnosticSeveralTargetsReportIsPublishedOnce) {
+	const std::string folder = fresh_folder("targets");
+	const std::string path = folder + "/main.hsc";
+	write_file(path, MAIN_TEXT);
+	Session session;
+	session.output = diagnostic_line(path, 4, 11) + diagnostic_line(path, 4, 11) + "not a diagnostic\n";
+	session.initialize();
+	session.notify("textDocument/didOpen", document(hemera::lsp::uri_from_path(path), MAIN_TEXT, 1));
+
+	const std::vector<Object> published = session.published();
+	ASSERT_EQ(1u, published.size());
+	EXPECT_EQ(1u, published[0].getArray("diagnostics")->size());
+}
+
+TEST(Server, TheRootSettingAppliesInsideTheWorkspace) {
+	const std::string folder = fresh_folder("root");
+	Session session;
+	session.initialize({}, Object{ { "root", "build" } }, Array{ Object{ { "uri", hemera::lsp::uri_from_path(folder) }, { "name", "root" } } });
+
+	EXPECT_EQ(hemera::lsp::path_key(folder + "/build"), hemera::lsp::path_key(session.server.root_for(folder + "/src/kernel/main.hsc")));
+	EXPECT_EQ("/elsewhere/lib", session.server.root_for("/elsewhere/lib/lib.hsc"));
+}
+
+TEST(Server, ACompilerThatCannotRunIsReportedOnce) {
+	const std::string folder = fresh_folder("cannot_run");
+	const std::string path = folder + "/main.hsc";
+	write_file(path, MAIN_TEXT);
+	Session session;
+	session.starts = false;
+	session.initialize();
+	const std::string uri = hemera::lsp::uri_from_path(path);
+	session.notify("textDocument/didOpen", document(uri, MAIN_TEXT, 1));
+	session.notify("textDocument/didSave", Object{ { "textDocument", Object{ { "uri", uri } } } });
+	session.published();
+
+	size_t shown = 0;
+	for (const Value& message : session.sent) {
+		if (message.getAsObject()->getString("method") == llvm::StringRef("window/showMessage")) {
+			++shown;
+		}
+	}
+	EXPECT_EQ(1u, shown);
+}
+
+TEST(TokenEnd, CoversWordsStringsAndSingleCharacters) {
+	EXPECT_EQ(12u, hemera::lsp::token_end("abc := value", 7));
+	EXPECT_EQ(3u, hemera::lsp::token_end("abc := value", 0));
+	// f("a\"b"): the string, its escaped quote included
+	EXPECT_EQ(8u, hemera::lsp::token_end("f(\"a\\\"b\")", 2));
+	EXPECT_EQ(3u, hemera::lsp::token_end("a := 1", 2));
+	EXPECT_EQ(6u, hemera::lsp::token_end("a := 1", 9));
 }

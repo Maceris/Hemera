@@ -179,7 +179,7 @@ namespace hemera {
 		std::string file;
 		// Counting from 1; 0 when it's about no line in particular
 		uint32_t line = 0;
-		// Bytes from the line's start, counting from 1; 0 when it's about no column in particular
+		// Bytes from the line's start, counting from 0, as the printed text's are; 0 too for no column in particular
 		uint16_t column = 0;
 		// The text after the code, as printed: an error's title, with what's added to it after ". "
 		std::string message;

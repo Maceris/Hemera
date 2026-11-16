@@ -1,0 +1,142 @@
+"""
+Drives hemera-lsp over standard input and output, as an editor would, with the real compiler: a package with an
+error, which is published where it is; an unsaved fix, which a check sees through an overlay and clears; and a clean
+shutdown. Exits 0 when all of it went as it should, 1 otherwise, saying what didn't.
+
+    python -I drive_server.py --server path/to/hemera-lsp --compiler path/to/hemera
+"""
+
+import argparse
+import json
+import pathlib
+import queue
+import shutil
+import subprocess
+import sys
+import tempfile
+import threading
+
+TIMEOUT_SECONDS = 120
+
+BROKEN = "package main\n\nmain :: fn() -> int {\n    return \"not a number\"\n}\n"
+FIXED = "package main\n\nmain :: fn() -> int {\n    return helper()\n}\n"
+HELPER = "package main\n\nhelper :: fn() -> int {\n    return 0\n}\n"
+
+
+def uri_of(path):
+    return pathlib.Path(path).resolve().as_uri()
+
+
+class Client:
+    """The server's process, with what it sends read into a queue on a thread of its own."""
+
+    def __init__(self, server):
+        self.process = subprocess.Popen([server], stdin=subprocess.PIPE, stdout=subprocess.PIPE)
+        self.messages = queue.Queue()
+        self.next_id = 1
+        threading.Thread(target=self.read, daemon=True).start()
+
+    def read(self):
+        stream = self.process.stdout
+        while True:
+            length = None
+            while True:
+                line = stream.readline()
+                if not line:
+                    return
+                line = line.strip()
+                if not line:
+                    break
+                name, _, value = line.partition(b":")
+                if name.strip().lower() == b"content-length":
+                    length = int(value.strip())
+            self.messages.put(json.loads(stream.read(length)))
+
+    def send(self, message):
+        body = json.dumps(message).encode("utf-8")
+        self.process.stdin.write(b"Content-Length: %d\r\n\r\n" % len(body) + body)
+        self.process.stdin.flush()
+
+    def request(self, method, params):
+        request_id = self.next_id
+        self.next_id += 1
+        self.send({"jsonrpc": "2.0", "id": request_id, "method": method, "params": params})
+        return self.wait_for(lambda message: message.get("id") == request_id)
+
+    def notify(self, method, params):
+        self.send({"jsonrpc": "2.0", "method": method, "params": params})
+
+    def wait_for(self, matches):
+        while True:
+            try:
+                message = self.messages.get(timeout=TIMEOUT_SECONDS)
+            except queue.Empty:
+                raise AssertionError("the server said nothing for %d seconds" % TIMEOUT_SECONDS) from None
+            if message.get("method") == "window/showMessage":
+                raise AssertionError("the server said: " + message["params"]["message"])
+            if matches(message):
+                return message
+
+    def diagnostics_for(self, uri):
+        message = self.wait_for(lambda message: message.get("method") == "textDocument/publishDiagnostics"
+                                and message["params"]["uri"].lower() == uri.lower())
+        return message["params"]["diagnostics"]
+
+
+def drive(server, compiler, folder):
+    main = folder / "main.hsc"
+    helper = folder / "helper.hsc"
+    main.write_text(BROKEN, encoding="utf-8", newline="\n")
+    helper.write_text(HELPER, encoding="utf-8", newline="\n")
+
+    client = Client(server)
+    result = client.request("initialize", {
+        "processId": None,
+        "rootUri": uri_of(folder),
+        "capabilities": {"general": {"positionEncodings": ["utf-16"]}},
+        "initializationOptions": {"compilerPath": str(compiler)},
+    })
+    assert result["result"]["capabilities"]["positionEncoding"] == "utf-16", result
+    client.notify("initialized", {})
+
+    # The error, where it is: line 4, at the string
+    client.notify("textDocument/didOpen", {"textDocument": {"uri": uri_of(main), "languageId": "hemera", "version": 1,
+                                                            "text": BROKEN}})
+    diagnostics = client.diagnostics_for(uri_of(main))
+    assert len(diagnostics) == 1, diagnostics
+    error = diagnostics[0]
+    assert error["severity"] == 1 and error["code"] == "hemera:E4015", error
+    assert error["range"] == {"start": {"line": 3, "character": 11}, "end": {"line": 3, "character": 25}}, error["range"]
+
+    # Fixed but not saved: opening another file checks with the buffer, and the error is cleared
+    client.notify("textDocument/didChange", {"textDocument": {"uri": uri_of(main), "version": 2},
+                                             "contentChanges": [{"text": FIXED}]})
+    client.notify("textDocument/didOpen", {"textDocument": {"uri": uri_of(helper), "languageId": "hemera", "version": 1,
+                                                            "text": HELPER}})
+    assert client.diagnostics_for(uri_of(main)) == []
+
+    assert "error" not in client.request("shutdown", None)
+    client.notify("exit", None)
+    exit_code = client.process.wait(timeout=TIMEOUT_SECONDS)
+    assert exit_code == 0, "exit code %d" % exit_code
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__.strip().splitlines()[0])
+    parser.add_argument("--server", required=True, help="hemera-lsp")
+    parser.add_argument("--compiler", required=True, help="hemera")
+    arguments = parser.parse_args()
+    folder = pathlib.Path(tempfile.mkdtemp(prefix="hemera_lsp_drive_"))
+    try:
+        drive(pathlib.Path(arguments.server).resolve(), pathlib.Path(arguments.compiler).resolve(), folder)
+    except AssertionError as failure:
+        print("FAILED:", failure)
+        return 1
+    finally:
+        shutil.rmtree(folder, ignore_errors=True)
+    print("PASSED")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

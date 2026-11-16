@@ -1,8 +1,19 @@
 #include "server.h"
 
+#include <algorithm>
+#include <filesystem>
+#include <fstream>
+#include <iterator>
+#include <tuple>
 #include <utility>
 
+#include "uri.h"
 #include "version.h"
+
+#include "llvm/ADT/SmallString.h"
+#include "llvm/Support/FileSystem.h"
+#include "llvm/Support/Path.h"
+#include "llvm/Support/Program.h"
 
 namespace hemera::lsp {
 
@@ -10,18 +21,32 @@ namespace hemera::lsp {
 	using llvm::json::Object;
 	using llvm::json::Value;
 
-	Server::Server(Send send) : send(std::move(send)) {}
+	Server::Server(Send send, Launch launch) : send(std::move(send)) {
+		checker = std::make_unique<Checker>(std::move(launch), [this](const CheckJob& job, const RunResult& result) { checked(job, result); });
+	}
+
+	Server::~Server() {
+		// Its thread calls back into the server, so it goes first
+		checker.reset();
+	}
 
 	int Server::exit_code() const {
+		std::lock_guard<std::mutex> lock(state);
 		return shut_down ? 0 : 1;
 	}
 
 	Encoding Server::encoding() const {
+		std::lock_guard<std::mutex> lock(state);
 		return position_encoding;
 	}
 
-	const Documents& Server::documents() const {
+	Documents Server::documents() const {
+		std::lock_guard<std::mutex> lock(state);
 		return open_documents;
+	}
+
+	void Server::wait_for_checks() {
+		checker->wait_idle();
 	}
 
 	void Server::respond(const Value& id, Value result) {
@@ -40,50 +65,55 @@ namespace hemera::lsp {
 		const Object* object = message.getAsObject();
 		if (object == nullptr) {
 			respond_error(nullptr, error_codes::INVALID_REQUEST, "a message is a JSON object");
-			return !exited;
 		}
-		const std::optional<llvm::StringRef> method = object->getString("method");
-		const Value* id = object->get("id");
-		if (!method.has_value()) {
-			// A response to a request of the server's; it sends none, so there's nothing to match it to
-			if (id == nullptr) {
-				respond_error(nullptr, error_codes::INVALID_REQUEST, "a message has a method, or is a response");
+		else if (const std::optional<llvm::StringRef> method = object->getString("method")) {
+			const Object* params = object->getObject("params");
+			if (const Value* id = object->get("id")) {
+				request(*id, *method, params);
 			}
-			return !exited;
+			else {
+				notification(*method, params);
+			}
 		}
-		const Object* params = object->getObject("params");
-		if (id != nullptr) {
-			request(*id, *method, params);
+		// A response to a request of the server's; it sends none, so there's nothing to match it to
+		else if (object->get("id") == nullptr) {
+			respond_error(nullptr, error_codes::INVALID_REQUEST, "a message has a method, or is a response");
 		}
-		else {
-			notification(*method, params);
-		}
+		std::lock_guard<std::mutex> lock(state);
 		return !exited;
 	}
 
 	void Server::request(const Value& id, std::string_view method, const Object* params) {
+		std::unique_lock<std::mutex> lock(state);
 		if (method == "initialize") {
 			if (initialized) {
+				lock.unlock();
 				respond_error(id, error_codes::INVALID_REQUEST, "initialize was already sent");
 				return;
 			}
 			initialized = true;
-			respond(id, initialize(params));
+			Value result = initialize(params);
+			lock.unlock();
+			respond(id, std::move(result));
 			return;
 		}
 		if (!initialized) {
+			lock.unlock();
 			respond_error(id, error_codes::SERVER_NOT_INITIALIZED, "initialize comes first");
 			return;
 		}
 		if (shut_down) {
+			lock.unlock();
 			respond_error(id, error_codes::INVALID_REQUEST, "the server has shut down");
 			return;
 		}
 		if (method == "shutdown") {
 			shut_down = true;
+			lock.unlock();
 			respond(id, nullptr);
 			return;
 		}
+		lock.unlock();
 		respond_error(id, error_codes::METHOD_NOT_FOUND, std::string("no method ") + std::string(method));
 	}
 
@@ -95,33 +125,116 @@ namespace hemera::lsp {
 	}
 
 	void Server::notification(std::string_view method, const Object* params) {
-		if (method == "exit") {
-			exited = true;
-			return;
+		std::optional<std::string> to_check;
+		{
+			std::lock_guard<std::mutex> lock(state);
+			if (method == "exit") {
+				exited = true;
+				return;
+			}
+			// Before initialize, and after shutdown, notifications are dropped
+			if (!initialized || shut_down) {
+				return;
+			}
+			const std::optional<std::string> uri = document_uri(params);
+			if (method == "textDocument/didOpen" && uri.has_value()) {
+				const Object* document = params->getObject("textDocument");
+				const std::optional<llvm::StringRef> text = document->getString("text");
+				open_documents.open(*uri, text.has_value() ? text->str() : std::string(), document->getInteger("version").value_or(0));
+				to_check = uri;
+			}
+			else if (method == "textDocument/didChange" && uri.has_value()) {
+				// Whole-document sync: the last change is the whole text
+				const Array* changes = params->getArray("contentChanges");
+				const Object* last = changes != nullptr && !changes->empty() ? changes->back().getAsObject() : nullptr;
+				const std::optional<llvm::StringRef> text = last != nullptr ? last->getString("text") : std::nullopt;
+				if (text.has_value()) {
+					open_documents.change(*uri, text->str(), params->getObject("textDocument")->getInteger("version").value_or(0));
+				}
+			}
+			else if (method == "textDocument/didSave" && uri.has_value()) {
+				to_check = uri;
+			}
+			else if (method == "textDocument/didClose" && uri.has_value()) {
+				open_documents.close(*uri);
+			}
+			else if (method == "workspace/didChangeConfiguration") {
+				const Object* all = params != nullptr ? params->getObject("settings") : nullptr;
+				read_settings(all != nullptr ? all->getObject("hemera") : nullptr);
+			}
+			// Anything else, like $/ notifications, needs nothing
 		}
-		// Before initialize, and after shutdown, notifications are dropped
-		if (!initialized || shut_down) {
-			return;
+		if (to_check.has_value()) {
+			check(*to_check);
 		}
-		const std::optional<std::string> uri = document_uri(params);
-		if (method == "textDocument/didOpen" && uri.has_value()) {
-			const Object* document = params->getObject("textDocument");
-			const std::optional<llvm::StringRef> text = document->getString("text");
-			open_documents.open(*uri, text.has_value() ? text->str() : std::string(), document->getInteger("version").value_or(0));
+	}
+
+	// A path's folder, with / throughout
+	static std::string folder_of(const std::string& path) {
+		return std::filesystem::path(path).parent_path().generic_string();
+	}
+
+	// Whether path is folder or inside it, compared as path_key does
+	static bool within(const std::string& path, const std::string& folder) {
+		const std::string inside = path_key(path);
+		std::string outside = path_key(folder);
+		while (outside.size() > 1 && outside.back() == '/') {
+			outside.pop_back();
 		}
-		else if (method == "textDocument/didChange" && uri.has_value()) {
-			// Whole-document sync: the last change is the whole text
-			const Array* changes = params->getArray("contentChanges");
-			const Object* last = changes != nullptr && !changes->empty() ? changes->back().getAsObject() : nullptr;
-			const std::optional<llvm::StringRef> text = last != nullptr ? last->getString("text") : std::nullopt;
-			if (text.has_value()) {
-				open_documents.change(*uri, text->str(), params->getObject("textDocument")->getInteger("version").value_or(0));
+		return inside.starts_with(outside) && (inside.size() == outside.size() || inside[outside.size()] == '/');
+	}
+
+	std::string Server::root_for(const std::string& path) const {
+		for (const std::string& folder : workspace_folders) {
+			if (!settings.root.empty() && within(path, folder)) {
+				const std::filesystem::path root(settings.root);
+				return root.is_absolute() ? root.generic_string()
+					: (std::filesystem::path(workspace_folders.front()) / root).lexically_normal().generic_string();
 			}
 		}
-		else if (method == "textDocument/didClose" && uri.has_value()) {
-			open_documents.close(*uri);
+		return folder_of(path);
+	}
+
+	std::string find_base_folder(const std::string& compiler_path) {
+		std::string program = compiler_path;
+		if (!llvm::sys::path::has_parent_path(program)) {
+			llvm::ErrorOr<std::string> found = llvm::sys::findProgramByName(program);
+			if (!found) {
+				return {};
+			}
+			program = *found;
 		}
-		// Anything else, like didSave and $/ notifications, needs nothing yet
+		std::error_code error;
+		std::filesystem::path folder = std::filesystem::weakly_canonical(program, error).parent_path();
+		for (; !folder.empty(); folder = folder.parent_path()) {
+			if (std::filesystem::is_directory(folder / "base" / "runtime", error)) {
+				return (folder / "base").generic_string();
+			}
+			if (folder == folder.parent_path()) {
+				break;
+			}
+		}
+		return {};
+	}
+
+	void Server::read_settings(const Object* hemera) {
+		if (hemera == nullptr) {
+			return;
+		}
+		Settings read;
+		if (const std::optional<llvm::StringRef> path = hemera->getString("compilerPath"); path.has_value() && !path->empty()) {
+			read.compiler_path = path->str();
+		}
+		read.root = hemera->getString("root").value_or("").str();
+		if (const Array* arguments = hemera->getArray("arguments")) {
+			for (const Value& argument : *arguments) {
+				if (const std::optional<llvm::StringRef> text = argument.getAsString()) {
+					read.arguments.push_back(text->str());
+				}
+			}
+		}
+		settings = std::move(read);
+		base_folder = find_base_folder(settings.compiler_path);
 	}
 
 	Value Server::initialize(const Object* params) {
@@ -137,6 +250,26 @@ namespace hemera::lsp {
 				}
 			}
 		}
+		// The workspace's folders, or its one root, as older clients give it
+		workspace_folders.clear();
+		if (const Array* folders = params != nullptr ? params->getArray("workspaceFolders") : nullptr) {
+			for (const Value& folder : *folders) {
+				const Object* object = folder.getAsObject();
+				const std::optional<llvm::StringRef> uri = object != nullptr ? object->getString("uri") : std::nullopt;
+				if (uri.has_value() && !path_from_uri(*uri).empty()) {
+					workspace_folders.push_back(path_from_uri(*uri));
+				}
+			}
+		}
+		if (workspace_folders.empty() && params != nullptr) {
+			if (const std::optional<llvm::StringRef> root = params->getString("rootUri"); root.has_value() && !path_from_uri(*root).empty()) {
+				workspace_folders.push_back(path_from_uri(*root));
+			}
+		}
+		read_settings(params != nullptr ? params->getObject("initializationOptions") : nullptr);
+		if (base_folder.empty()) {
+			base_folder = find_base_folder(settings.compiler_path);
+		}
 		return Object{
 			{ "capabilities", Object{
 				{ "positionEncoding", Encoding::UTF8 == position_encoding ? "utf-8" : "utf-16" },
@@ -149,5 +282,147 @@ namespace hemera::lsp {
 			} },
 			{ "serverInfo", Object{ { "name", "hemera-lsp" }, { "version", VERSION_STR } } },
 		};
+	}
+
+	static std::optional<std::string> read_file(const std::string& path) {
+		std::ifstream file(path, std::ios::binary);
+		if (!file.is_open()) {
+			return std::nullopt;
+		}
+		return std::string(std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>());
+	}
+
+	void Server::check(const std::string& uri) {
+		CheckJob job;
+		{
+			std::lock_guard<std::mutex> lock(state);
+			const Document* document = open_documents.find_uri(uri);
+			if (document == nullptr || document->path.empty() || !document->path.ends_with(".hsc")) {
+				return;
+			}
+			job.root = root_for(document->path);
+			job.arguments = { settings.compiler_path, "--check", "--diagnostics=json" };
+			job.arguments.insert(job.arguments.end(), settings.arguments.begin(), settings.arguments.end());
+			// Each open document whose text isn't what's on disk is read from a file of its own instead
+			for (const auto& [key, open] : open_documents.all()) {
+				if (open.path.empty() || read_file(open.path) == open.text) {
+					continue;
+				}
+				llvm::SmallString<256> temporary;
+				if (llvm::sys::fs::createTemporaryFile("hemera-lsp-buffer", "hsc", temporary)) {
+					continue;
+				}
+				std::ofstream file(temporary.str().str(), std::ios::binary);
+				file << open.text;
+				job.temporaries.push_back(temporary.str().str());
+				job.arguments.push_back("--overlay=" + open.path + "=" + temporary.str().str());
+			}
+			job.arguments.push_back(job.root);
+		}
+		checker->request(std::move(job));
+	}
+
+	uint32_t token_end(std::string_view line, uint32_t column) {
+		if (column >= line.size()) {
+			return static_cast<uint32_t>(line.size());
+		}
+		const auto is_word = [](char c) {
+			const unsigned char byte = static_cast<unsigned char>(c);
+			return byte >= 0x80 || byte == '_' || (byte >= '0' && byte <= '9') || (byte >= 'a' && byte <= 'z') || (byte >= 'A' && byte <= 'Z');
+		};
+		size_t end = column;
+		if (is_word(line[end])) {
+			while (end < line.size() && is_word(line[end])) {
+				++end;
+			}
+			return static_cast<uint32_t>(end);
+		}
+		if (line[end] == '"') {
+			for (++end; end < line.size(); ++end) {
+				if (line[end] == '\\') {
+					++end;
+				}
+				else if (line[end] == '"') {
+					return static_cast<uint32_t>(end + 1);
+				}
+			}
+			return static_cast<uint32_t>(line.size());
+		}
+		return static_cast<uint32_t>(end + 1);
+	}
+
+	void Server::checked(const CheckJob& job, const RunResult& result) {
+		std::vector<Value> messages;
+		{
+			std::lock_guard<std::mutex> lock(state);
+			if (!result.started) {
+				if (!told_cannot_run) {
+					told_cannot_run = true;
+					messages.push_back(Object{ { "jsonrpc", "2.0" }, { "method", "window/showMessage" },
+						{ "params", Object{ { "type", 1 }, { "message", "Hemera: " + result.error + ". Set hemera.compilerPath to the compiler." } } } });
+				}
+			}
+			else {
+				const std::vector<CompilerDiagnostic> found = parse_diagnostics(result.output);
+				// By file, each once, as one file can be in several of a build's targets
+				std::map<std::string, std::vector<const CompilerDiagnostic*>> by_file;
+				std::map<std::string, std::string> file_paths;
+				std::set<std::tuple<std::string, std::string, std::string, uint32_t, uint32_t, std::string>> seen;
+				for (const CompilerDiagnostic& diagnostic : found) {
+					std::string path = diagnostic.file;
+					if (path.starts_with("<base>/")) {
+						if (base_folder.empty()) {
+							continue;
+						}
+						path = base_folder + path.substr(std::string_view("<base>").size());
+					}
+					const std::string key = path_key(path);
+					if (!seen.emplace(key, diagnostic.severity, diagnostic.code, diagnostic.line, diagnostic.column, diagnostic.message).second) {
+						continue;
+					}
+					by_file[key].push_back(&diagnostic);
+					file_paths[key] = path;
+				}
+				std::set<std::string> now;
+				for (const auto& [key, diagnostics] : by_file) {
+					const std::string& path = file_paths[key];
+					const Document* open = open_documents.find_path(path);
+					const std::string uri = open != nullptr ? open->uri : uri_from_path(path);
+					const std::string text = open != nullptr ? open->text : read_file(path).value_or(std::string());
+					const LineIndex index(text);
+					Array published_diagnostics;
+					for (const CompilerDiagnostic* diagnostic : diagnostics) {
+						const uint32_t line = diagnostic->line > 0 ? diagnostic->line - 1 : 0;
+						const uint32_t start = diagnostic->column;
+						const uint32_t end = token_end(index.line(line), start);
+						Object range{
+							{ "start", Object{ { "line", line }, { "character", index.character(line, start, position_encoding) } } },
+							{ "end", Object{ { "line", line }, { "character", index.character(line, end, position_encoding) } } },
+						};
+						const int64_t severity = diagnostic->severity == "error" ? 1 : diagnostic->severity == "warning" ? 2 : 3;
+						Object published_diagnostic{ { "range", std::move(range) }, { "severity", severity }, { "source", "hemera" },
+							{ "message", diagnostic->message } };
+						if (!diagnostic->code.empty()) {
+							published_diagnostic["code"] = diagnostic->code;
+						}
+						published_diagnostics.push_back(std::move(published_diagnostic));
+					}
+					now.insert(uri);
+					messages.push_back(Object{ { "jsonrpc", "2.0" }, { "method", "textDocument/publishDiagnostics" },
+						{ "params", Object{ { "uri", uri }, { "diagnostics", std::move(published_diagnostics) } } } });
+				}
+				// What had diagnostics from this root before and has none now is cleared
+				for (const std::string& uri : published[job.root]) {
+					if (!now.contains(uri)) {
+						messages.push_back(Object{ { "jsonrpc", "2.0" }, { "method", "textDocument/publishDiagnostics" },
+							{ "params", Object{ { "uri", uri }, { "diagnostics", Array{} } } } });
+					}
+				}
+				published[job.root] = std::move(now);
+			}
+		}
+		for (Value& message : messages) {
+			send(std::move(message));
+		}
 	}
 }

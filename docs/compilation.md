@@ -164,8 +164,8 @@ read, in place of its text (`--diagnostics=text`, the default):
 * `severity` is `error`, `warning` or `information`, the last for what compile-time code logs below the warning level.
 * `code` is the prefix and code, as the text gives them. Information has none, and leaves it out.
 * `file` is the path on disk, with `/` throughout, or `<base>/...` for `base`'s files.
-* `line` and `column` count from 1, and the column counts bytes. Either is 0 when the diagnostic is about no line or
-  column in particular, like a file that can't be written.
+* `line` counts from 1, and `column` counts bytes from the line's start, from 0, as the text's do. The line is 0, and
+  the column with it, when the diagnostic is about no line in particular, like a file that can't be written.
 * `message` is the text after the code.
 
 They come in the order the text would, a build package's targets in order, and the exit code is the same.
