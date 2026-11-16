@@ -49,13 +49,15 @@ TEST(Index, FindsWhatANameNames) {
 	const std::string shapes = hemera::lsp::path_key("D:/p/shapes.hsc");
 
 	// Anywhere in a use, its ends included
-	EXPECT_EQ(0u, index->declaration_at(main, 20));
-	EXPECT_EQ(0u, index->declaration_at(main, 25));
-	EXPECT_EQ(1u, index->declaration_at(main, 50));
-	EXPECT_FALSE(index->declaration_at(main, 30).has_value());
+	EXPECT_EQ(0u, index->name_at(main, 20)->declaration);
+	EXPECT_EQ(0u, index->name_at(main, 25)->declaration);
+	EXPECT_EQ(20u, index->name_at(main, 25)->offset);
+	EXPECT_EQ(5u, index->name_at(main, 25)->length);
+	EXPECT_EQ(1u, index->name_at(main, 50)->declaration);
+	EXPECT_FALSE(index->name_at(main, 30).has_value());
 	// And at a declaration's own name
-	EXPECT_EQ(1u, index->declaration_at(shapes, 30));
-	EXPECT_FALSE(index->declaration_at(shapes, 40).has_value());
+	EXPECT_EQ(1u, index->name_at(shapes, 30)->declaration);
+	EXPECT_FALSE(index->name_at(shapes, 40).has_value());
 }
 
 TEST(Index, ListsEveryPlaceADeclarationIsNamed) {

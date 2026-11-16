@@ -51,11 +51,18 @@ namespace hemera::lsp {
 		 */
 		std::map<std::string, std::string> texts;
 
+		// A name in a file: the declaration it names, by number, and where the name is, in bytes
+		struct NameAt {
+			size_t declaration = 0;
+			uint32_t offset = 0;
+			uint32_t length = 0;
+		};
+
 		/*
-		 * The declaration named at offset in a file (path_key): by a use there, or by a declaration's name there.
+		 * The name at offset in a file (path_key), its ends included: a use there, or a declaration's own name.
 		 * Empty when there's no name at offset.
 		 */
-		std::optional<size_t> declaration_at(const std::string& file, size_t offset) const;
+		std::optional<NameAt> name_at(const std::string& file, size_t offset) const;
 
 		/*
 		 * Every place declaration is named, in every file: its uses and its own name, each as a file (path_key) and

@@ -313,6 +313,8 @@ namespace hemera::lsp {
 				{ "documentFormattingProvider", true },
 				{ "documentSymbolProvider", true },
 				{ "foldingRangeProvider", true },
+				{ "definitionProvider", true },
+				{ "hoverProvider", true },
 			} },
 			{ "serverInfo", Object{ { "name", "hemera-lsp" }, { "version", VERSION_STR } } },
 		};
@@ -488,6 +490,12 @@ namespace hemera::lsp {
 		if (method == "textDocument/formatting") {
 			return uri.has_value() ? format(*uri) : Value(Array{});
 		}
+		if (method == "textDocument/definition") {
+			return definition(params);
+		}
+		if (method == "textDocument/hover") {
+			return hover(params);
+		}
 		if (method == "textDocument/foldingRange") {
 			// This version, from its tokens, whether it parses or not (decision 4)
 			const Parses* parses_of = uri.has_value() ? parsed(*uri) : nullptr;
@@ -527,6 +535,143 @@ namespace hemera::lsp {
 				{ "end", position_at(index, change->end, position_encoding) } } },
 			{ "newText", change->text },
 		} };
+	}
+
+	std::optional<std::pair<std::string, std::string>> Server::texts_of(const LoadedIndex& index, const std::string& file) {
+		const std::string key = path_key(file);
+		if (const Document* open = open_documents.find_path(file)) {
+			auto then = index.texts.find(key);
+			// Opened after the check began: the check read it from disk
+			if (then == index.texts.end()) {
+				std::optional<std::string> on_disk = read_file(open->path);
+				return std::make_pair(on_disk.value_or(open->text), open->text);
+			}
+			return std::make_pair(then->second, open->text);
+		}
+		std::optional<std::string> on_disk = read_file(file);
+		if (!on_disk.has_value()) {
+			return std::nullopt;
+		}
+		return std::make_pair(*on_disk, *on_disk);
+	}
+
+	std::optional<Server::Named> Server::named_at(const Object* params) {
+		const std::optional<std::string> uri = document_uri(params);
+		const Document* document = uri.has_value() ? open_documents.find_uri(*uri) : nullptr;
+		const Object* position = params != nullptr ? params->getObject("position") : nullptr;
+		if (document == nullptr || document->path.empty() || position == nullptr) {
+			return std::nullopt;
+		}
+		const std::string key = path_key(document->path);
+		// The index of the document's root, or else any that knows the file
+		std::shared_ptr<const LoadedIndex> index;
+		if (auto found = indexes.find(path_key(root_for(document->path))); found != indexes.end()) {
+			index = found->second;
+		}
+		for (auto it = indexes.begin(); index == nullptr && it != indexes.end(); ++it) {
+			if (it->second->uses.contains(key) || it->second->declared.contains(key)) {
+				index = it->second;
+			}
+		}
+		const std::optional<std::pair<std::string, std::string>> texts = index != nullptr ? texts_of(*index, document->path) : std::nullopt;
+		if (!texts.has_value()) {
+			return std::nullopt;
+		}
+		const LineIndex lines(document->text);
+		const size_t now = lines.offset_of(static_cast<uint32_t>(position->getInteger("line").value_or(0)),
+			static_cast<uint32_t>(position->getInteger("character").value_or(0)), position_encoding);
+		const std::optional<size_t> then = moved_back(texts->first, texts->second, now);
+		const std::optional<LoadedIndex::NameAt> name = then.has_value() ? index->name_at(key, *then) : std::nullopt;
+		if (!name.has_value()) {
+			return std::nullopt;
+		}
+		const std::optional<size_t> start = moved_forward(texts->first, texts->second, name->offset);
+		const std::optional<size_t> end = moved_forward(texts->first, texts->second, static_cast<size_t>(name->offset) + name->length);
+		if (!start.has_value() || !end.has_value()) {
+			return std::nullopt;
+		}
+		return Named{ index, name->declaration, *start, *end };
+	}
+
+	Value Server::location_of(const LoadedIndex& index, const std::string& file, size_t start, size_t end) {
+		const std::optional<std::pair<std::string, std::string>> texts = texts_of(index, file);
+		const std::optional<size_t> start_now = texts.has_value() ? moved_forward(texts->first, texts->second, start) : std::nullopt;
+		const std::optional<size_t> end_now = texts.has_value() ? moved_forward(texts->first, texts->second, end) : std::nullopt;
+		if (!start_now.has_value() || !end_now.has_value()) {
+			return nullptr;
+		}
+		const Document* open = open_documents.find_path(file);
+		const LineIndex lines(texts->second);
+		return Object{
+			{ "uri", open != nullptr ? open->uri : uri_from_path(file) },
+			{ "range", Object{ { "start", position_at(lines, *start_now, position_encoding) },
+				{ "end", position_at(lines, *end_now, position_encoding) } } },
+		};
+	}
+
+	Value Server::definition(const Object* params) {
+		const std::optional<Named> named = named_at(params);
+		if (!named.has_value()) {
+			return nullptr;
+		}
+		const IndexedDeclaration& declaration = named->index->declarations[named->declaration];
+		return location_of(*named->index, declaration.file, declaration.name_offset,
+			static_cast<size_t>(declaration.name_offset) + declaration.name_length);
+	}
+
+	// What a declaration's line says, from its name: its first line, without an opening brace or a comma at its end
+	static std::string signature_in(std::string_view text, const IndexedDeclaration& declaration) {
+		if (declaration.name_offset >= text.size()) {
+			return {};
+		}
+		std::string_view line = text.substr(declaration.name_offset);
+		line = line.substr(0, line.find_first_of("\r\n"));
+		while (!line.empty() && (line.back() == ' ' || line.back() == '\t' || line.back() == '{' || line.back() == ',')) {
+			line.remove_suffix(1);
+		}
+		return std::string(line);
+	}
+
+	Value Server::hover(const Object* params) {
+		const std::optional<Named> named = named_at(params);
+		if (!named.has_value()) {
+			return nullptr;
+		}
+		const IndexedDeclaration& declaration = named->index->declarations[named->declaration];
+		std::string name;
+		std::string signature;
+		if (const std::optional<std::pair<std::string, std::string>> texts = texts_of(*named->index, declaration.file)) {
+			name = texts->first.substr(declaration.name_offset, declaration.name_length);
+			signature = signature_in(texts->first, declaration);
+		}
+		// A local's or a field's line holds more than it, or less, so it's its name and type
+		if (("local" == declaration.kind || "field" == declaration.kind) && !declaration.type.empty()) {
+			signature = name + " : " + declaration.type;
+		}
+		std::string markdown = "```hemera\n" + signature + "\n```";
+		if ("constant" == declaration.kind && !declaration.type.empty()) {
+			markdown += "\n\nType: `" + declaration.type + "`";
+		}
+		if (!declaration.brief.empty()) {
+			markdown += "\n\n" + declaration.brief;
+		}
+		if (!declaration.details.empty()) {
+			markdown += "\n\n" + declaration.details;
+		}
+		if (!declaration.tags.empty()) {
+			markdown += "\n";
+			for (const IndexedDeclaration::Tag& tag : declaration.tags) {
+				markdown += "\n*@" + tag.tag + "*" + (tag.name.empty() ? "" : " `" + tag.name + "`") + " — " + tag.text + "  ";
+			}
+		}
+		const std::string uri = document_uri(params).value_or("");
+		const Document* document = open_documents.find_uri(uri);
+		const LineIndex lines(document != nullptr ? document->text : std::string());
+		return Object{
+			{ "contents", Object{ { "kind", "markdown" }, { "value", markdown } } },
+			{ "range", Object{ { "start", position_at(lines, named->start, position_encoding) },
+				{ "end", position_at(lines, named->end, position_encoding) } } },
+		};
 	}
 
 	const Server::Parses* Server::parsed(const std::string& uri) {

@@ -13,7 +13,7 @@ namespace hemera::lsp {
 	using llvm::json::Object;
 	using llvm::json::Value;
 
-	std::optional<size_t> LoadedIndex::declaration_at(const std::string& file, size_t offset) const {
+	std::optional<LoadedIndex::NameAt> LoadedIndex::name_at(const std::string& file, size_t offset) const {
 		if (auto found = uses.find(file); found != uses.end()) {
 			// The last use starting at or before offset, if offset is inside it
 			const std::vector<IndexedUse>& in_file = found->second;
@@ -22,7 +22,7 @@ namespace hemera::lsp {
 			if (after != in_file.begin()) {
 				const IndexedUse& use = *(after - 1);
 				if (offset <= static_cast<size_t>(use.offset) + use.length) {
-					return use.declaration;
+					return NameAt{ use.declaration, use.offset, use.length };
 				}
 			}
 		}
@@ -30,7 +30,7 @@ namespace hemera::lsp {
 			for (const size_t number : found->second) {
 				const IndexedDeclaration& declaration = declarations[number];
 				if (declaration.name_offset <= offset && offset <= static_cast<size_t>(declaration.name_offset) + declaration.name_length) {
-					return number;
+					return NameAt{ number, declaration.name_offset, declaration.name_length };
 				}
 			}
 		}

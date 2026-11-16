@@ -168,7 +168,7 @@ TEST(Server, RequestsBeforeInitializeAreRefused) {
 TEST(Server, UnknownRequestsAreNotFound) {
 	Session session;
 	session.initialize();
-	session.request(2, "textDocument/hover");
+	session.request(2, "textDocument/signatureHelp");
 
 	EXPECT_EQ(hemera::lsp::error_codes::METHOD_NOT_FOUND, session.last_error());
 	EXPECT_EQ(Value(2), *session.last().get("id"));
@@ -627,6 +627,98 @@ TEST(Server, FoldingWorksWhileAFileDoesNotParse) {
 	session.notify("textDocument/didOpen", document(uri, "package main\n\nbroken :: fn( {\n    x\n    y\n}\n", 1));
 
 	EXPECT_EQ((std::vector<std::string>{ "2-4 code" }), folds_of(session, uri));
+}
+
+namespace {
+
+	const std::string CALLER = "package main\n\nmain :: fn() -> int {\n    return helper()\n}\n";
+	const std::string CALLED = "package main\n\n/** Helps. */\nhelper :: fn() -> int {\n    return 0\n}\n";
+
+	/*
+	 * A folder with CALLER in main.hsc and CALLED in helper.hsc, and a session whose fake compiler writes their index:
+	 * helper declared at byte 28 of helper.hsc, used at byte 47 of main.hsc
+	 */
+	struct Indexed {
+		std::string folder = fresh_folder("indexed");
+		std::string main = folder + "/main.hsc";
+		std::string helper = folder + "/helper.hsc";
+		Session session;
+
+		Indexed() {
+			write_file(main, CALLER);
+			write_file(helper, CALLED);
+			session.index_json = std::format(
+				"{{\"version\":1,\"files\":[\"{}\",\"{}\"],\"declarations\":[\n"
+				"{{\"file\":0,\"name\":[28,6],\"span\":[28,62],\"kind\":\"function\",\"type\":\"fn() -> int\",\"brief\":\"Helps.\","
+				"\"tags\":[[\"return\",\"\",\"Nothing much.\"]]}}],\n"
+				"\"uses\":[\n[1,47,6,0]]}}\n", helper, main);
+			session.initialize();
+		}
+
+		// Opens main.hsc, and waits for its check
+		void open_main(const std::string& text = CALLER) {
+			session.notify("textDocument/didOpen", document(hemera::lsp::uri_from_path(main), text, 1));
+			session.published();
+		}
+
+		const Value* ask(int64_t id, const std::string& method, int64_t line, int64_t character) {
+			session.request(id, method, Object{ { "textDocument", Object{ { "uri", hemera::lsp::uri_from_path(main) } } },
+				{ "position", Object{ { "line", line }, { "character", character } } } });
+			return session.last().get("result");
+		}
+	};
+
+	// A Location's or a range's "line:character-line:character"
+	std::string range_text(const Object& range) {
+		const Object& start = *range.getObject("start");
+		const Object& end = *range.getObject("end");
+		return std::format("{}:{}-{}:{}", *start.getInteger("line"), *start.getInteger("character"), *end.getInteger("line"),
+			*end.getInteger("character"));
+	}
+}
+
+TEST(Server, DefinitionLeadsToTheDeclaration) {
+	Indexed indexed;
+	indexed.open_main();
+
+	const Value* found = indexed.ask(20, "textDocument/definition", 3, 13);
+	ASSERT_NE(nullptr, found);
+	ASSERT_NE(nullptr, found->getAsObject());
+	EXPECT_EQ(hemera::lsp::path_key(indexed.helper), hemera::lsp::path_key(hemera::lsp::path_from_uri(*found->getAsObject()->getString("uri"))));
+	EXPECT_EQ("3:0-3:6", range_text(*found->getAsObject()->getObject("range")));
+	// Nothing where there's no name
+	EXPECT_EQ(Value(nullptr), *indexed.ask(21, "textDocument/definition", 0, 2));
+}
+
+TEST(Server, HoverShowsTheSignatureAndDocumentation) {
+	Indexed indexed;
+	indexed.open_main();
+
+	const Value* found = indexed.ask(22, "textDocument/hover", 3, 11);
+	ASSERT_NE(nullptr, found);
+	ASSERT_NE(nullptr, found->getAsObject());
+	const std::string markdown = found->getAsObject()->getObject("contents")->getString("value")->str();
+	EXPECT_TRUE(markdown.starts_with("```hemera\nhelper :: fn() -> int\n```")) << markdown;
+	EXPECT_NE(std::string::npos, markdown.find("Helps.")) << markdown;
+	EXPECT_NE(std::string::npos, markdown.find("*@return* — Nothing much.")) << markdown;
+	EXPECT_EQ("3:11-3:17", range_text(*found->getAsObject()->getObject("range")));
+}
+
+TEST(Server, AnswersMoveWithEditsSinceTheCheck) {
+	Indexed indexed;
+	indexed.open_main();
+	// Two lines added above the call, not saved, so the index's offsets are from before
+	indexed.session.notify("textDocument/didChange", Object{
+		{ "textDocument", Object{ { "uri", hemera::lsp::uri_from_path(indexed.main) }, { "version", 2 } } },
+		{ "contentChanges", Array{ Object{ { "text", "package main\n\n// a\n// b\nmain :: fn() -> int {\n    return helper()\n}\n" } } } },
+	});
+
+	const Value* found = indexed.ask(23, "textDocument/hover", 5, 12);
+	ASSERT_NE(nullptr, found);
+	ASSERT_NE(nullptr, found->getAsObject());
+	EXPECT_EQ("5:11-5:17", range_text(*found->getAsObject()->getObject("range")));
+	// What's in the change isn't known until the next check
+	EXPECT_EQ(Value(nullptr), *indexed.ask(24, "textDocument/hover", 2, 1));
 }
 
 TEST(TokenEnd, CoversWordsStringsAndSingleCharacters) {

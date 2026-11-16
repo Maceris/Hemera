@@ -74,6 +74,33 @@ namespace hemera::lsp {
 		return { static_cast<uint32_t>(line), static_cast<uint32_t>(std::min(offset, ends[line]) - starts[line]) };
 	}
 
+	size_t LineIndex::offset_of(uint32_t line, uint32_t character, Encoding encoding) const {
+		if (line >= starts.size()) {
+			return text.size();
+		}
+		const std::string_view text_of_line = this->line(line);
+		if (Encoding::UTF8 == encoding) {
+			return starts[line] + std::min<size_t>(character, text_of_line.size());
+		}
+		// The first byte whose units before it reach character
+		size_t byte = 0;
+		uint32_t units = 0;
+		while (byte < text_of_line.size()) {
+			const size_t length = utf8_length(static_cast<unsigned char>(text_of_line[byte]));
+			bool whole = byte + length <= text_of_line.size();
+			for (size_t j = 1; whole && j < length; ++j) {
+				whole = (static_cast<unsigned char>(text_of_line[byte + j]) & 0xC0) == 0x80;
+			}
+			const uint32_t taken = whole && length == 4 ? 2 : 1;
+			if (units + taken > character) {
+				break;
+			}
+			units += taken;
+			byte += whole ? length : 1;
+		}
+		return starts[line] + byte;
+	}
+
 	std::string Documents::key_of(std::string_view uri) const {
 		const std::string path = path_from_uri(uri);
 		return path.empty() ? std::string(uri) : path_key(path);

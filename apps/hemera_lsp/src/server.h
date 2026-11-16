@@ -95,6 +95,34 @@ namespace hemera::lsp {
 		std::map<std::string, std::set<std::string>> published;
 		// Each root's name index, from its last check that wrote one, by path_key of the root
 		std::map<std::string, std::shared_ptr<const LoadedIndex>> indexes;
+
+		// A name found from a position in an open document, by the index of its root
+		struct Named {
+			std::shared_ptr<const LoadedIndex> index;
+			size_t declaration = 0;
+			// Where the name is in the document now, in bytes
+			size_t start = 0;
+			size_t end = 0;
+		};
+
+		/*
+		 * The name at params' textDocument and position, in the index of the document's root, the position moved
+		 * back through what's changed since the check; empty when there's no name there, the index doesn't know it,
+		 * or it's in what's changed. state must be held.
+		 */
+		std::optional<Named> named_at(const llvm::json::Object* params);
+
+		/*
+		 * A file's text as the index's offsets count it, and as it is now: an open document's, from when the check
+		 * began, and its own; another file's, from disk, both. Empty if the file can't be read. state must be held.
+		 */
+		std::optional<std::pair<std::string, std::string>> texts_of(const LoadedIndex& index, const std::string& file);
+
+		// Where the index's offsets start and end in a file now, as a Location, or null if they're in what's changed
+		llvm::json::Value location_of(const LoadedIndex& index, const std::string& file, size_t start, size_t end);
+
+		llvm::json::Value definition(const llvm::json::Object* params);
+		llvm::json::Value hover(const llvm::json::Object* params);
 		// Last, so it's stopped before what its thread uses goes
 		std::unique_ptr<Checker> checker;
 

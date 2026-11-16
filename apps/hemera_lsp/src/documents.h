@@ -44,6 +44,13 @@ namespace hemera::lsp {
 		 */
 		std::pair<uint32_t, uint32_t> line_and_byte(size_t offset) const;
 
+		/*
+		 * The byte offset in the whole text of a position: line (counting from 0) and character, in encoding's units.
+		 * A line past the last is the text's end; a character past its line's end, the line's end; one inside a
+		 * character that takes two UTF-16 units, that character's start.
+		 */
+		size_t offset_of(uint32_t line, uint32_t character, Encoding encoding) const;
+
 	private:
 		std::string text;
 		// Each line's first byte, then each line's end, before its line end
