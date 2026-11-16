@@ -108,6 +108,91 @@ TEST(Checker, ANewerCheckOfTheSameRootStopsTheOneRunning) {
 	EXPECT_EQ(std::vector<std::string>{ "a:second" }, finished);
 }
 
+/*
+ * A quick check of other targets, as a save of another file gives, waits for the one running, whose result it
+ * wouldn't give; one of the same targets and more stops it.
+ */
+TEST(Checker, AQuickCheckStopsOnlyOneItDoesAllOf) {
+	std::mutex mutex;
+	std::condition_variable launched;
+	std::vector<HeldRun*> runs;
+	std::vector<std::string> finished;
+	Checker checker(
+		[&](const std::vector<std::string>& arguments) -> std::unique_ptr<hemera::lsp::Run> {
+			auto run = std::make_unique<HeldRun>(arguments.back());
+			std::lock_guard<std::mutex> lock(mutex);
+			runs.push_back(run.get());
+			launched.notify_all();
+			return run;
+		},
+		[&](const CheckJob& job, const RunResult& result) {
+			std::lock_guard<std::mutex> lock(mutex);
+			finished.push_back(job.root + ":" + result.output);
+		});
+	const auto quick = [](std::string name, std::vector<std::string> targets) {
+		CheckJob job{ "a", { "hemera", std::move(name) }, {} };
+		job.targets = std::move(targets);
+		return job;
+	};
+
+	checker.request(quick("kernel", { "kernel" }));
+	{
+		std::unique_lock<std::mutex> lock(mutex);
+		launched.wait(lock, [&] { return runs.size() == 1; });
+	}
+	// Queued: it doesn't check the kernel
+	checker.request(quick("entropy", { "entropy" }));
+	// Replaces the one waiting, and stops the one running: it checks both
+	checker.request(quick("both", { "entropy", "kernel" }));
+	{
+		std::unique_lock<std::mutex> lock(mutex);
+		launched.wait(lock, [&] { return runs.size() == 2; });
+		runs[1]->release();
+	}
+	checker.wait_idle();
+
+	EXPECT_EQ((std::vector<std::string>{ "a:both" }), finished);
+}
+
+TEST(Checker, AQuickCheckOfOtherTargetsWaitsForTheOneRunning) {
+	std::mutex mutex;
+	std::condition_variable launched;
+	std::vector<HeldRun*> runs;
+	std::vector<std::string> finished;
+	Checker checker(
+		[&](const std::vector<std::string>& arguments) -> std::unique_ptr<hemera::lsp::Run> {
+			auto run = std::make_unique<HeldRun>(arguments.back());
+			std::lock_guard<std::mutex> lock(mutex);
+			runs.push_back(run.get());
+			launched.notify_all();
+			return run;
+		},
+		[&](const CheckJob& job, const RunResult& result) {
+			std::lock_guard<std::mutex> lock(mutex);
+			finished.push_back(job.root + ":" + result.output);
+		});
+	CheckJob kernel{ "a", { "hemera", "kernel" }, {} };
+	kernel.targets = { "kernel" };
+	CheckJob entropy{ "a", { "hemera", "entropy" }, {} };
+	entropy.targets = { "entropy" };
+
+	checker.request(std::move(kernel));
+	{
+		std::unique_lock<std::mutex> lock(mutex);
+		launched.wait(lock, [&] { return runs.size() == 1; });
+	}
+	checker.request(std::move(entropy));
+	{
+		std::unique_lock<std::mutex> lock(mutex);
+		runs[0]->release();
+		launched.wait(lock, [&] { return runs.size() == 2; });
+		runs[1]->release();
+	}
+	checker.wait_idle();
+
+	EXPECT_EQ((std::vector<std::string>{ "a:kernel", "a:entropy" }), finished);
+}
+
 TEST(Checker, AFullCheckWaitsForAQuickOneOfTheSameRoot) {
 	std::mutex mutex;
 	std::condition_variable launched;

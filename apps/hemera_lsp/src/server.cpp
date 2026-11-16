@@ -33,13 +33,8 @@ namespace hemera::lsp {
 		prepare_parsing();
 		serving = true;
 		serve_client = std::make_shared<ServeClient>(settings.compiler_path, settings.checker_memory_mb);
-		// A quick check, of some targets, through hemera --serve; a check of everything, a process of its own
+		// Every check through hemera --serve, which keeps a build package from one to the next
 		Launch launch = [this](const std::vector<std::string>& arguments) -> std::unique_ptr<Run> {
-			const bool quick = std::any_of(arguments.begin(), arguments.end(),
-				[](const std::string& argument) { return argument.starts_with("--targets="); });
-			if (!quick) {
-				return launch_process(arguments);
-			}
 			std::shared_ptr<ServeClient> client;
 			{
 				std::lock_guard<std::mutex> lock(state);
@@ -108,7 +103,80 @@ namespace hemera::lsp {
 		return !exited;
 	}
 
+	/*
+	 * hemera/state, for tests that compare what saves leave with what a check of everything finds (compare_saves.py),
+	 * once no check is running or waiting: for each root, its index and diagnostics as sorted lines of text, which are
+	 * the same for the same answers however they were arrived at.
+	 */
+	Value Server::state_for_tests() {
+		Array roots;
+		for (const auto& [root, index] : indexes) {
+			std::vector<std::string> declarations;
+			for (const IndexedDeclaration& declaration : index->declarations) {
+				if (!declaration.file.empty()) {
+					declarations.push_back(std::format("{}|{}|{}|{}|{}|{}", path_key(declaration.file), declaration.name_offset,
+						declaration.start, declaration.end, declaration.kind, declaration.type));
+				}
+			}
+			std::vector<std::string> uses;
+			for (const auto& [file, in_file] : index->uses) {
+				for (const IndexedUse& use : in_file) {
+					const IndexedDeclaration& named = index->declarations[use.declaration];
+					uses.push_back(std::format("{}|{}|{} -> {}|{}|{}", file, use.offset, use.length, path_key(named.file),
+						named.name_offset, named.kind));
+				}
+			}
+			std::vector<std::string> readers;
+			for (const auto& [file, targets] : index->readers) {
+				// A file no target read, like the build's own, is the same as one not listed
+				if (targets.empty()) {
+					continue;
+				}
+				std::vector<std::string> sorted = targets;
+				std::sort(sorted.begin(), sorted.end());
+				std::string line = file + ":";
+				for (const std::string& target : sorted) {
+					line += " " + target;
+				}
+				readers.push_back(std::move(line));
+			}
+			std::vector<std::string> diagnostics;
+			for (const auto& [checked_root, of_root] : findings) {
+				if (path_key(checked_root) != root) {
+					continue;
+				}
+				for (const auto& [target, of_target] : of_root.by_target) {
+					for (const CompilerDiagnostic& diagnostic : of_target) {
+						diagnostics.push_back(std::format("{}|{}|{}|{}|{}|{}", diagnostic.file, diagnostic.line, diagnostic.column,
+							diagnostic.severity, diagnostic.code, diagnostic.message));
+					}
+				}
+			}
+			Array lists;
+			for (std::vector<std::string>* list : { &declarations, &uses, &readers, &diagnostics }) {
+				std::sort(list->begin(), list->end());
+				list->erase(std::unique(list->begin(), list->end()), list->end());
+				Array json;
+				for (std::string& line : *list) {
+					json.push_back(std::move(line));
+				}
+				lists.push_back(std::move(json));
+			}
+			roots.push_back(Object{ { "root", root }, { "declarations", std::move(lists[0]) }, { "uses", std::move(lists[1]) },
+				{ "readers", std::move(lists[2]) }, { "diagnostics", std::move(lists[3]) } });
+		}
+		return Object{ { "roots", std::move(roots) } };
+	}
+
 	void Server::request(const Value& id, std::string_view method, const Object* params) {
+		if (method == "hemera/state") {
+			wait_for_checks();
+			std::unique_lock<std::mutex> lock(state);
+			Value answer = state_for_tests();
+			lock.unlock();
+			respond(id, std::move(answer));
+			return;
+		}
 		std::unique_lock<std::mutex> lock(state);
 		if (method == "initialize") {
 			if (initialized) {
@@ -136,6 +204,28 @@ namespace hemera::lsp {
 			shut_down = true;
 			lock.unlock();
 			respond(id, nullptr);
+			return;
+		}
+		// hemera.checkEverything: a check of everything, for each open document's root, as a save checks only some
+		if (method == "workspace/executeCommand") {
+			const std::optional<llvm::StringRef> command = params != nullptr ? params->getString("command") : std::nullopt;
+			if (command != std::optional<llvm::StringRef>("hemera.checkEverything")) {
+				lock.unlock();
+				respond_error(id, error_codes::INVALID_PARAMS, "no command " + command.value_or("").str());
+				return;
+			}
+			std::vector<CheckJob> jobs;
+			std::set<std::string> roots;
+			for (const auto& [key, open] : open_documents.all()) {
+				if (!open.path.empty() && open.path.ends_with(".hsc") && roots.insert(path_key(root_for(open.path))).second) {
+					jobs.push_back(job_for(root_for(open.path), {}));
+				}
+			}
+			lock.unlock();
+			respond(id, nullptr);
+			for (CheckJob& job : jobs) {
+				checker->request(std::move(job));
+			}
 			return;
 		}
 		if (std::optional<Value> answer = document_request(method, params)) {
@@ -205,13 +295,13 @@ namespace hemera::lsp {
 				 * document is checked again.
 				 */
 				++generation;
-				for (const auto& [root, uris] : published) {
-					for (const std::string& published_uri : uris) {
+				for (const auto& [root, of_root] : findings) {
+					for (const std::string& published_uri : of_root.published) {
 						clearing.push_back(Object{ { "jsonrpc", "2.0" }, { "method", "textDocument/publishDiagnostics" },
 							{ "params", Object{ { "uri", published_uri }, { "diagnostics", Array{} } } } });
 					}
 				}
-				published.clear();
+				findings.clear();
 				indexes.clear();
 				for (const auto& [key, open] : open_documents.all()) {
 					to_check.push_back(open.uri);
@@ -351,6 +441,7 @@ namespace hemera::lsp {
 				{ "hoverProvider", true },
 				{ "referencesProvider", true },
 				{ "renameProvider", Object{ { "prepareProvider", true } } },
+				{ "executeCommandProvider", Object{ { "commands", Array{ "hemera.checkEverything" } } } },
 			} },
 			{ "serverInfo", Object{ { "name", "hemera-lsp" }, { "version", VERSION_STR } } },
 		};
@@ -378,9 +469,12 @@ namespace hemera::lsp {
 			}
 			job.arguments.push_back(named);
 		}
-		// The name index, for the answers that come from it (docs/editor.md), from a check of everything
+		/*
+		 * The name index, for the answers that come from it (docs/editor.md): a check of some targets' is merged into
+		 * the root's (merged_index)
+		 */
 		llvm::SmallString<256> index_file;
-		if (targets.empty() && !llvm::sys::fs::createTemporaryFile("hemera-lsp-index", "json", index_file)) {
+		if (!llvm::sys::fs::createTemporaryFile("hemera-lsp-index", "json", index_file)) {
 			job.index_file = index_file.str().str();
 			job.temporaries.push_back(job.index_file);
 			job.arguments.push_back("--index=" + job.index_file);
@@ -418,27 +512,26 @@ namespace hemera::lsp {
 			}
 			const std::string root = root_for(document->path);
 			/*
-			 * When the root's last full check says which of a build package's targets read the file, those first, for
-			 * diagnostics in a few seconds, then everything, for the rest and the index (docs/editor.md)
+			 * When the root's index says which of a build package's targets read the file, just those: no other
+			 * target's diagnostics or index can change (docs/editor.md). A file none read, like a new one, is checked
+			 * as its folder's other files are, the targets that read any of them; one in a folder none read, or with no
+			 * index yet, is a check of everything.
 			 */
-			const LoadedIndex* index = nullptr;
-			const std::vector<std::string>* readers = nullptr;
-			if (auto found = indexes.find(path_key(root)); found != indexes.end()) {
-				index = found->second.get();
-				auto of_file = index->readers.find(path_key(document->path));
-				readers = of_file != index->readers.end() && !of_file->second.empty() ? &of_file->second : nullptr;
-			}
-			if (readers != nullptr) {
-				CheckJob quick = job_for(root, *readers);
-				const std::set<std::string> targets(readers->begin(), readers->end());
-				for (const auto& [file, of_file] : index->readers) {
-					if (std::any_of(of_file.begin(), of_file.end(), [&](const std::string& target) { return targets.contains(target); })) {
-						quick.covered.insert(file);
+			std::set<std::string> readers;
+			if (auto index = indexes.find(path_key(root)); index != indexes.end()) {
+				const std::string file = path_key(document->path);
+				if (auto of_file = index->second->readers.find(file); of_file != index->second->readers.end()) {
+					readers.insert(of_file->second.begin(), of_file->second.end());
+				}
+				const std::string folder = file.substr(0, file.rfind('/') + 1);
+				const bool read_before = !readers.empty();
+				for (const auto& [other, of_other] : index->second->readers) {
+					if (!read_before && other.starts_with(folder) && other.find('/', folder.size()) == std::string::npos) {
+						readers.insert(of_other.begin(), of_other.end());
 					}
 				}
-				jobs.push_back(std::move(quick));
 			}
-			jobs.push_back(job_for(root, {}));
+			jobs.push_back(job_for(root, std::vector<std::string>(readers.begin(), readers.end())));
 		}
 		for (CheckJob& job : jobs) {
 			checker->request(std::move(job));
@@ -476,6 +569,7 @@ namespace hemera::lsp {
 
 	void Server::checked(const CheckJob& job, const RunResult& result) {
 		std::vector<Value> messages;
+		std::optional<CheckJob> follow_up;
 		{
 			std::lock_guard<std::mutex> lock(state);
 			if (job.generation != generation) {
@@ -489,19 +583,43 @@ namespace hemera::lsp {
 				}
 			}
 			else {
-				// The index, read whether the check found errors or not, which the next check's replaces
+				/*
+				 * The index, read whether the check found errors or not: a check of everything's replaces the root's, and
+				 * a check of some targets' is merged into it
+				 */
+				const std::set<std::string> checked_targets(job.targets.begin(), job.targets.end());
 				if (!job.index_file.empty()) {
 					if (std::optional<LoadedIndex> index = read_index(read_file(job.index_file).value_or(""), base_folder)) {
 						index->texts = job.texts;
-						indexes[path_key(job.root)] = std::make_shared<const LoadedIndex>(std::move(*index));
+						std::shared_ptr<const LoadedIndex>& kept = indexes[path_key(job.root)];
+						kept = !job.targets.empty() && kept != nullptr
+							? std::make_shared<const LoadedIndex>(merged_index(*kept, std::move(*index), checked_targets))
+							: std::make_shared<const LoadedIndex>(std::move(*index));
 					}
 				}
-				const std::vector<CompilerDiagnostic> found = parse_diagnostics(result.output);
+				/*
+				 * The diagnostics, by the target that found them: a check of everything's replace the root's, and a check
+				 * of some targets' replace theirs, and the build's own, which every check reports
+				 */
+				Found& of_root = findings[job.root];
+				if (job.targets.empty()) {
+					of_root.by_target.clear();
+				}
+				else {
+					for (const std::string& target : job.targets) {
+						of_root.by_target.erase(target);
+					}
+					of_root.by_target.erase("");
+				}
+				for (CompilerDiagnostic& diagnostic : parse_diagnostics(result.output)) {
+					of_root.by_target[diagnostic.target].push_back(std::move(diagnostic));
+				}
 				// By file, each once, as one file can be in several of a build's targets
 				std::map<std::string, std::vector<const CompilerDiagnostic*>> by_file;
 				std::map<std::string, std::string> file_paths;
 				std::set<std::tuple<std::string, std::string, std::string, uint32_t, uint32_t, std::string>> seen;
-				for (const CompilerDiagnostic& diagnostic : found) {
+				for (const auto& [target, of_target] : of_root.by_target)
+				for (const CompilerDiagnostic& diagnostic : of_target) {
 					std::string path = diagnostic.file;
 					if (path.starts_with("<base>/")) {
 						if (base_folder.empty()) {
@@ -544,30 +662,28 @@ namespace hemera::lsp {
 					messages.push_back(Object{ { "jsonrpc", "2.0" }, { "method", "textDocument/publishDiagnostics" },
 						{ "params", Object{ { "uri", uri }, { "diagnostics", std::move(published_diagnostics) } } } });
 				}
-				/*
-				 * What had diagnostics from this root before and has none now is cleared: anything, after a check of
-				 * everything, but after a check of some targets, only what they read, the rest kept as it was
-				 */
-				std::set<std::string> kept;
-				for (const std::string& uri : published[job.root]) {
-					const bool checked_now = job.targets.empty() || job.covered.contains(path_key(path_from_uri(uri)));
-					if (now.contains(uri)) {
-						continue;
-					}
-					if (checked_now) {
+				// What had diagnostics from this root before and has none now is cleared
+				for (const std::string& uri : of_root.published) {
+					if (!now.contains(uri)) {
 						messages.push_back(Object{ { "jsonrpc", "2.0" }, { "method", "textDocument/publishDiagnostics" },
 							{ "params", Object{ { "uri", uri }, { "diagnostics", Array{} } } } });
 					}
-					else {
-						kept.insert(uri);
-					}
 				}
-				now.insert(kept.begin(), kept.end());
-				published[job.root] = std::move(now);
+				of_root.published = std::move(now);
+				/*
+				 * A check of some targets that found the build changed, and checked it afresh: the build's targets, or how
+				 * it makes them, may have changed, so everything is checked too
+				 */
+				if (result.rebuilt && !job.targets.empty()) {
+					follow_up = job_for(job.root, {});
+				}
 			}
 		}
 		for (Value& message : messages) {
 			send(std::move(message));
+		}
+		if (follow_up.has_value()) {
+			checker->request(std::move(*follow_up));
 		}
 	}
 

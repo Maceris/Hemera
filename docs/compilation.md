@@ -167,6 +167,9 @@ read, in place of its text (`--diagnostics=text`, the default):
 * `line` counts from 1, and `column` counts bytes from the line's start, from 0, as the text's do. The line is 0, and
   the column with it, when the diagnostic is about no line in particular, like a file that can't be written.
 * `message` is the text after the code.
+* `target`, last, is the build package's target whose check found it, like `"target":"kernel"`. A diagnostic of the
+  build's own code, or of a program that isn't a build package, has none. A file several targets read can have the
+  same diagnostic once for each.
 
 They come in the order the text would, a build package's targets in order, and the exit code is the same.
 

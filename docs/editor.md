@@ -50,7 +50,6 @@ in a build, a build package's checks included, and nothing is written but what t
 
 * **Unsaved changes** in every open file are checked as they are: each goes to the compiler through `--overlay`. A file
   that's never been saved isn't seen, as packages are found by listing their folders.
-* **A newer check** of a package stops the one still running, whose results are never shown.
 * **Diagnostics** are shown in each file they're in, open or not, once each, though a file can be in several of a build
   package's targets. One reaches from where the compiler puts it to the end of the word or string there. A file that
   had diagnostics and has none after a check is cleared.
@@ -58,12 +57,22 @@ in a build, a build package's checks included, and nothing is written but what t
   [Diagnostics](compilation.md#diagnostics)). Errors, warnings and what compile-time code logs below the warning level
   are shown as errors, warnings and information.
 
-In a build package, saving a file checks just the targets that read it first, which the last check's
-[name index](compilation.md#the-name-index) says, so its diagnostics come in a few seconds, then every target, for the
-rest and a new index. Until the first check of everything, which opening a file starts, each check is of everything.
-The quick check goes to a compiler the server keeps running, [`hemera --serve`](compilation.md#a-long-lived-compiler),
-which keeps the build package's own check from one to the next, so after the first, a save's diagnostics take about
-as long as checking its targets. It starts again when it's asked to, or uses more memory than `hemera.checkerMemory`.
+In a build package, the first file opened checks every target, which can take tens of seconds. After that, saving a
+file checks just the targets that read it, which the [name index](compilation.md#the-name-index) says, as no other
+target's diagnostics or index can change. What those targets find replaces what they found before, and what the other
+targets found stays. A file no target read yet, like a new one, is checked as the other files in its folder are; one
+in a folder no target read is a check of everything.
+
+Every check goes to a compiler the server keeps running, [`hemera --serve`](compilation.md#a-long-lived-compiler),
+which keeps the build package's own check from one to the next, so a save's diagnostics take about as long as
+checking its targets: a second or two for a target or two. It starts again when it's asked to, or uses more memory
+than `hemera.checkerMemory`. A save that changes the build package itself checks every target, as its targets, or
+how they're made, may have changed.
+
+* **Hemera: Check Everything**, in the command palette, checks every target of each open file's package, for what a
+  change outside the editor, like a file deleted or changed by another program, may have changed.
+* **A check of some targets** waits for a check of other targets that's running, and a check of everything for any
+  check, so each one's diagnostics are shown. A newer check of the same targets stops the older one.
 
 Checking as you type isn't done: a large build package can take tens of seconds to check in full, so checks come with
 opening and saving.
@@ -110,7 +119,8 @@ so names in it lead nowhere yet.
 `hemera-lsp` takes no arguments. It answers `initialize` with whole-document sync, open, close and save
 notifications, UTF-8 positions when the client offers them, else UTF-16, and `textDocument/formatting`,
 `textDocument/documentSymbol`, `textDocument/foldingRange`, `textDocument/definition`, `textDocument/hover`,
-`textDocument/references`, `textDocument/prepareRename` and `textDocument/rename`. Its settings come in initialize's
+`textDocument/references`, `textDocument/prepareRename` and `textDocument/rename`, and `workspace/executeCommand` for
+`hemera.checkEverything`, Check Everything, with no arguments. Its settings come in initialize's
 `initializationOptions`, and later in `workspace/didChangeConfiguration`'s `settings.hemera`, as an object with
 `compilerPath`, `root`, `arguments` and `checkerMemory`, named as above without `hemera.`. It exits 0 after
 `shutdown` and `exit`, and 1 when `exit`, or the end of its standard input, comes without `shutdown` before it.

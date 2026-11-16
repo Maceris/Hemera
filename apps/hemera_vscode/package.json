@@ -16,6 +16,13 @@
   "main": "./extension.js",
   "activationEvents": [],
   "contributes": {
+    "commands": [
+      {
+        "command": "hemera.checkEverything",
+        "title": "Check Everything",
+        "category": "Hemera"
+      }
+    ],
     "languages": [
       {
         "id": "hemera",

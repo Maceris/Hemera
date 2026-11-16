@@ -100,8 +100,16 @@ namespace hemera::lsp {
 		bool told_cannot_run = false;
 		// Counts changes of settings: a check made under older ones is left out when it finishes
 		uint64_t generation = 0;
-		// For each root checked, the URIs it published diagnostics for, to clear any it no longer has
-		std::map<std::string, std::set<std::string>> published;
+		/*
+		 * For each root checked: the diagnostics each of its targets' last check found, by target, "" for the build's
+		 * own code or a program, which a check of some targets replaces only theirs of; and the URIs it published
+		 * diagnostics for, to clear any it no longer has.
+		 */
+		struct Found {
+			std::map<std::string, std::vector<CompilerDiagnostic>> by_target;
+			std::set<std::string> published;
+		};
+		std::map<std::string, Found> findings;
 		// Each root's name index, from its last check that wrote one, by path_key of the root
 		std::map<std::string, std::shared_ptr<const LoadedIndex>> indexes;
 
@@ -171,6 +179,8 @@ namespace hemera::lsp {
 		 */
 		CheckJob job_for(const std::string& root, const std::vector<std::string>& targets);
 		void checked(const CheckJob& job, const RunResult& result);
+		// hemera/state's answer (compare_saves.py). state must be held.
+		llvm::json::Value state_for_tests();
 
 		// What an open document parses to: its current version's, and the last version that made a tree, by URI
 		struct Parses {

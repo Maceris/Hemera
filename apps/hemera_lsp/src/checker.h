@@ -32,6 +32,8 @@ namespace hemera::lsp {
 		// Bytes from the line's start, counting from 0; 0 too for none in particular
 		uint32_t column = 0;
 		std::string message;
+		// The build package's target whose check found it; empty for the build's own code, or a program
+		std::string target;
 	};
 
 	/*
@@ -50,6 +52,11 @@ namespace hemera::lsp {
 		// What it wrote to standard output, then standard error, or why it didn't start
 		std::string output;
 		std::string error;
+		/*
+		 * Whether hemera --serve found the build package changed, and checked it afresh: what other targets find may
+		 * have changed too. Always false for a process of its own.
+		 */
+		bool rebuilt = false;
 	};
 
 	// A run of a program that can be stopped from another thread.
@@ -82,19 +89,15 @@ namespace hemera::lsp {
 		std::string index_file;
 		// The text of each document that was open when it was made, by path_key, which the index's offsets count in
 		std::map<std::string, std::string> texts;
-		/*
-		 * For a check of some of a build package's targets (--targets), their names, and the files they read, by
-		 * path_key, whose diagnostics it replaces; both empty for a check of everything.
-		 */
+		// For a check of some of a build package's targets (--targets), their names; empty for a check of everything
 		std::vector<std::string> targets;
-		std::set<std::string> covered;
 	};
 
 	/*
-	 * Runs checks one at a time, on a thread of its own. A newer request for a root replaces a waiting one of the same
-	 * kind, a check of some targets or of everything. A newer check of some targets stops whatever's running for the
-	 * root, and a newer check of everything stops one of everything, but not a check of some targets, which it's
-	 * queued behind; a stopped check's result is left out. Requests wait their turn, in order.
+	 * Runs checks one at a time, on a thread of its own. A newer request for a root replaces a waiting one it does all
+	 * of, and stops a running one it does all of: a check of everything does a check of everything's, and a check of
+	 * some targets one's of no others. Any other is left to run, the newer one queued behind it, so no check's result
+	 * is lost that a newer one wouldn't give. A stopped check's result is left out. Requests wait their turn, in order.
 	 */
 	class Checker {
 	public:
@@ -121,7 +124,7 @@ namespace hemera::lsp {
 		std::deque<CheckJob> waiting;
 		// The root being checked, and its run, while one is
 		std::string running_root;
-		bool running_partial = false;
+		std::vector<std::string> running_targets;
 		std::unique_ptr<Run> running;
 		bool busy = false;
 		bool stopping = false;

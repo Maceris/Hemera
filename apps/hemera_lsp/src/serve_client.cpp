@@ -1,5 +1,6 @@
 #include "serve_client.h"
 
+#include <algorithm>
 #include <atomic>
 #include <format>
 #include <optional>
@@ -85,6 +86,19 @@ namespace hemera::lsp {
 #endif
 		}
 
+		// Ends it at once, so what's reading its output sees the end
+		void terminate() {
+#ifdef _WIN32
+			if (process != nullptr) {
+				TerminateProcess(process, 1);
+			}
+#else
+			if (pid > 0) {
+				kill(pid, SIGKILL);
+			}
+#endif
+		}
+
 		bool write(const std::string& text) {
 #ifdef _WIN32
 			size_t done = 0;
@@ -146,7 +160,19 @@ namespace hemera::lsp {
 	}
 
 	void ServeClient::stop_process() {
+		{
+			std::lock_guard<std::mutex> lock(running_mutex);
+			running = nullptr;
+		}
 		process.reset();
+	}
+
+	void ServeClient::interrupt() {
+		std::lock_guard<std::mutex> lock(running_mutex);
+		if (running != nullptr) {
+			interrupted = true;
+			running->terminate();
+		}
 	}
 
 	bool ServeClient::start() {
@@ -242,11 +268,19 @@ namespace hemera::lsp {
 		out.flush();
 		request += "\n";
 		RunResult result;
+		{
+			std::lock_guard<std::mutex> running_lock(running_mutex);
+			interrupted = false;
+		}
 		// Once as it is, and once more on a fresh compiler, if it asks for one or ends on the way
 		for (int attempt = 0; attempt < 2; ++attempt) {
 			if (process == nullptr && !start()) {
 				result.error = "couldn't start " + compiler + " --serve";
 				return result;
+			}
+			{
+				std::lock_guard<std::mutex> running_lock(running_mutex);
+				running = process.get();
 			}
 			result.output.clear();
 			if (!process->write(request)) {
@@ -257,6 +291,12 @@ namespace hemera::lsp {
 				const std::optional<std::string> line = process->read_line();
 				if (!line.has_value()) {
 					stop_process();
+					std::lock_guard<std::mutex> running_lock(running_mutex);
+					if (interrupted) {
+						result.stopped = true;
+						result.output.clear();
+						return result;
+					}
 					break;
 				}
 				llvm::Expected<llvm::json::Value> parsed = llvm::json::parse(*line);
@@ -271,14 +311,19 @@ namespace hemera::lsp {
 				const bool done = object->getBoolean("done").value_or(false);
 				const bool restart = object->getBoolean("restart").value_or(false);
 				if (!done) {
-					// Not checked: asked of a fresh compiler instead
+					// Not checked, as the build changed: asked of a fresh compiler instead
 					stop_process();
+					result.rebuilt = true;
 					break;
 				}
 				result.started = true;
 				result.exit_code = static_cast<int>(object->getInteger("exit").value_or(0));
 				if (restart) {
 					stop_process();
+				}
+				else {
+					std::lock_guard<std::mutex> running_lock(running_mutex);
+					running = nullptr;
 				}
 				return result;
 			}
@@ -293,11 +338,14 @@ namespace hemera::lsp {
 		class ServeRun : public Run {
 		public:
 			ServeRun(std::shared_ptr<ServeClient> client, std::vector<std::string> arguments)
-				: client(std::move(client)), arguments(std::move(arguments)) {}
+				: client(std::move(client)), arguments(std::move(arguments)) {
+				everything = std::none_of(this->arguments.begin(), this->arguments.end(),
+					[](const std::string& argument) { return argument.starts_with("--targets="); });
+			}
 
 			RunResult wait() override {
 				RunResult result = client->check(arguments);
-				result.stopped = stopped.load();
+				result.stopped = result.stopped || stopped.load();
 				if (result.stopped) {
 					result.output.clear();
 				}
@@ -306,12 +354,17 @@ namespace hemera::lsp {
 
 			void stop() override {
 				stopped = true;
+				if (everything) {
+					client->interrupt();
+				}
 			}
 
 		private:
 			std::shared_ptr<ServeClient> client;
 			std::vector<std::string> arguments;
 			std::atomic<bool> stopped{ false };
+			// A check of everything, which stopping ends rather than waits out
+			bool everything = false;
 		};
 	}
 

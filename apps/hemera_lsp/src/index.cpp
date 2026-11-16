@@ -1,6 +1,7 @@
 #include "index.h"
 
 #include <algorithm>
+#include <tuple>
 
 #include "features.h"
 #include "uri.h"
@@ -155,6 +156,118 @@ namespace hemera::lsp {
 			std::sort(in_file.begin(), in_file.end(), [](const IndexedUse& a, const IndexedUse& b) { return a.offset < b.offset; });
 		}
 		return index;
+	}
+
+	LoadedIndex merged_index(const LoadedIndex& old, LoadedIndex fresh, const std::set<std::string>& checked) {
+		// Which files are fresh's alone
+		std::set<std::string> files;
+		for (const auto& [file, path] : old.paths) {
+			files.insert(file);
+		}
+		for (const auto& [file, path] : fresh.paths) {
+			files.insert(file);
+		}
+		std::set<std::string> replaced;
+		for (const std::string& file : files) {
+			auto before = old.readers.find(file);
+			const bool read_before = before != old.readers.end() && !before->second.empty();
+			// Every target that read it was checked; or, when none did, fresh is all there is of it
+			bool all = read_before ? std::all_of(before->second.begin(), before->second.end(),
+				[&](const std::string& target) { return checked.contains(target); }) : fresh.paths.contains(file);
+			auto old_text = old.texts.find(file);
+			auto new_text = fresh.texts.find(file);
+			if ((old_text != old.texts.end()) != (new_text != fresh.texts.end())
+				|| (old_text != old.texts.end() && old_text->second != new_text->second)) {
+				all = true;
+			}
+			if (all) {
+				replaced.insert(file);
+			}
+		}
+
+		// A declaration is the same one where its file, its name's place and its kind are
+		using Key = std::tuple<std::string, uint32_t, uint32_t, std::string>;
+		const auto key_of = [](const IndexedDeclaration& declaration) {
+			return Key{ path_key(declaration.file), declaration.name_offset, declaration.start, declaration.kind };
+		};
+		LoadedIndex merged;
+		merged.declarations = std::move(fresh.declarations);
+		std::map<Key, size_t> numbers;
+		for (size_t i = 0; i < merged.declarations.size(); ++i) {
+			if (!merged.declarations[i].file.empty()) {
+				numbers.emplace(key_of(merged.declarations[i]), i);
+			}
+		}
+		// Each of old's declarations' number in merged, or none, for one that's gone
+		std::vector<std::optional<size_t>> renumbered(old.declarations.size());
+		for (size_t i = 0; i < old.declarations.size(); ++i) {
+			const IndexedDeclaration& declaration = old.declarations[i];
+			if (declaration.file.empty()) {
+				continue;
+			}
+			const Key key = key_of(declaration);
+			if (auto found = numbers.find(key); found != numbers.end()) {
+				renumbered[i] = found->second;
+			}
+			else if (!replaced.contains(std::get<0>(key))) {
+				renumbered[i] = merged.declarations.size();
+				numbers.emplace(key, merged.declarations.size());
+				merged.declarations.push_back(declaration);
+			}
+		}
+
+		merged.uses = std::move(fresh.uses);
+		for (const auto& [file, in_file] : old.uses) {
+			if (replaced.contains(file)) {
+				continue;
+			}
+			std::vector<IndexedUse>& uses = merged.uses[file];
+			for (const IndexedUse& use : in_file) {
+				if (use.declaration < renumbered.size() && renumbered[use.declaration].has_value()) {
+					uses.push_back(IndexedUse{ use.offset, use.length, *renumbered[use.declaration] });
+				}
+			}
+		}
+		for (auto& [file, in_file] : merged.uses) {
+			std::sort(in_file.begin(), in_file.end(), [](const IndexedUse& a, const IndexedUse& b) {
+				return std::tie(a.offset, a.length, a.declaration) < std::tie(b.offset, b.length, b.declaration);
+			});
+			in_file.erase(std::unique(in_file.begin(), in_file.end(), [](const IndexedUse& a, const IndexedUse& b) {
+				return a.offset == b.offset && a.length == b.length && a.declaration == b.declaration;
+			}), in_file.end());
+		}
+		for (size_t i = 0; i < merged.declarations.size(); ++i) {
+			if (!merged.declarations[i].file.empty()) {
+				merged.declared[path_key(merged.declarations[i].file)].push_back(i);
+			}
+		}
+
+		merged.paths = old.paths;
+		for (auto& [file, path] : fresh.paths) {
+			merged.paths[file] = std::move(path);
+		}
+		for (const auto& [file, targets] : old.readers) {
+			for (const std::string& target : targets) {
+				if (!checked.contains(target)) {
+					merged.readers[file].push_back(target);
+				}
+			}
+		}
+		for (const auto& [file, targets] : fresh.readers) {
+			std::vector<std::string>& names = merged.readers[file];
+			names.insert(names.end(), targets.begin(), targets.end());
+		}
+		std::erase_if(merged.readers, [](const auto& entry) { return entry.second.empty(); });
+		// The texts each file's offsets count in: fresh's for its own files, old's for the rest, the same in both
+		for (const auto& [file, text] : old.texts) {
+			if (!replaced.contains(file)) {
+				merged.texts[file] = text;
+			}
+		}
+		for (auto& [file, text] : fresh.texts) {
+			merged.texts[file] = std::move(text);
+		}
+		return merged;
 	}
 
 	std::optional<size_t> moved_forward(std::string_view old_text, std::string_view new_text, size_t offset) {

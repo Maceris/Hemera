@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <map>
 #include <optional>
+#include <set>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -85,6 +86,15 @@ namespace hemera::lsp {
 	 * which <base>/... names are mapped into; empty leaves them as they are. Empty when json isn't an index.
 	 */
 	std::optional<LoadedIndex> read_index(std::string_view json, const std::string& base_folder);
+
+	/*
+	 * A build package's index after a check of some of its targets: fresh, that check's, which is all of what checked
+	 * found, merged into old, a check's of more of them. A file every target that read it before was checked for, or
+	 * whose text either check read as an open document and that differs, is fresh's alone; any other file keeps old's
+	 * uses beside fresh's, those of a declaration in a file that's fresh's alone found again there by where it's named,
+	 * or dropped. readers is old's with checked's replaced by fresh's.
+	 */
+	LoadedIndex merged_index(const LoadedIndex& old, LoadedIndex fresh, const std::set<std::string>& checked);
 
 	/*
 	 * Where offset, in old_text, is in new_text, the text after one change: the same before the change, moved by

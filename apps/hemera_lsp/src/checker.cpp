@@ -1,5 +1,6 @@
 #include "checker.h"
 
+#include <algorithm>
 #include <atomic>
 #include <fstream>
 #include <iterator>
@@ -49,6 +50,7 @@ namespace hemera::lsp {
 			diagnostic.line = static_cast<uint32_t>(object->getInteger("line").value_or(0));
 			diagnostic.column = static_cast<uint32_t>(object->getInteger("column").value_or(0));
 			diagnostic.message = object->getString("message").value_or("").str();
+			diagnostic.target = object->getString("target").value_or("").str();
 			found.push_back(std::move(diagnostic));
 		}
 		return found;
@@ -182,17 +184,27 @@ namespace hemera::lsp {
 	void Checker::request(CheckJob job) {
 		{
 			std::lock_guard<std::mutex> lock(mutex);
-			const bool partial = !job.targets.empty();
+			/*
+			 * Whether job does all an older check of the same root would: a full check does a full one's, and a quick
+			 * check a quick one's of no other targets. One of the other kind, or of other targets too, isn't replaced:
+			 * its result would be lost.
+			 */
+			const auto covers = [&](const std::vector<std::string>& older) {
+				if (job.targets.empty() || older.empty()) {
+					return job.targets.empty() && older.empty();
+				}
+				return std::all_of(older.begin(), older.end(), [&](const std::string& target) {
+					return std::find(job.targets.begin(), job.targets.end(), target) != job.targets.end();
+				});
+			};
 			for (auto it = waiting.begin(); it != waiting.end(); ++it) {
-				// Only one of the same kind is replaced: a quick check waiting isn't, by a full one
-				if (it->root == job.root && !it->targets.empty() == partial) {
+				if (it->root == job.root && covers(it->targets)) {
 					delete_temporaries(it->temporaries);
 					waiting.erase(it);
 					break;
 				}
 			}
-			// A full check queued behind a quick one doesn't stop it
-			if (running != nullptr && running_root == job.root && (partial || !running_partial)) {
+			if (running != nullptr && running_root == job.root && covers(running_targets)) {
 				running->stop();
 			}
 			waiting.push_back(std::move(job));
@@ -219,7 +231,7 @@ namespace hemera::lsp {
 				waiting.pop_front();
 				busy = true;
 				running_root = job.root;
-				running_partial = !job.targets.empty();
+				running_targets = job.targets;
 				running = launch(job.arguments);
 				run = running.get();
 			}

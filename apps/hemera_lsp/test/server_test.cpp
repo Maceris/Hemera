@@ -129,9 +129,11 @@ namespace {
 	}
 
 	// A diagnostic as the compiler prints it with --diagnostics=json
-	std::string diagnostic_line(const std::string& file, int line, int column, const std::string& message = "Type mismatch") {
-		return std::format(R"({{"severity":"error","code":"hemera:E4015","file":"{}","line":{},"column":{},"message":"{}"}})", file, line,
-			column, message) + "\n";
+	std::string diagnostic_line(const std::string& file, int line, int column, const std::string& message = "Type mismatch",
+		const std::string& target = "") {
+		const std::string found_by = target.empty() ? std::string() : std::format(R"(,"target":"{}")", target);
+		return std::format(R"({{"severity":"error","code":"hemera:E4015","file":"{}","line":{},"column":{},"message":"{}"{}}})", file, line,
+			column, message, found_by) + "\n";
 	}
 
 	const std::string MAIN_TEXT = "package main\n\nmain :: fn() -> int {\n    return \"\xC3\xA9t\xC3\xA9\"\n}\n";
@@ -791,31 +793,127 @@ TEST(Server, RenameIsRefusedWithAReason) {
 	EXPECT_NE(std::string::npos, message.find("has changed since it was checked")) << message;
 }
 
-TEST(Server, ASaveChecksItsFilesTargetsFirstThenEverything) {
+namespace {
+	// The last diagnostics published for path: how many there are, or -1 for none published
+	int last_published(const std::vector<Object>& published, const std::string& path) {
+		int count = -1;
+		for (const Object& params : published) {
+			if (hemera::lsp::path_key(hemera::lsp::path_from_uri(*params.getString("uri"))) == hemera::lsp::path_key(path)) {
+				count = static_cast<int>(params.getArray("diagnostics")->size());
+			}
+		}
+		return count;
+	}
+
+	// Whether a command checked only some targets, and which
+	std::string targets_of(const std::vector<std::string>& command) {
+		auto found = std::find_if(command.begin(), command.end(), [](const std::string& argument) { return argument.starts_with("--targets="); });
+		return found != command.end() ? found->substr(std::string_view("--targets=").size()) : std::string();
+	}
+}
+
+/*
+ * A save checks just the targets that read its file, and keeps what the others found: a target's diagnostics are
+ * replaced only by a check of it.
+ */
+TEST(Server, ASaveChecksOnlyTheTargetsThatReadItsFile) {
 	Indexed indexed;
 	// A build package's index: main.hsc is read by target a, helper.hsc by b
 	indexed.session.index_json.insert(indexed.session.index_json.rfind('}'), ",\"targets\":[\"a\",\"b\"],\"readers\":[[1],[0]]");
-	// The first check finds an error in each file
-	indexed.session.output = diagnostic_line(indexed.main, 4, 11) + diagnostic_line(indexed.helper, 4, 11);
+	// The first check finds an error in each file, each by its own target
+	indexed.session.output = diagnostic_line(indexed.main, 4, 11, "Type mismatch", "a") + diagnostic_line(indexed.helper, 4, 11, "Type mismatch", "b");
 	indexed.open_main();
 	ASSERT_EQ(2u, indexed.session.published().size());
 	ASSERT_EQ(1u, indexed.session.commands.size());
+	EXPECT_EQ("", targets_of(indexed.session.commands[0]));
 
-	// Both fixed: the quick check of a clears main.hsc's, leaving helper.hsc's to the full check after it
+	// Both fixed, but only a is checked: main.hsc's is cleared, helper.hsc's, b's, stays
 	indexed.session.output = "";
 	indexed.session.notify("textDocument/didSave", Object{ { "textDocument", Object{ { "uri", hemera::lsp::uri_from_path(indexed.main) } } } });
 	const std::vector<Object> published = indexed.session.published();
 
+	ASSERT_EQ(2u, indexed.session.commands.size());
+	EXPECT_EQ("a", targets_of(indexed.session.commands[1]));
+	EXPECT_EQ(0, last_published(published, indexed.main));
+	EXPECT_EQ(1, last_published(published, indexed.helper));
+
+	// Check Everything: every target, which finds helper.hsc's fixed too
+	indexed.session.request(40, "workspace/executeCommand", Object{ { "command", "hemera.checkEverything" } });
+	EXPECT_EQ(0, indexed.session.last_error());
+	const std::vector<Object> after = indexed.session.published();
 	ASSERT_EQ(3u, indexed.session.commands.size());
-	const std::vector<std::string>& quick = indexed.session.commands[1];
-	EXPECT_NE(quick.end(), std::find(quick.begin(), quick.end(), "--targets=a"));
-	const std::vector<std::string>& full = indexed.session.commands[2];
-	EXPECT_EQ(full.end(), std::find_if(full.begin(), full.end(), [](const std::string& argument) { return argument.starts_with("--targets"); }));
-	ASSERT_EQ(4u, published.size());
-	EXPECT_EQ(hemera::lsp::path_key(indexed.main), hemera::lsp::path_key(hemera::lsp::path_from_uri(*published[2].getString("uri"))));
-	EXPECT_TRUE(published[2].getArray("diagnostics")->empty());
-	EXPECT_EQ(hemera::lsp::path_key(indexed.helper), hemera::lsp::path_key(hemera::lsp::path_from_uri(*published[3].getString("uri"))));
-	EXPECT_TRUE(published[3].getArray("diagnostics")->empty());
+	EXPECT_EQ("", targets_of(indexed.session.commands[2]));
+	EXPECT_EQ(0, last_published(after, indexed.helper));
+}
+
+// A file no target read before, like a new one, is checked as the other files in its folder are.
+TEST(Server, ANewFileIsCheckedAsItsFoldersTargets) {
+	Indexed indexed;
+	indexed.session.index_json.insert(indexed.session.index_json.rfind('}'), ",\"targets\":[\"a\",\"b\"],\"readers\":[[1],[0]]");
+	indexed.open_main();
+	const std::string added = indexed.folder + "/added.hsc";
+	write_file(added, "package main\n");
+	indexed.session.notify("textDocument/didOpen", document(hemera::lsp::uri_from_path(added), "package main\n", 1));
+	indexed.session.published();
+
+	ASSERT_EQ(2u, indexed.session.commands.size());
+	EXPECT_EQ("a,b", targets_of(indexed.session.commands[1]));
+}
+
+// A check of some targets merged into the index keeps what the targets not checked found, and drops what's gone.
+TEST(Index, MergingKeepsWhatOtherTargetsFound) {
+	using hemera::lsp::IndexedDeclaration;
+	using hemera::lsp::IndexedUse;
+	using hemera::lsp::LoadedIndex;
+	const auto declared = [](const std::string& file, uint32_t offset) {
+		IndexedDeclaration declaration;
+		declaration.file = file;
+		declaration.name_offset = offset;
+		declaration.name_length = 4;
+		declaration.start = offset;
+		declaration.end = offset + 10;
+		declaration.kind = "function";
+		return declaration;
+	};
+	// a reads a.hsc and shared.hsc, b reads b.hsc and shared.hsc; each uses shared.hsc's declaration
+	LoadedIndex old;
+	old.declarations = { declared("D:/p/shared.hsc", 0), declared("D:/p/a.hsc", 0), declared("D:/p/b.hsc", 0) };
+	for (const std::string file : { "D:/p/shared.hsc", "D:/p/a.hsc", "D:/p/b.hsc" }) {
+		old.paths[hemera::lsp::path_key(file)] = file;
+	}
+	old.uses[hemera::lsp::path_key("D:/p/a.hsc")] = { IndexedUse{ 20, 4, 0 }, IndexedUse{ 30, 4, 1 } };
+	old.uses[hemera::lsp::path_key("D:/p/b.hsc")] = { IndexedUse{ 20, 4, 0 } };
+	old.uses[hemera::lsp::path_key("D:/p/shared.hsc")] = { IndexedUse{ 40, 4, 2 } };
+	old.readers[hemera::lsp::path_key("D:/p/a.hsc")] = { "a" };
+	old.readers[hemera::lsp::path_key("D:/p/b.hsc")] = { "b" };
+	old.readers[hemera::lsp::path_key("D:/p/shared.hsc")] = { "a", "b" };
+
+	// a checked again after a.hsc changed: its declaration moved, and it no longer uses itself
+	LoadedIndex fresh;
+	fresh.declarations = { declared("D:/p/shared.hsc", 0), declared("D:/p/a.hsc", 8) };
+	fresh.paths = { { hemera::lsp::path_key("D:/p/shared.hsc"), "D:/p/shared.hsc" }, { hemera::lsp::path_key("D:/p/a.hsc"), "D:/p/a.hsc" } };
+	fresh.uses[hemera::lsp::path_key("D:/p/a.hsc")] = { IndexedUse{ 24, 4, 0 } };
+	fresh.readers[hemera::lsp::path_key("D:/p/a.hsc")] = { "a" };
+	fresh.readers[hemera::lsp::path_key("D:/p/shared.hsc")] = { "a" };
+
+	const LoadedIndex merged = hemera::lsp::merged_index(old, fresh, { "a" });
+	// a.hsc is fresh's: one use, of shared's declaration
+	const auto& a_uses = merged.uses.at(hemera::lsp::path_key("D:/p/a.hsc"));
+	ASSERT_EQ(1u, a_uses.size());
+	EXPECT_EQ(24u, a_uses[0].offset);
+	EXPECT_EQ("D:/p/shared.hsc", merged.declarations[a_uses[0].declaration].file);
+	// b.hsc, which only b read, is old's, its use renumbered to the same declaration
+	const auto& b_uses = merged.uses.at(hemera::lsp::path_key("D:/p/b.hsc"));
+	ASSERT_EQ(1u, b_uses.size());
+	EXPECT_EQ(a_uses[0].declaration, b_uses[0].declaration);
+	// shared.hsc, which b read too, keeps old's use of b's declaration
+	const auto& shared_uses = merged.uses.at(hemera::lsp::path_key("D:/p/shared.hsc"));
+	ASSERT_EQ(1u, shared_uses.size());
+	EXPECT_EQ("D:/p/b.hsc", merged.declarations[shared_uses[0].declaration].file);
+	// a.hsc's old declaration is gone, its new one there
+	EXPECT_EQ(1u, merged.declared.at(hemera::lsp::path_key("D:/p/a.hsc")).size());
+	EXPECT_EQ(8u, merged.declarations[merged.declared.at(hemera::lsp::path_key("D:/p/a.hsc"))[0]].name_offset);
+	EXPECT_EQ((std::vector<std::string>{ "b", "a" }), merged.readers.at(hemera::lsp::path_key("D:/p/shared.hsc")));
 }
 
 TEST(TokenEnd, CoversWordsStringsAndSingleCharacters) {
