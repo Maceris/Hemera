@@ -662,6 +662,11 @@ namespace hemera {
          * no index, which records nothing.
          */
         std::string index_path;
+        /*
+         * --targets=a,b: of a build package's targets, only these are built or checked, by the names the build gives
+         * them, and the build's steps don't run; empty for every target and the steps.
+         */
+        std::vector<std::string> only_targets;
         /// <summary>
         /// Warnings not shown, and warnings made errors (--allow, --deny): prefix:code, prefix:* or *
         /// (docs/compilation.md, Allowing and Denying Warnings).

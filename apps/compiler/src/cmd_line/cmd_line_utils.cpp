@@ -521,6 +521,7 @@ namespace hemera {
 			case hemera::arg_parse::OVERLAY:
 			case hemera::arg_parse::DIAGNOSTICS:
 			case hemera::arg_parse::INDEX:
+			case hemera::arg_parse::TARGETS:
 			case hemera::arg_parse::ALLOW_WARNINGS:
 			case hemera::arg_parse::DENY_WARNINGS:
 			case hemera::arg_parse::SHOW_INSERTED:
@@ -1021,6 +1022,11 @@ namespace hemera {
 				break;
 			case hemera::arg_parse::INDEX:
 				output.index_path = std::string(option_with_value.values[0]);
+				break;
+			case hemera::arg_parse::TARGETS:
+				for (MyString value : option_with_value.values) {
+					output.only_targets.emplace_back(value);
+				}
 				break;
 			case hemera::arg_parse::DIAGNOSTICS:
 				if (option_with_value.values[0] == "json") {

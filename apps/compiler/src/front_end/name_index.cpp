@@ -309,6 +309,14 @@ namespace hemera {
 		Indexer{ index, program, folder_text(options.input), std::move(libraries) }.run();
 	}
 
+	void add_readers(NameIndex& index, ProgramInfo& program, const std::string& target) {
+		for (const auto& [path, package] : program.packages) {
+			for (const auto& [file_name, file] : package->files) {
+				index.readers[with_slashes(file_path_of(path, file_name))].insert(target);
+			}
+		}
+	}
+
 	// text as a JSON string, quotes included
 	static std::string json_text(std::string_view text) {
 		std::string out = "\"";
@@ -339,6 +347,9 @@ namespace hemera {
 		}
 		for (const auto& [place, target] : index.uses) {
 			files.emplace(place.file, 0);
+		}
+		for (const auto& [file, targets] : index.readers) {
+			files.emplace(file, 0);
 		}
 		std::string out = "{\"version\":1,\"files\":[";
 		size_t number = 0;
@@ -382,7 +393,38 @@ namespace hemera {
 			out += std::format("{}[{},{},{},{}]", first ? "\n" : ",\n", files[place.file], place.offset, place.length, found->second);
 			first = false;
 		}
-		return out + "]}\n";
+		out += "]";
+		// A build package's targets, each numbered in order, and the targets that read each file, in the files' order
+		if (!index.readers.empty()) {
+			std::map<std::string, size_t> targets;
+			for (const auto& [file, readers] : index.readers) {
+				for (const std::string& target : readers) {
+					targets.emplace(target, 0);
+				}
+			}
+			out += ",\"targets\":[";
+			size_t target_number = 0;
+			for (auto& [target, number_of] : targets) {
+				out += (target_number == 0 ? "" : ",") + json_text(target);
+				number_of = target_number++;
+			}
+			out += "],\"readers\":[";
+			bool first_file = true;
+			for (const auto& [file, number_of_file] : files) {
+				out += first_file ? "\n[" : ",\n[";
+				first_file = false;
+				if (auto found = index.readers.find(file); found != index.readers.end()) {
+					bool first_reader = true;
+					for (const std::string& target : found->second) {
+						out += (first_reader ? "" : ",") + std::to_string(targets[target]);
+						first_reader = false;
+					}
+				}
+				out += "]";
+			}
+			out += "]";
+		}
+		return out + "}\n";
 	}
 
 	bool write_index(const NameIndex& index, const std::string& path) {

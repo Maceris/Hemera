@@ -3,6 +3,7 @@
 #include <compare>
 #include <cstdint>
 #include <map>
+#include <set>
 #include <mutex>
 #include <string>
 #include <unordered_map>
@@ -88,6 +89,8 @@ namespace hemera {
 	struct NameIndex {
 		std::map<IndexPlace, IndexDeclaration> declarations;
 		std::map<IndexPlace, IndexPlace> uses;
+		// For a build package, the targets that read each file, by their names; empty for a program alone
+		std::map<std::string, std::set<std::string>> readers;
 	};
 
 	/*
@@ -99,9 +102,13 @@ namespace hemera {
 	 */
 	void add_to_index(NameIndex& index, ProgramInfo& program, const Options& options);
 
+	// That every file of program's packages is read by the build's target called target, in index's readers.
+	void add_readers(NameIndex& index, ProgramInfo& program, const std::string& target);
+
 	/*
 	 * index as JSON (docs/compilation.md, The Name Index): its files, its declarations, and its uses, each a file's
-	 * number, an offset, a length and a declaration's number.
+	 * number, an offset, a length and a declaration's number; and for a build package, its targets, and for each
+	 * file, the numbers of the targets that read it.
 	 */
 	std::string index_json(const NameIndex& index);
 

@@ -165,6 +165,18 @@ namespace hemera {
 			return true;
 		};
 
+		// --targets: only those named, each one the build has
+		const std::vector<std::string>& only = build_options.only_targets;
+		for (const std::string& name : only) {
+			if (std::none_of(registry.targets.begin(), registry.targets.end(), [&](const BuildTarget& target) { return target.name == name; })) {
+				report_error(ErrorCode::E4047, build_options.input.string(), 0, 0, std::format("the build has no target {}", name));
+				return false;
+			}
+		}
+		const auto chosen = [&](const BuildTarget& target) {
+			return only.empty() || std::find(only.begin(), only.end(), target.name) != only.end();
+		};
+
 		// Each worker takes the next target, and what's finished is printed in order
 		std::atomic<size_t> next{ 0 };
 		auto work = [&]() {
@@ -174,7 +186,7 @@ namespace hemera {
 					return;
 				}
 				set_report_scope(scopes[i].get());
-				const bool built = build_one(i, registry.targets[i]);
+				const bool built = !chosen(registry.targets[i]) || build_one(i, registry.targets[i]);
 				set_report_scope(nullptr);
 				std::scoped_lock<std::mutex> lock(reporting);
 				succeeded[i] = built;
@@ -202,12 +214,13 @@ namespace hemera {
 			for (size_t i = 0; i < count; ++i) {
 				if (programs[i] != nullptr) {
 					add_to_index(*index, *programs[i], *programs_options[i]);
+					add_readers(*index, *programs[i], registry.targets[i].name);
 				}
 			}
 		}
 		const bool worked = std::all_of(succeeded.begin(), succeeded.end(), [](char built) { return built != 0; });
-		// A check (--check) stops at its targets: the steps would run what they built
-		if (BuildExtent::CHECK == build_options.build_extent) {
+		// A check (--check) stops at its targets, as does building some of them: the steps would use them all
+		if (BuildExtent::CHECK == build_options.build_extent || !only.empty()) {
 			return worked && error_count() == 0;
 		}
 		return run_build_steps(build, build_options) && worked && error_count() == 0;

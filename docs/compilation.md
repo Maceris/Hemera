@@ -201,6 +201,9 @@ build package, it's the build's own code and every target's, merged.
 * Uses are only in the program's own code: not in `base`, `std` or `vendor`, unless the package being built is in one
   of them. Every declaration a use names is there, wherever it is.
 * What compile-time code put in, like `#insert`'s code, isn't indexed, as it isn't where its tokens say it is.
+* For a build package, `targets` names its targets, and `readers`, one entry for each of `files` in the same order,
+  lists the numbers of the targets that read that file, so a tool can check only the targets a changed file is in
+  (`--targets`).
 
 ### Allowing and Denying Warnings
 
@@ -517,11 +520,16 @@ Targets are built several at once, each a program of its own: its files are read
 ones another target already used, since its `#if` choices, settings and package paths can make them mean something
 else, and the work within a target is spread across threads like any program's. `--jobs=N` says how many are built
 at once: 1 for one at a time, in the order they were registered, and by default a quarter of the machine's logical
-processors. The checks take turns, since they run the build package's own code. Either way, each target's outputs
+processors. The checks take turns, since they run the build package's own code, though what describing a target for
+them takes, like working out its constants, is done beside other targets'. Either way, each target's outputs
 are the same (see Deterministic Output), and what it reports, its errors and warnings and `--time-phases`'s lines, is
 printed in one piece and in the order the targets were registered, once it and every target before it are done.
 A target's errors stop only it: the others are still built, and the build fails. Steps run once every target is done.
 Sharing parsed files between targets is planned.
+
+`--targets=a,b` builds only the targets with those names, by `BuildOptions.name`, as an editor does to check just the
+ones a saved file is in. The build's steps don't run then, as they'd want every target. A name the build has no
+target for is an error (E4047).
 
 ## Compile-Time Permissions
 

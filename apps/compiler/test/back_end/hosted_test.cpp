@@ -1269,13 +1269,63 @@ TEST(Build, IndexesEveryTarget)
 	}
 	EXPECT_GT(in_build, 0u);
 	EXPECT_GT(in_app, 0u);
-	// And it's JSON that names both files
+	// The target's files, with which target reads them
+	bool app_read = false;
+	for (const auto& [file, readers] : index.readers) {
+		app_read = app_read || (file.ends_with("app/app.hsc") && readers.contains("app"));
+	}
+	EXPECT_TRUE(app_read);
+	// And it's JSON that names both files, and the target
 	const std::string json = hemera::index_json(index);
+	EXPECT_NE(json.find("\"targets\":[\"app\"]"), std::string::npos);
 	EXPECT_TRUE(json.starts_with("{\"version\":1,\"files\":["));
 	EXPECT_NE(json.find("app/app.hsc\""), std::string::npos);
 
 	hemera::reset_build_registry();
 	module.erase();
+}
+
+// hemera --targets: only the targets named are checked; one the build doesn't have is an error (E4047).
+TEST(Build, ChecksOnlyTheTargetsNamed)
+{
+	for (const bool known : { true, false }) {
+		hemera::reset_reporting_storage();
+		StringCacheGuard string_cache;
+		hemera::reset_build_registry();
+
+		mlir::MLIRContext context;
+		context.loadDialect<mlir::BuiltinDialect>();
+		context.loadDialect<hmir::HemeraDialect>();
+		mlir::OpBuilder builder(&context);
+		mlir::ModuleOp module = mlir::ModuleOp::create(builder, builder.getUnknownLoc(), "build");
+		auto program_info = std::make_unique<hemera::ProgramInfo>(&context, &builder, &module);
+
+		const std::filesystem::path output_folder = std::filesystem::path(HEMERA_TEST_OUTPUT_DIR) / "build_package_named";
+		std::filesystem::create_directories(output_folder);
+		hemera::Options options;
+		options.input = std::filesystem::canonical(scenario("build_package") / "build");
+		options.output_name = (output_folder / "build").string();
+		options.settings = { { "output", (output_folder / "app").string() }, { "answer", "42" } };
+		options.build_extent = hemera::BuildExtent::CHECK;
+		options.only_targets = { known ? "app" : "no_such_target" };
+
+		hemera::disable_reporting_printing();
+		hemera::kick_off_processing(program_info.get(), &options);
+		ASSERT_EQ(hemera::error_count(), 0);
+		hemera::Allocator<> alloc;
+		EXPECT_EQ(known, hemera::build_targets(program_info.get(), options, alloc));
+		if (known) {
+			EXPECT_EQ(hemera::error_count(), 0);
+		}
+		else {
+			ASSERT_EQ(hemera::error_list()->size(), 1u);
+			EXPECT_EQ(hemera::error_list()->front(), hemera::ErrorCode::E4047);
+		}
+		hemera::enable_reporting_printing();
+
+		hemera::reset_build_registry();
+		module.erase();
+	}
 }
 
 // hemera --check on a program: generated, so a #run statement in a function runs, but nothing written.
