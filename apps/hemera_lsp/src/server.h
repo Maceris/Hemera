@@ -12,6 +12,7 @@
 
 #include "checker.h"
 #include "documents.h"
+#include "index.h"
 #include "parsing.h"
 
 #include "llvm/Support/JSON.h"
@@ -92,6 +93,8 @@ namespace hemera::lsp {
 		uint64_t generation = 0;
 		// For each root checked, the URIs it published diagnostics for, to clear any it no longer has
 		std::map<std::string, std::set<std::string>> published;
+		// Each root's name index, from its last check that wrote one, by path_key of the root
+		std::map<std::string, std::shared_ptr<const LoadedIndex>> indexes;
 		// Last, so it's stopped before what its thread uses goes
 		std::unique_ptr<Checker> checker;
 

@@ -8,6 +8,8 @@ ADD_LIBRARY(HemeraLspLib STATIC
   src/documents.h
   src/features.cpp
   src/features.h
+  src/index.cpp
+  src/index.h
   src/parsing.cpp
   src/parsing.h
   src/protocol.cpp
@@ -40,6 +42,7 @@ ADD_EXECUTABLE(HemeraLspTest
   test/checker_test.cpp
   test/documents_test.cpp
   test/features_test.cpp
+  test/index_test.cpp
   test/parsing_test.cpp
   test/protocol_test.cpp
   test/server_test.cpp

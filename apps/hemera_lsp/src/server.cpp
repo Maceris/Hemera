@@ -185,6 +185,7 @@ namespace hemera::lsp {
 					}
 				}
 				published.clear();
+				indexes.clear();
 				for (const auto& [key, open] : open_documents.all()) {
 					to_check.push_back(open.uri);
 				}
@@ -337,9 +338,21 @@ namespace hemera::lsp {
 			job.generation = generation;
 			job.arguments = { settings.compiler_path, "--check", "--diagnostics=json" };
 			job.arguments.insert(job.arguments.end(), settings.arguments.begin(), settings.arguments.end());
+			// The name index, for the answers that come from it (docs/editor.md)
+			llvm::SmallString<256> index_file;
+			if (!llvm::sys::fs::createTemporaryFile("hemera-lsp-index", "json", index_file)) {
+				job.index_file = index_file.str().str();
+				job.temporaries.push_back(job.index_file);
+				job.arguments.push_back("--index=" + job.index_file);
+			}
 			// Each open document whose text isn't what's on disk is read from a file of its own instead
 			for (const auto& [key, open] : open_documents.all()) {
-				if (open.path.empty() || read_file(open.path) == open.text) {
+				if (open.path.empty()) {
+					continue;
+				}
+				// What the check reads of it, which the index's offsets count in
+				job.texts[path_key(open.path)] = open.text;
+				if (read_file(open.path) == open.text) {
 					continue;
 				}
 				llvm::SmallString<256> temporary;
@@ -400,6 +413,13 @@ namespace hemera::lsp {
 				}
 			}
 			else {
+				// The index, read whether the check found errors or not, which the next check's replaces
+				if (!job.index_file.empty()) {
+					if (std::optional<LoadedIndex> index = read_index(read_file(job.index_file).value_or(""), base_folder)) {
+						index->texts = job.texts;
+						indexes[path_key(job.root)] = std::make_shared<const LoadedIndex>(std::move(*index));
+					}
+				}
 				const std::vector<CompilerDiagnostic> found = parse_diagnostics(result.output);
 				// By file, each once, as one file can be in several of a build's targets
 				std::map<std::string, std::vector<const CompilerDiagnostic*>> by_file;

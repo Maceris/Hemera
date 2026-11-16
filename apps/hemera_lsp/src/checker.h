@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <deque>
 #include <functional>
+#include <map>
 #include <memory>
 #include <mutex>
 #include <string>
@@ -76,6 +77,10 @@ namespace hemera::lsp {
 		std::vector<std::string> temporaries;
 		// Which of the server's settings it was made under, so a result from before they changed is left out
 		uint64_t generation = 0;
+		// Where the check writes its name index (--index), which is among temporaries; empty for none
+		std::string index_file;
+		// The text of each document that was open when it was made, by path_key, which the index's offsets count in
+		std::map<std::string, std::string> texts;
 	};
 
 	/*

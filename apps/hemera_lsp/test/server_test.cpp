@@ -44,13 +44,26 @@ namespace {
 		std::vector<Value> sent;
 		std::vector<std::vector<std::string>> commands;
 		std::string output;
+		// What the fake compiler writes where --index says, if anything
+		std::string index_json;
 		bool starts = true;
 		Server server{ [this](Value message) {
 			std::lock_guard<std::mutex> lock(mutex);
 			sent.push_back(std::move(message));
 		}, [this](const std::vector<std::string>& arguments) -> std::unique_ptr<Run> {
 			std::lock_guard<std::mutex> lock(mutex);
-			commands.push_back(arguments);
+			// The index is written, and its argument left out of what the tests compare
+			std::vector<std::string> kept;
+			for (const std::string& argument : arguments) {
+				if (argument.starts_with("--index=")) {
+					std::ofstream index(argument.substr(std::string_view("--index=").size()), std::ios::binary);
+					index << index_json;
+				}
+				else {
+					kept.push_back(argument);
+				}
+			}
+			commands.push_back(kept);
 			RunResult result;
 			result.started = starts;
 			result.output = output;
