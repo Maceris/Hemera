@@ -44,7 +44,9 @@ namespace hemera {
 		}
 		generating.reset();
 		if (options->build_extent < BuildExtent::LOWER) {
-			dump_mlir_to_file(options, &mlir_module);
+			if (BuildExtent::COMPILE == options->build_extent) {
+				dump_mlir_to_file(options, &mlir_module);
+			}
 			return true;
 		}
 		llvm::LLVMContext context;
@@ -189,6 +191,10 @@ namespace hemera {
 			}
 		}
 		const bool worked = std::all_of(succeeded.begin(), succeeded.end(), [](char built) { return built != 0; });
+		// A check (--check) stops at its targets: the steps would run what they built
+		if (BuildExtent::CHECK == build_options.build_extent) {
+			return worked && error_count() == 0;
+		}
 		return run_build_steps(build, build_options) && worked && error_count() == 0;
 	}
 

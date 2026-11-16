@@ -409,6 +409,14 @@ namespace hemera {
 				output.build_extent = BuildExtent::ASSEMBLE;
 				stage_seen = true;
 				break;
+			case hemera::arg_parse::CHECK:
+				if (stage_seen) {
+					std::cout << "Duplicate stage flag" << std::endl;
+					return 1;
+				}
+				output.build_extent = BuildExtent::CHECK;
+				stage_seen = true;
+				break;
 			case hemera::arg_parse::DEBUG_INFO:
 				if (debug_info_seen) {
 					cout << "Duplicate debug flag" << endl;
@@ -1256,6 +1264,7 @@ namespace hemera {
 			case hemera::arg_parse::STOP_BEFORE_LOWERING:
 			case hemera::arg_parse::STOP_BEFORE_ASSEMBLY:
 			case hemera::arg_parse::STOP_BEFORE_LINK:
+			case hemera::arg_parse::CHECK:
 			case hemera::arg_parse::VERSION:
 				break;
 			case hemera::arg_parse::OUTPUT:

@@ -29,6 +29,7 @@ TEST(ArgParsingTest, OptionsWithoutArgs)
 	char stop_before_assembly[] = "-S";
 	char stop_before_link[] = "-c";
 	char version[] = "--version";
+	char check[] = "--check";
 
 	std::vector<std::pair<char*, Option>> options;
 	options.push_back(std::make_pair(debug_info, Option::DEBUG_INFO));
@@ -36,6 +37,7 @@ TEST(ArgParsingTest, OptionsWithoutArgs)
 	options.push_back(std::make_pair(stop_before_assembly, Option::STOP_BEFORE_ASSEMBLY));
 	options.push_back(std::make_pair(stop_before_link, Option::STOP_BEFORE_LINK));
 	options.push_back(std::make_pair(version, Option::VERSION));
+	options.push_back(std::make_pair(check, Option::CHECK));
 
 	char* arguments[] = { application, nullptr };
 	UnprocessedOptions output{ alloc };

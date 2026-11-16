@@ -38,6 +38,11 @@ namespace hemera {
 	/// How far we want to build. These are in order.
 	/// </summary>
 	enum class BuildExtent {
+		/*
+		 * As COMPILE, so all compile-time code runs, even what only runs as the program is generated, but writing
+		 * nothing (--check); and for a build package, without its steps.
+		 */
+		CHECK,
 		/// <summary>
 		/// Lex, Parse, and run any compile-time code. The end result is
 		/// MLIR.

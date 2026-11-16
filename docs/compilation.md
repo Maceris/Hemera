@@ -42,6 +42,17 @@ File Import --> Parse --> Type Check <--\
         Executable Generation
 ```
 
+## Checking Without Building
+
+`hemera --check` runs a program through MLIR generation and stops there, writing nothing: no MLIR, object file or
+program. Generation is part of it because some compile-time code only runs then, like a `#run` statement in a function,
+which runs as its function is generated. It reports what a full build would up to that point, and exits as one would.
+
+For a build package, the build's own code runs as usual and adds its targets. Each target is then checked, run through
+the build's checks (`add_check`) and generated, and the build's steps don't run, since they'd use what the targets
+built. The compiler writes nothing, but the build's code and checks run as they always do, so whatever they write
+themselves is still written. `--check` takes the place of `-s`, `-S` and `-c`, and can't be given with any of them.
+
 ## Deterministic Output
 
 The same inputs (source, `base` and `std`, options and settings, and the same compiler) give the

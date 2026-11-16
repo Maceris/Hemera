@@ -1184,6 +1184,84 @@ TEST(Build, BuildsTargets)
 	module.erase();
 }
 
+// hemera --check on a build package: its target checked and run through the build's check, then nothing built or run.
+TEST(Build, ChecksTargetsWithoutBuildingThem)
+{
+	hemera::reset_reporting_storage();
+	StringCacheGuard string_cache;
+	hemera::reset_build_registry();
+
+	mlir::MLIRContext context;
+	context.loadDialect<mlir::BuiltinDialect>();
+	context.loadDialect<hmir::HemeraDialect>();
+	mlir::OpBuilder builder(&context);
+	mlir::ModuleOp module = mlir::ModuleOp::create(builder, builder.getUnknownLoc(), "build");
+	auto program_info = std::make_unique<hemera::ProgramInfo>(&context, &builder, &module);
+
+	const std::filesystem::path output_folder = std::filesystem::path(HEMERA_TEST_OUTPUT_DIR) / "build_package_checked";
+	std::filesystem::remove_all(output_folder);
+	std::filesystem::create_directories(output_folder);
+	const std::string output = (output_folder / "app").string();
+	hemera::Options options;
+	options.input = std::filesystem::canonical(scenario("build_package") / "build");
+	options.output_name = (output_folder / "build").string();
+	options.settings = { { "output", output }, { "answer", "42" } };
+	options.build_extent = hemera::BuildExtent::CHECK;
+
+	hemera::kick_off_processing(program_info.get(), &options);
+	ASSERT_EQ(hemera::error_count(), 0) << "first error: " << static_cast<int>(hemera::error_list()->front());
+	hemera::Allocator<> alloc;
+	EXPECT_TRUE(hemera::build_targets(program_info.get(), options, alloc));
+	EXPECT_EQ(hemera::error_count(), 0);
+	// The check's warning, kept as a record, and not the step's
+	std::vector<std::string> warnings;
+	for (const hemera::Diagnostic& diagnostic : hemera::diagnostics()) {
+		if (hemera::Severity::WARNING == diagnostic.severity) {
+			warnings.push_back(diagnostic.message);
+		}
+	}
+	ASSERT_EQ(warnings.size(), 1u);
+	EXPECT_TRUE(warnings[0].ends_with(". checked app")) << warnings[0];
+	EXPECT_TRUE(std::filesystem::is_empty(output_folder)) << "a check writes nothing";
+
+	hemera::reset_build_registry();
+	module.erase();
+}
+
+// hemera --check on a program: generated, so a #run statement in a function runs, but nothing written.
+TEST(Build, ChecksProgramsThroughGeneration)
+{
+	hemera::reset_reporting_storage();
+	StringCacheGuard string_cache;
+
+	mlir::MLIRContext context;
+	context.loadDialect<mlir::BuiltinDialect>();
+	context.loadDialect<hmir::HemeraDialect>();
+	mlir::OpBuilder builder(&context);
+	mlir::ModuleOp module = mlir::ModuleOp::create(builder, builder.getUnknownLoc(), "checked");
+	auto program_info = std::make_unique<hemera::ProgramInfo>(&context, &builder, &module);
+
+	const std::filesystem::path output_folder = std::filesystem::path(HEMERA_TEST_OUTPUT_DIR) / "check_runs_statements";
+	std::filesystem::remove_all(output_folder);
+	std::filesystem::create_directories(output_folder);
+	hemera::Options options;
+	options.input = std::filesystem::canonical(scenario("check_runs_statements"));
+	options.output_name = (output_folder / "checked").string();
+	options.build_extent = hemera::BuildExtent::CHECK;
+
+	hemera::kick_off_processing(program_info.get(), &options);
+	ASSERT_EQ(hemera::error_count(), 0) << "first error: " << static_cast<int>(hemera::error_list()->front());
+	EXPECT_TRUE(hemera::diagnostics().empty()) << "the #run statement waits for main to be generated";
+	EXPECT_TRUE(hemera::finish_program(&options, program_info.get(), module));
+	EXPECT_EQ(hemera::error_count(), 0);
+	const std::vector<hemera::Diagnostic> found = hemera::diagnostics();
+	ASSERT_EQ(found.size(), 1u);
+	EXPECT_TRUE(found[0].message.ends_with(". ran as main was generated")) << found[0].message;
+	EXPECT_TRUE(std::filesystem::is_empty(output_folder)) << "a check writes nothing";
+
+	module.erase();
+}
+
 // A typed library built from the package in sources to output_name, for Windows, in the caller's string cache: whether it built.
 static bool build_typed_library(const std::filesystem::path& sources, const std::string& output_name)
 {
