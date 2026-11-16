@@ -100,6 +100,15 @@ namespace hemera {
 						const std::string bytes = bytes_of(reading, file_path);
 						found[file_path] = llvm::xxh3_64bits(llvm::StringRef(bytes));
 					}
+					// And a file added to the package since, as packages are found by listing their folders
+					std::error_code error;
+					for (const std::filesystem::directory_entry& entry : std::filesystem::directory_iterator(std::string_view(*path), error)) {
+						const std::string file_path = file_path_of(path, intern(entry.path().filename().string()));
+						if (entry.path().extension() == ".hsc" && !found.contains(file_path)) {
+							const std::string bytes = bytes_of(reading, file_path);
+							found[file_path] = llvm::xxh3_64bits(llvm::StringRef(bytes));
+						}
+					}
 				}
 				return found;
 			}
