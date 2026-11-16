@@ -141,8 +141,11 @@ namespace hemera {
 
 	/// <summary>
 	/// Runs every check the build registered on a target, once it's checked. Returns false if one failed.
+	/// build_memory is the lock on the build's memory, which it holds while it writes there and runs the checks, but
+	/// not while it works out the target's constants, so other targets can be described meanwhile.
 	/// </summary>
-	bool run_build_checks(ProgramInfo* build, const Options& build_options, ProgramInfo* target, const Options& options);
+	bool run_build_checks(ProgramInfo* build, const Options& build_options, ProgramInfo* target, const Options& options,
+		std::mutex& build_memory);
 
 	/// <summary>
 	/// Runs every step the build registered, after what each depends on. Returns false if one failed or couldn't run.

@@ -94,8 +94,9 @@ namespace hemera {
 	 * A build package's targets (docs/compilation.md, Build Packages), several at once (--jobs): each checked,
 	 * run through the build's checks, then generated and linked, reporting in a scope of its own, which is
 	 * printed whole and in the targets' order. The checks take turns, since they run the build's own code in
-	 * its memory. Then the build's steps. Each target's program stays for the rest of the build, since the
-	 * build's code may hold its types.
+	 * its memory, but each target's constants, which describing it for them takes, are worked out beside
+	 * others'. Then the build's steps. Each target's program stays for the rest of the build, since the build's
+	 * code may hold its types.
 	 */
 	bool build_targets(ProgramInfo* build, const Options& build_options, Allocator<>& alloc, NameIndex* index) {
 		BuildRegistry& registry = build_registry();
@@ -148,11 +149,9 @@ namespace hemera {
 			if (error_count() != 0) {
 				return false;
 			}
-			{
-				std::scoped_lock<std::mutex> lock(checking);
-				if (!run_build_checks(build, build_options, program, *options)) {
-					return false;
-				}
+			// It takes the lock on the build's memory itself, for all but working out the target's constants
+			if (!run_build_checks(build, build_options, program, *options, checking)) {
+				return false;
 			}
 			if (target.output_type == "Nothing") {
 				target.built = true;

@@ -11398,6 +11398,11 @@ namespace hemera {
 			ProgramInfo* program;
 			const Options* options;
 			CompileTimeData& data;
+			/*
+			 * While set, the lock on the build's memory, which data is in, held only to copy each worked-out value into
+			 * it, so the work itself can run beside other targets'. Null when the caller holds it throughout.
+			 */
+			std::mutex* build_memory = nullptr;
 		};
 
 		uint64_t read_u64(const uint8_t* at) {
@@ -11571,6 +11576,10 @@ namespace hemera {
 				if (run(batch)) {
 					for (size_t j = from; j < to; ++j) {
 						if (kept[positions[j]]) {
+							std::unique_lock<std::mutex> copying;
+							if (call.build_memory != nullptr) {
+								copying = std::unique_lock<std::mutex>(*call.build_memory);
+							}
 							result[positions[j]].second = call.data.copy_value(result[positions[j]].first, values[positions[j]]);
 						}
 					}
@@ -13303,8 +13312,12 @@ namespace hemera {
 		return RunResult::RAN == ran && reinterpret_cast<const uint8_t*>(frame.data())[result_offset] != 0;
 	}
 
-	bool run_build_checks(ProgramInfo* build, const Options& build_options, ProgramInfo* target, const Options& options) {
+	bool run_build_checks(ProgramInfo* build, const Options& build_options, ProgramInfo* target, const Options& options,
+		std::mutex& build_memory) {
+
 		BuildRegistry& registry = build_registry();
+		// The build's memory has one writer at a time: held throughout, but for working out constants (below)
+		std::unique_lock<std::mutex> holding(build_memory);
 		if (registry.checks.empty()) {
 			return true;
 		}
@@ -13335,7 +13348,15 @@ namespace hemera {
 			const std::vector<Declaration*> found = constants_of(target, text_of(package->full_path));
 			constants.insert(constants.end(), found.begin(), found.end());
 		}
+		/*
+		 * Worked out in the target's own program, beside other targets', the lock taken only to copy each value into
+		 * the build's memory: this is most of describing a target, which every target does
+		 */
+		holding.unlock();
+		call.build_memory = &build_memory;
 		const auto values = constant_values(call, constants);
+		call.build_memory = nullptr;
+		holding.lock();
 		// And their functions' constant defaults
 		std::vector<Declaration*> functions;
 		for (hemera::PackageInfo* package : packages) {
