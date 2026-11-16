@@ -21,10 +21,25 @@ TIMEOUT_SECONDS = 120
 BROKEN = "package main\n\nmain :: fn() -> int {\n    return \"not a number\"\n}\n"
 FIXED = "package main\n\nmain :: fn() -> int {\n    return helper()\n}\n"
 HELPER = "package main\n\nhelper :: fn() -> int {\n    return 0\n}\n"
+UNFORMATTED = "package main\n\nmain :: fn( ) -> int {\n  return helper( )\n}\n"
 
 
 def uri_of(path):
     return pathlib.Path(path).resolve().as_uri()
+
+
+def applied(text, edit):
+    """text with an edit applied, its positions in UTF-16 units, as the server was asked for."""
+    lines = text.split("\n")
+
+    def offset(position):
+        before = sum(len(line) + 1 for line in lines[:position["line"]])
+        line = lines[position["line"]].encode("utf-16-le")[:position["character"] * 2].decode("utf-16-le")
+        return before + len(line)
+
+    start = offset(edit["range"]["start"])
+    end = offset(edit["range"]["end"])
+    return text[:start] + edit["newText"] + text[end:]
 
 
 class Client:
@@ -114,6 +129,22 @@ def drive(server, compiler, folder):
     client.notify("textDocument/didOpen", {"textDocument": {"uri": uri_of(helper), "languageId": "hemera", "version": 1,
                                                             "text": HELPER}})
     assert client.diagnostics_for(uri_of(main)) == []
+
+    # Tier 2, answered in the server's own process: formatting, the outline and folding
+    for capability in ("documentFormattingProvider", "documentSymbolProvider", "foldingRangeProvider"):
+        assert result["result"]["capabilities"].get(capability), capability
+    client.notify("textDocument/didChange", {"textDocument": {"uri": uri_of(main), "version": 3},
+                                             "contentChanges": [{"text": UNFORMATTED}]})
+    edits = client.request("textDocument/formatting", {"textDocument": {"uri": uri_of(main)},
+                                                       "options": {"tabSize": 4, "insertSpaces": True}})["result"]
+    assert len(edits) == 1, edits
+    assert applied(UNFORMATTED, edits[0]) == FIXED, applied(UNFORMATTED, edits[0])
+
+    symbols = client.request("textDocument/documentSymbol", {"textDocument": {"uri": uri_of(main)}})["result"]
+    assert [(symbol["name"], symbol["kind"]) for symbol in symbols] == [("main", 12)], symbols
+
+    folds = client.request("textDocument/foldingRange", {"textDocument": {"uri": uri_of(main)}})["result"]
+    assert [(fold["startLine"], fold["endLine"]) for fold in folds] == [(2, 3)], folds
 
     assert "error" not in client.request("shutdown", None)
     client.notify("exit", None)

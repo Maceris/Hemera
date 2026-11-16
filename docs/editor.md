@@ -2,8 +2,9 @@
 
 `hemera-lsp` is Hemera's language server. An editor starts it and speaks the
 [Language Server Protocol](https://microsoft.github.io/language-server-protocol/) to it over standard input and output,
-and it shows the compiler's errors and warnings where they are, each time a file is opened or saved. The VS Code
-extension is built with it; another editor with a language server client can start `hemera-lsp` the same way.
+and it shows the compiler's errors and warnings where they are, each time a file is opened or saved, and formats,
+outlines and folds files. The VS Code extension is built with it; another editor with a language server client can
+start `hemera-lsp` the same way.
 
 ## Building
 
@@ -59,10 +60,30 @@ in a build, a build package's checks included, and nothing is written but what t
 Checking as you type isn't done: a large build package can take tens of seconds to check, so checks come with opening
 and saving.
 
+A change to the settings clears every diagnostic shown and checks the open files again, so a file checked through
+another root doesn't keep what that root found.
+
+## Formatting, the Outline and Folding
+
+These come from the server's own lexer and parser, in its own process, as you type, without the compiler's check:
+
+* **Format Document** lays a file out as [`hemera-format`](formatting.md) does, changing only what has to change, so
+  the cursor and what's folded outside it stay where they are. A file that doesn't parse is left as it is. The editor's
+  tab size and spaces settings don't apply, as the layout is fixed; to format on save, turn on VS Code's
+  `editor.formatOnSave` for Hemera.
+* **The outline** lists a file's declarations: functions, structs, enums, unions, aliases and constants, with a
+  struct's fields, an enum's members and a union's variants under them. While a file doesn't parse, it shows the last
+  version that did.
+* **Folding** folds blocks, brackets over several lines, block comments, runs of line comments, and runs of imports,
+  whether the file parses or not.
+
+There's no range formatting, as a part of a file's layout depends on what's around it.
+
 ## Other Editors
 
 `hemera-lsp` takes no arguments. It answers `initialize` with whole-document sync, open, close and save
-notifications, and UTF-8 positions when the client offers them, else UTF-16. Its settings come in initialize's
+notifications, UTF-8 positions when the client offers them, else UTF-16, and `textDocument/formatting`,
+`textDocument/documentSymbol` and `textDocument/foldingRange`. Its settings come in initialize's
 `initializationOptions`, and later in `workspace/didChangeConfiguration`'s `settings.hemera`, as an object with
 `compilerPath`, `root` and `arguments`, named as above without `hemera.`. It exits 0 after `shutdown` and `exit`, and 1
 when `exit`, or the end of its standard input, comes without `shutdown` before it.
