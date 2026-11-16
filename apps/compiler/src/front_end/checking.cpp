@@ -10,6 +10,7 @@
 #include "front_end/documentation.h"
 #include "front_end/format_spec.h"
 #include "front_end/front_end.h"
+#include "front_end/name_index.h"
 #include "front_end/bounds.h"
 #include "front_end/ownership.h"
 #include "front_end/stack_pointers.h"
@@ -1183,6 +1184,7 @@ namespace hemera {
 		if (TypeInfoVariant::STRUCT == type->variant) {
 			const StructMember* found = find_member(static_cast<TypeInfoStruct const*>(type), name);
 			if (found != nullptr) {
+				record_member_use(checker.walk, where, type, name);
 				const bool is_context = value.is_context;
 				value = typed(found->member_type);
 				value.is_location = is_location;

@@ -12,6 +12,7 @@
 #include "error/reporting.h"
 #include "front_end/front_end.h"
 #include "front_end/info.h"
+#include "front_end/name_index.h"
 #include "front_end/names.h"
 #include "hmir/hmir_dialect.h"
 #include "lexer/lexer.h"
@@ -1617,4 +1618,99 @@ TEST(FrontEnd, WarnsOfAssignmentOrder)
 
 	EXPECT_TRUE(errors.empty()) << codes(errors);
 	EXPECT_EQ(std::count(hemera::warning_list()->begin(), hemera::warning_list()->end(), hemera::WarningCode::W4003), 1);
+}
+
+// A place in the index as file:line:column, the file by its name alone, lines and columns from 1, for reading.
+static std::string where(const hemera::IndexPlace& place) {
+	std::ifstream file(place.file, std::ios::binary);
+	const std::string text((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+	size_t line = 1;
+	size_t line_start = 0;
+	for (size_t i = 0; i < place.offset && i < text.size(); ++i) {
+		if (text[i] == '\n') {
+			++line;
+			line_start = i + 1;
+		}
+	}
+	return std::format("{}:{}:{}", std::filesystem::path(place.file).filename().string(), line, place.offset - line_start + 1);
+}
+
+/*
+ * The name index (docs/compilation.md, The Name Index): each use in the root package, of a declaration in another
+ * package or file, a generic's instances, a field and a local, lands on where it's declared, and each declaration
+ * has its kind, type and doc comment.
+ */
+TEST(FrontEnd, IndexesWhatNamesReferTo)
+{
+	hemera::disable_reporting_printing();
+	StringCacheGuard string_cache;
+	FrontEndFixture fixture;
+	fixture.program_info->name_uses = std::make_shared<hemera::NameUses>();
+
+	std::vector<hemera::ErrorCode> errors = process_package(fixture, scenario("name_index/main"));
+	ASSERT_TRUE(errors.empty()) << reported(errors);
+	hemera::NameIndex index;
+	hemera::add_to_index(index, *fixture.program_info, std::filesystem::canonical(scenario("name_index/main")).generic_string());
+
+	std::set<std::string> uses;
+	for (const auto& [use, target] : index.uses) {
+		uses.insert(where(use) + " -> " + where(target));
+	}
+	for (const std::string& expected : {
+		// A type and a function in another package, named through it
+		"main.hsc:12:21 -> shapes.hsc:4:1",
+		"main.hsc:13:19 -> shapes.hsc:17:1",
+		// A constant, from this file and another
+		"main.hsc:13:32 -> main.hsc:5:1",
+		"helper.hsc:4:12 -> main.hsc:5:1",
+		// A generic function, used through two instances, lands on the generic
+		"main.hsc:14:14 -> main.hsc:7:1",
+		"main.hsc:15:13 -> main.hsc:7:1",
+		// A function in another file of the package
+		"main.hsc:16:28 -> helper.hsc:3:1",
+		// A field, through a local of its struct
+		"main.hsc:16:16 -> shapes.hsc:6:5",
+		// Locals
+		"main.hsc:13:25 -> main.hsc:12:5",
+		"main.hsc:16:12 -> main.hsc:13:5",
+		"main.hsc:16:20 -> main.hsc:14:5",
+		// A generic's parameter, in its body
+		"main.hsc:8:12 -> main.hsc:7:16",
+		}) {
+		EXPECT_TRUE(uses.contains(expected)) << expected;
+	}
+	// Only names: a call keeps its value at its (, which isn't a use
+	EXPECT_FALSE(uses.contains("main.hsc:14:19 -> main.hsc:7:1"));
+	// Uses are only in the root package: shapes.hsc's own aren't there
+	for (const std::string& use : uses) {
+		EXPECT_FALSE(use.starts_with("shapes.hsc")) << use;
+	}
+
+	std::map<std::string, const hemera::IndexDeclaration*> declarations;
+	for (const auto& [place, declaration] : index.declarations) {
+		declarations[where(place)] = &declaration;
+	}
+	ASSERT_TRUE(declarations.contains("shapes.hsc:17:1"));
+	const hemera::IndexDeclaration& moved = *declarations["shapes.hsc:17:1"];
+	EXPECT_EQ("function", moved.kind);
+	EXPECT_FALSE(moved.type.empty());
+	EXPECT_EQ("The point moved.", moved.brief);
+	ASSERT_EQ(3u, moved.tags.size());
+	EXPECT_EQ("param", moved.tags[0].tag);
+	EXPECT_EQ("point", moved.tags[0].name);
+	ASSERT_TRUE(declarations.contains("shapes.hsc:4:1"));
+	EXPECT_EQ("type", declarations["shapes.hsc:4:1"]->kind);
+	EXPECT_EQ("A point on the plane.", declarations["shapes.hsc:4:1"]->brief);
+	ASSERT_TRUE(declarations.contains("shapes.hsc:6:5"));
+	EXPECT_EQ("field", declarations["shapes.hsc:6:5"]->kind);
+	EXPECT_EQ("int", declarations["shapes.hsc:6:5"]->type);
+	ASSERT_TRUE(declarations.contains("main.hsc:5:1"));
+	EXPECT_EQ("constant", declarations["main.hsc:5:1"]->kind);
+	ASSERT_TRUE(declarations.contains("main.hsc:14:5"));
+	EXPECT_EQ("local", declarations["main.hsc:14:5"]->kind);
+	EXPECT_EQ("int", declarations["main.hsc:14:5"]->type);
+	// Every use's target is a declaration
+	for (const auto& [use, target] : index.uses) {
+		EXPECT_TRUE(index.declarations.contains(target)) << where(use) << " -> " << where(target);
+	}
 }

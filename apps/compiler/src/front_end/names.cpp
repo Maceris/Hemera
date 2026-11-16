@@ -9,6 +9,7 @@
 
 #include "error/reporting.h"
 #include "front_end/front_end.h"
+#include "front_end/name_index.h"
 #include "front_end/names.h"
 #include "front_end/checking.h"
 #include "front_end/walk.h"
@@ -503,6 +504,7 @@ namespace hemera {
 		Declaration* declaration, Need need) {
 
 		walk.bindings[where] = declaration;
+		record_use(walk, where, declaration);
 		// Pointers can refer to a declared type before it's resolved, but whether a VALUE, like
 		// X :: Y, is a type at all is only known once it is
 		if (need == Need::DECLARED && DeclarationKind::VALUE == declaration->kind) {

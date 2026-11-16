@@ -23,6 +23,7 @@ namespace hemera {
 	struct FileInfo;
 	struct PackageInfo;
 	struct CheckedBody;
+	struct NameUses;
 
 	/// <summary>
 	/// A function whose body checked cleanly, waiting for the checks on pointers to the stack, which every body is
@@ -227,6 +228,12 @@ namespace hemera {
 		/// </summary>
 		ast::QuoteTable quotes;
 		ast::NodeStore made_nodes;
+
+		/*
+		 * The names its code uses, recorded while it's checked, when it's to be indexed (hemera --index); null
+		 * otherwise, which records nothing.
+		 */
+		std::shared_ptr<NameUses> name_uses;
 
 		std::atomic_size_t next_location_id;
 
