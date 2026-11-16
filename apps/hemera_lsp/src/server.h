@@ -12,6 +12,7 @@
 
 #include "checker.h"
 #include "documents.h"
+#include "parsing.h"
 
 #include "llvm/Support/JSON.h"
 
@@ -102,6 +103,19 @@ namespace hemera::lsp {
 		void read_settings(const llvm::json::Object* hemera);
 		void check(const std::string& uri);
 		void checked(const CheckJob& job, const RunResult& result);
+
+		// What an open document parses to: its current version's, and the last version that made a tree, by URI
+		struct Parses {
+			std::shared_ptr<ParsedDocument> current;
+			std::shared_ptr<ParsedDocument> last_tree;
+		};
+		std::map<std::string, Parses> parses;
+
+		/*
+		 * The open document uri names, parsed as it is now, from the cache or parsed now (decision 6: on the thread
+		 * answering requests); null if it isn't open. state must be held.
+		 */
+		const Parses* parsed(const std::string& uri);
 	};
 
 	// JSON-RPC's and the Language Server Protocol's error codes

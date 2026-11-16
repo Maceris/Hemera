@@ -22,6 +22,7 @@ namespace hemera::lsp {
 	using llvm::json::Value;
 
 	Server::Server(Send send, Launch launch) : send(std::move(send)) {
+		prepare_parsing();
 		checker = std::make_unique<Checker>(std::move(launch), [this](const CheckJob& job, const RunResult& result) { checked(job, result); });
 	}
 
@@ -158,6 +159,7 @@ namespace hemera::lsp {
 			}
 			else if (method == "textDocument/didClose" && uri.has_value()) {
 				open_documents.close(*uri);
+				parses.erase(*uri);
 			}
 			else if (method == "workspace/didChangeConfiguration") {
 				const Object* all = params != nullptr ? params->getObject("settings") : nullptr;
@@ -448,5 +450,20 @@ namespace hemera::lsp {
 		for (Value& message : messages) {
 			send(std::move(message));
 		}
+	}
+
+	const Server::Parses* Server::parsed(const std::string& uri) {
+		const Document* document = open_documents.find_uri(uri);
+		if (document == nullptr) {
+			return nullptr;
+		}
+		Parses& entry = parses[uri];
+		if (entry.current == nullptr || entry.current->version != document->version || entry.current->text != document->text) {
+			entry.current = parse_document(document->text, document->version, document->path.empty() ? uri : document->path);
+			if (entry.current->tree != nullptr) {
+				entry.last_tree = entry.current;
+			}
+		}
+		return &entry;
 	}
 }
