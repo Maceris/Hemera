@@ -309,5 +309,9 @@ gtest_discover_tests(HemeraTest)
 # directories of their own
 SET(HEMERA_TOOL_DEFINITIONS ${HEMERA_DEFINITIONS} CACHE INTERNAL "")
 SET(HEMERA_TOOL_OPTIONS ${HEMERA_OPTIONS} ${HEMERA_WARNING_OPTIONS} CACHE INTERNAL "")
+# A tool's tests, which build as HemeraTest does, without the warnings gtest's macros set off
+SET(HEMERA_TOOL_TEST_OPTIONS ${HEMERA_OPTIONS} CACHE INTERNAL "")
 SET(HEMERA_TOOL_MANIFEST ${HEMERA_MANIFEST} CACHE INTERNAL "")
 SET(HEMERA_TOOL_RUNTIME_LIBRARY ${CMAKE_MSVC_RUNTIME_LIBRARY} CACHE INTERNAL "")
+# LLVM's headers, its own and those its build writes, for a tool that uses LLVM's support library, like JSON
+SET(HEMERA_TOOL_LLVM_INCLUDES ${THIRD_PARTY_DIR}/llvm-project/llvm/include ${HEMERA_LLVM_BINARY_DIR}/include CACHE INTERNAL "")
