@@ -157,6 +157,7 @@ SET(TEST_FILES
   ${TEST_DIR}/back_end/freestanding_test.cpp
   ${TEST_DIR}/back_end/hosted_test.cpp
   ${TEST_DIR}/cmd_line/arg_parsing_test.cpp
+  ${TEST_DIR}/error/reporting_test.cpp
   ${TEST_DIR}/front_end/front_end_test.cpp
   ${TEST_DIR}/lexer/lexer_test.cpp
   ${TEST_DIR}/parser/layout_test.cpp

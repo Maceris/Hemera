@@ -17,6 +17,7 @@ namespace hemera {
 	static std::vector<ErrorCode>* error_list_storage;
 	static std::vector<std::string>* error_message_storage;
 	static std::vector<WarningCode>* warning_list_storage;
+	static std::vector<Diagnostic>* diagnostic_storage;
 	/*
 	 * Every error reported so far, so the same one isn't reported twice. Work that waits for
 	 * something starts over when woken, and reports again what it found before.
@@ -35,10 +36,19 @@ namespace hemera {
 	void print_report_scope(ReportScope& scope) {
 		std::string output;
 		std::string errors_output;
+		std::vector<Diagnostic> kept;
 		{
 			std::lock_guard<std::mutex> scope_lock(scope.mutex);
 			output.swap(scope.output);
 			errors_output.swap(scope.errors_output);
+			kept.swap(scope.diagnostics);
+		}
+		{
+			std::lock_guard<std::mutex> storage_lock(storage_mutex);
+			if (diagnostic_storage != nullptr) {
+				diagnostic_storage->insert(diagnostic_storage->end(), std::make_move_iterator(kept.begin()),
+					std::make_move_iterator(kept.end()));
+			}
 		}
 		std::lock_guard<std::mutex> lock(cout_mutex);
 		if (printing_enabled && !output.empty()) {
@@ -61,6 +71,31 @@ namespace hemera {
 		if (printing_enabled) {
 			std::cout << line << std::endl;
 		}
+	}
+
+	// A diagnostic, kept with the thread's scope's or the process's, and printed as line
+	static void emit(Diagnostic diagnostic, const std::string& line) {
+		if (current_scope != nullptr) {
+			std::lock_guard<std::mutex> lock(current_scope->mutex);
+			current_scope->diagnostics.push_back(std::move(diagnostic));
+		}
+		else {
+			std::lock_guard<std::mutex> lock(storage_mutex);
+			if (diagnostic_storage != nullptr) {
+				diagnostic_storage->push_back(std::move(diagnostic));
+			}
+		}
+		write_line(line);
+	}
+
+	// The diagnostic printed as prefix:code, like hemera:E4015, from coded
+	static Diagnostic coded_diagnostic(Severity severity, std::string_view coded, std::string_view file,
+		uint32_t line_number, uint16_t column_number, std::string_view message) {
+
+		const size_t colon = coded.find(':');
+		return Diagnostic{ severity, std::string(coded.substr(0, colon)),
+			colon == std::string_view::npos ? std::string() : std::string(coded.substr(colon + 1)), std::string(file),
+			line_number, column_number, std::string(message) };
 	}
 
 	void report_to_standard_error(std::string_view line) {
@@ -111,6 +146,8 @@ namespace hemera {
 		}
 		delete reported_storage;
 		reported_storage = nullptr;
+		delete diagnostic_storage;
+		diagnostic_storage = nullptr;
 		destroy_error_info_map();
 		destroy_warning_info_map();
 	}
@@ -153,6 +190,9 @@ namespace hemera {
 		if (reported_storage == nullptr) {
 			reported_storage = new std::set<std::string>();
 		}
+		if (diagnostic_storage == nullptr) {
+			diagnostic_storage = new std::vector<Diagnostic>();
+		}
 	}
 
 	void reset_reporting_storage() {
@@ -169,6 +209,9 @@ namespace hemera {
 		}
 		if (reported_storage != nullptr) {
 			reported_storage->clear();
+		}
+		if (diagnostic_storage != nullptr) {
+			diagnostic_storage->clear();
 		}
 	}
 
@@ -213,15 +256,15 @@ namespace hemera {
 			? it->second
 			: ErrorInfo("E0000", "Unknown error");
 
-		std::string extension = "";
-
+		std::string message(info.message);
 		if (!additional_info.empty()) {
-			extension = std::format(". {}", additional_info);
+			message += std::format(". {}", additional_info);
 		}
 
-		write_line(std::format("{}({},{}): {} {}:{}: {}{}", file,
-			line_number, column_number, "error", COMPILER_PREFIX, info.string_value,
-			info.message, extension));
+		std::string line = std::format("{}({},{}): {} {}:{}: {}", file, line_number, column_number, "error",
+			COMPILER_PREFIX, info.string_value, message);
+		emit(Diagnostic{ Severity::ERROR, std::string(COMPILER_PREFIX), std::string(info.string_value), std::string(file),
+			line_number, column_number, std::move(message) }, line);
 	}
 
 	// Errors reported on each thread, including ones already reported elsewhere.
@@ -416,7 +459,8 @@ namespace hemera {
 		else {
 			log_warning(warning.code);
 		}
-		write_line(std::format("{}({},{}): {} {}: {}", warning.file, warning.line, warning.column,
+		emit(coded_diagnostic(denied ? Severity::ERROR : Severity::WARNING, warning.coded, warning.file, warning.line,
+			warning.column, warning.text), std::format("{}({},{}): {} {}: {}", warning.file, warning.line, warning.column,
 			denied ? "error" : "warning", warning.coded, warning.text));
 	}
 
@@ -494,7 +538,9 @@ namespace hemera {
 			emit_warning(coded, WarningCode::W4001, file, line_number, column_number, std::string(message));
 			return;
 		}
-		write_line(std::format("{}({},{}): error {}: {}", file, line_number, column_number, coded, message));
+		emit(Diagnostic{ Severity::ERROR, std::string(prefix), std::string(code), std::string(file), line_number,
+			column_number, std::string(message) }, std::format("{}({},{}): error {}: {}", file, line_number, column_number,
+			coded, message));
 	}
 
 	void report_message(std::string_view file, uint32_t line_number, uint16_t column_number,
@@ -503,7 +549,8 @@ namespace hemera {
 		if (!reporting_enabled) {
 			return;
 		}
-		write_line(std::format("{}({},{}): {}: {}", file, line_number, column_number, kind, text));
+		emit(Diagnostic{ Severity::INFORMATION, "", "", std::string(file), line_number, column_number, std::string(text) },
+			std::format("{}({},{}): {}: {}", file, line_number, column_number, kind, text));
 	}
 
 	size_t error_count() {
@@ -536,6 +583,11 @@ namespace hemera {
 
 	std::vector<WarningCode>* warning_list() {
 		return warning_list_storage;
+	}
+
+	std::vector<Diagnostic> diagnostics() {
+		std::lock_guard<std::mutex> lock(storage_mutex);
+		return diagnostic_storage != nullptr ? *diagnostic_storage : std::vector<Diagnostic>();
 	}
 
 }

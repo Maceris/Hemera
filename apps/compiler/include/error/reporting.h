@@ -144,6 +144,35 @@ namespace hemera {
 	void report_message(std::string_view file, uint32_t line_number, uint16_t column_number,
 		std::string_view kind, std::string_view text);
 
+	// How serious a diagnostic is, as an editor shows it
+	enum class Severity {
+		ERROR,
+		WARNING,
+		// What isn't an error or a warning, like what compile-time code logs (report_message)
+		INFORMATION,
+	};
+
+	/*
+	 * A diagnostic as it was reported, kept for tools that read them rather than the printed text, like an editor's.
+	 * Every error, warning and message that's printed makes one, in the order they're printed, whether printing is on
+	 * or not; a hidden warning (WarningRules) makes none, and a denied one is an error with the warning's own code.
+	 */
+	struct Diagnostic {
+		Severity severity = Severity::ERROR;
+		// Whose code it is, like hemera or fonts; empty for a message, which has no code
+		std::string prefix;
+		// Like E4015 or W0003; empty for a message
+		std::string code;
+		// The file as the compiler names it, with its own separators, like <base>/runtime/runtime.hsc for base
+		std::string file;
+		// Counting from 1; 0 when it's about no line in particular
+		uint32_t line = 0;
+		// Bytes from the line's start, counting from 1; 0 when it's about no column in particular
+		uint16_t column = 0;
+		// The text after the code, as printed: an error's title, with what's added to it after ". "
+		std::string message;
+	};
+
 	/// <summary>
 	/// What's reported while it's a thread's scope (set_report_scope): counted, not repeated, and kept rather
 	/// than printed, so work done at the same time, like a build's targets, can report each in one piece and in
@@ -155,6 +184,8 @@ namespace hemera {
 		// What would have gone to standard output, then standard error (--time-phases)
 		std::string output;
 		std::string errors_output;
+		// The diagnostics in output, which join the process's (diagnostics) when it's printed
+		std::vector<Diagnostic> diagnostics;
 		size_t errors = 0;
 		// Which of its warnings are shown
 		WarningRules warnings;
@@ -194,4 +225,9 @@ namespace hemera {
 	std::vector<std::string>* error_messages();
 	size_t warning_count();
 	std::vector<WarningCode>* warning_list();
+	/*
+	 * A copy of every diagnostic printed so far, in the order printed: a scope's join them when it's printed
+	 * (print_report_scope), not before. Emptied by reset_reporting_storage.
+	 */
+	std::vector<Diagnostic> diagnostics();
 }
