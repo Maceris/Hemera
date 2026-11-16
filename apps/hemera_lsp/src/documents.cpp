@@ -67,6 +67,13 @@ namespace hemera::lsp {
 		return units;
 	}
 
+	std::pair<uint32_t, uint32_t> LineIndex::line_and_byte(size_t offset) const {
+		offset = std::min(offset, text.size());
+		// The last line starting at or before offset
+		const size_t line = static_cast<size_t>(std::upper_bound(starts.begin(), starts.end(), offset) - starts.begin()) - 1;
+		return { static_cast<uint32_t>(line), static_cast<uint32_t>(std::min(offset, ends[line]) - starts[line]) };
+	}
+
 	std::string Documents::key_of(std::string_view uri) const {
 		const std::string path = path_from_uri(uri);
 		return path.empty() ? std::string(uri) : path_key(path);

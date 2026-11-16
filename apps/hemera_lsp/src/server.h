@@ -100,6 +100,13 @@ namespace hemera::lsp {
 		void request(const llvm::json::Value& id, std::string_view method, const llvm::json::Object* params);
 		void notification(std::string_view method, const llvm::json::Object* params);
 		llvm::json::Value initialize(const llvm::json::Object* params);
+		/*
+		 * The answer to a request about one open document, like textDocument/formatting; empty for a method that isn't
+		 * one of those. state must be held.
+		 */
+		std::optional<llvm::json::Value> document_request(std::string_view method, const llvm::json::Object* params);
+		// textDocument/formatting's edits, an array, empty when the file doesn't parse or would lose a comment
+		llvm::json::Value format(const std::string& uri);
 		void read_settings(const llvm::json::Object* hemera);
 		void check(const std::string& uri);
 		void checked(const CheckJob& job, const RunResult& result);

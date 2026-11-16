@@ -4,6 +4,7 @@
 #include <map>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 namespace hemera::lsp {
@@ -36,6 +37,12 @@ namespace hemera::lsp {
 		 * its end; one inside a character counts it as begun. Bytes that aren't UTF-8 count one unit each.
 		 */
 		uint32_t character(uint32_t line, uint32_t byte, Encoding encoding) const;
+
+		/*
+		 * The line (counting from 0) holding the byte at offset in the whole text, and the byte's offset in that
+		 * line. An offset inside a line end is the line's end; one past the text, the last line's end.
+		 */
+		std::pair<uint32_t, uint32_t> line_and_byte(size_t offset) const;
 
 	private:
 		std::string text;

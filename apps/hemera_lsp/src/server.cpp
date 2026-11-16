@@ -7,7 +7,10 @@
 #include <tuple>
 #include <utility>
 
+#include "features.h"
 #include "uri.h"
+#include "error/reporting.h"
+#include "parser/formatting.h"
 #include "version.h"
 
 #include "llvm/ADT/SmallString.h"
@@ -112,6 +115,11 @@ namespace hemera::lsp {
 			shut_down = true;
 			lock.unlock();
 			respond(id, nullptr);
+			return;
+		}
+		if (std::optional<Value> answer = document_request(method, params)) {
+			lock.unlock();
+			respond(id, std::move(*answer));
 			return;
 		}
 		lock.unlock();
@@ -301,6 +309,7 @@ namespace hemera::lsp {
 					{ "change", 1 },
 					{ "save", Object{ { "includeText", false } } },
 				} },
+				{ "documentFormattingProvider", true },
 			} },
 			{ "serverInfo", Object{ { "name", "hemera-lsp" }, { "version", VERSION_STR } } },
 		};
@@ -450,6 +459,41 @@ namespace hemera::lsp {
 		for (Value& message : messages) {
 			send(std::move(message));
 		}
+	}
+
+	std::optional<Value> Server::document_request(std::string_view method, const Object* params) {
+		const std::optional<std::string> uri = document_uri(params);
+		if (method == "textDocument/formatting") {
+			return uri.has_value() ? format(*uri) : Value(Array{});
+		}
+		return std::nullopt;
+	}
+
+	Value Server::format(const std::string& uri) {
+		const Document* document = open_documents.find_uri(uri);
+		if (document == nullptr) {
+			return Array{};
+		}
+		// Its errors kept and dropped, as a parse's are: the check reports them
+		ReportScope scope;
+		ReportScope* outer = report_scope();
+		set_report_scope(&scope);
+		const formatting::Result formatted = formatting::format_source(document->text, document->path.empty() ? uri : document->path);
+		set_report_scope(outer);
+		reset_reporting_storage();
+		if (!formatted.parsed || !formatted.lost_comments.empty()) {
+			return Array{};
+		}
+		const std::optional<TextChange> change = changed_span(document->text, formatted.text);
+		if (!change.has_value()) {
+			return Array{};
+		}
+		const LineIndex index(document->text);
+		return Array{ Object{
+			{ "range", Object{ { "start", position_at(index, change->start, position_encoding) },
+				{ "end", position_at(index, change->end, position_encoding) } } },
+			{ "newText", change->text },
+		} };
 	}
 
 	const Server::Parses* Server::parsed(const std::string& uri) {

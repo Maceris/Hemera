@@ -367,6 +367,94 @@ TEST(Server, ACompilerThatCannotRunIsReportedOnce) {
 	EXPECT_EQ(1u, shown);
 }
 
+namespace {
+
+	// textDocument/formatting's answer for uri
+	Array formatting_edits(Session& session, const std::string& uri) {
+		session.request(10, "textDocument/formatting", Object{ { "textDocument", Object{ { "uri", uri } } },
+			{ "options", Object{ { "tabSize", 2 }, { "insertSpaces", false } } } });
+		const Value* result = session.last().get("result");
+		return result != nullptr && result->getAsArray() != nullptr ? *result->getAsArray() : Array{};
+	}
+
+	// text with one edit, its range in UTF-8 positions, applied
+	std::string applied(const std::string& text, const Object& edit) {
+		const auto offset = [&](const Object& position) {
+			size_t at = 0;
+			const int64_t line = *position.getInteger("line");
+			for (int64_t i = 0; i < line; ++i) {
+				at = text.find('\n', at) + 1;
+			}
+			return at + static_cast<size_t>(*position.getInteger("character"));
+		};
+		const Object& range = *edit.getObject("range");
+		const size_t start = offset(*range.getObject("start"));
+		const size_t end = offset(*range.getObject("end"));
+		return text.substr(0, start) + edit.getString("newText")->str() + text.substr(end);
+	}
+}
+
+TEST(Server, FormattingAnswersWithTheFormattersLayout) {
+	Session session;
+	session.initialize(Array{ "utf-8" });
+	const std::string uri = "file:///d%3A/project/main.hsc";
+	const std::string text = "package main\n\nmain :: fn( ) -> int {\n  return   0\n}\n";
+	session.notify("textDocument/didOpen", document(uri, text, 1));
+
+	const Array edits = formatting_edits(session, uri);
+	ASSERT_EQ(1u, edits.size());
+	EXPECT_EQ("package main\n\nmain :: fn() -> int {\n    return 0\n}\n", applied(text, *edits[0].getAsObject()));
+	// Only the lines that changed: the package line is left alone
+	EXPECT_EQ(2, edits[0].getAsObject()->getObject("range")->getObject("start")->getInteger("line"));
+}
+
+TEST(Server, FormattingKeepsCrLf) {
+	Session session;
+	session.initialize(Array{ "utf-8" });
+	const std::string uri = "file:///d%3A/project/main.hsc";
+	const std::string text = "package main\r\n\r\nmain :: fn() -> int {\r\n  return 0\r\n}\r\n";
+	session.notify("textDocument/didOpen", document(uri, text, 1));
+
+	const Array edits = formatting_edits(session, uri);
+	ASSERT_EQ(1u, edits.size());
+	EXPECT_EQ("package main\r\n\r\nmain :: fn() -> int {\r\n    return 0\r\n}\r\n", applied(text, *edits[0].getAsObject()));
+}
+
+TEST(Server, FormattingCountsUtf16Units) {
+	Session session;
+	session.initialize();
+	const std::string uri = "file:///d%3A/project/main.hsc";
+	// 𝄞 is two UTF-16 units, so the space after the comma goes at character 12, not byte 14
+	const std::string text = "package main\n\nx :: f(\"\xF0\x9D\x84\x9E\",1)\n";
+	session.notify("textDocument/didOpen", document(uri, text, 1));
+
+	const Array edits = formatting_edits(session, uri);
+	ASSERT_EQ(1u, edits.size());
+	const Object& start = *edits[0].getAsObject()->getObject("range")->getObject("start");
+	EXPECT_EQ(2, start.getInteger("line"));
+	EXPECT_EQ(12, start.getInteger("character"));
+	EXPECT_EQ(" ", edits[0].getAsObject()->getString("newText"));
+}
+
+TEST(Server, FormattingLeavesAFileThatDoesNotParse) {
+	Session session;
+	session.initialize();
+	const std::string uri = "file:///d%3A/project/main.hsc";
+	session.notify("textDocument/didOpen", document(uri, "package main\n\nmain :: fn( {\n", 1));
+
+	EXPECT_TRUE(formatting_edits(session, uri).empty());
+	EXPECT_EQ(0, session.last_error());
+}
+
+TEST(Server, FormattingAFormattedFileChangesNothing) {
+	Session session;
+	session.initialize();
+	const std::string uri = "file:///d%3A/project/main.hsc";
+	session.notify("textDocument/didOpen", document(uri, "package main\n\nmain :: fn() -> int {\n    return 0\n}\n", 1));
+
+	EXPECT_TRUE(formatting_edits(session, uri).empty());
+}
+
 TEST(TokenEnd, CoversWordsStringsAndSingleCharacters) {
 	EXPECT_EQ(12u, hemera::lsp::token_end("abc := value", 7));
 	EXPECT_EQ(3u, hemera::lsp::token_end("abc := value", 0));
