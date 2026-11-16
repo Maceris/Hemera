@@ -47,6 +47,8 @@ namespace hemera::lsp {
 		std::map<std::string, std::vector<size_t>> declared;
 		// Each file's path, as the index names it with / throughout, by path_key
 		std::map<std::string, std::string> paths;
+		// For a build package, the targets that read each file, by their names, by path_key; empty for a program
+		std::map<std::string, std::vector<std::string>> readers;
 		/*
 		 * The text the check read for each document that was open when it started, by path_key; a file that wasn't
 		 * open was read from disk, and is taken to be as it is there.

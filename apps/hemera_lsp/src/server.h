@@ -153,6 +153,11 @@ namespace hemera::lsp {
 		llvm::json::Value format(const std::string& uri);
 		void read_settings(const llvm::json::Object* hemera);
 		void check(const std::string& uri);
+		/*
+		 * A check of root: of every target, writing the index, when targets is empty; otherwise of those of a build
+		 * package's targets. state must be held.
+		 */
+		CheckJob job_for(const std::string& root, const std::vector<std::string>& targets);
 		void checked(const CheckJob& job, const RunResult& result);
 
 		// What an open document parses to: its current version's, and the last version that made a tree, by URI

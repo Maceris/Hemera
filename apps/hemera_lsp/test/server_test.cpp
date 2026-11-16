@@ -791,6 +791,33 @@ TEST(Server, RenameIsRefusedWithAReason) {
 	EXPECT_NE(std::string::npos, message.find("has changed since it was checked")) << message;
 }
 
+TEST(Server, ASaveChecksItsFilesTargetsFirstThenEverything) {
+	Indexed indexed;
+	// A build package's index: main.hsc is read by target a, helper.hsc by b
+	indexed.session.index_json.insert(indexed.session.index_json.rfind('}'), ",\"targets\":[\"a\",\"b\"],\"readers\":[[1],[0]]");
+	// The first check finds an error in each file
+	indexed.session.output = diagnostic_line(indexed.main, 4, 11) + diagnostic_line(indexed.helper, 4, 11);
+	indexed.open_main();
+	ASSERT_EQ(2u, indexed.session.published().size());
+	ASSERT_EQ(1u, indexed.session.commands.size());
+
+	// Both fixed: the quick check of a clears main.hsc's, leaving helper.hsc's to the full check after it
+	indexed.session.output = "";
+	indexed.session.notify("textDocument/didSave", Object{ { "textDocument", Object{ { "uri", hemera::lsp::uri_from_path(indexed.main) } } } });
+	const std::vector<Object> published = indexed.session.published();
+
+	ASSERT_EQ(3u, indexed.session.commands.size());
+	const std::vector<std::string>& quick = indexed.session.commands[1];
+	EXPECT_NE(quick.end(), std::find(quick.begin(), quick.end(), "--targets=a"));
+	const std::vector<std::string>& full = indexed.session.commands[2];
+	EXPECT_EQ(full.end(), std::find_if(full.begin(), full.end(), [](const std::string& argument) { return argument.starts_with("--targets"); }));
+	ASSERT_EQ(4u, published.size());
+	EXPECT_EQ(hemera::lsp::path_key(indexed.main), hemera::lsp::path_key(hemera::lsp::path_from_uri(*published[2].getString("uri"))));
+	EXPECT_TRUE(published[2].getArray("diagnostics")->empty());
+	EXPECT_EQ(hemera::lsp::path_key(indexed.helper), hemera::lsp::path_key(hemera::lsp::path_from_uri(*published[3].getString("uri"))));
+	EXPECT_TRUE(published[3].getArray("diagnostics")->empty());
+}
+
 TEST(TokenEnd, CoversWordsStringsAndSingleCharacters) {
 	EXPECT_EQ(12u, hemera::lsp::token_end("abc := value", 7));
 	EXPECT_EQ(3u, hemera::lsp::token_end("abc := value", 0));

@@ -133,6 +133,24 @@ namespace hemera::lsp {
 			}
 			index.uses[path_key(paths[file])].push_back(IndexedUse{ number_at(*use, 1), number_at(*use, 2), declaration });
 		}
+		// A build package's targets, and which of them read each file, in the files' order
+		const Array* targets = root->getArray("targets");
+		const Array* readers = root->getArray("readers");
+		if (targets != nullptr && readers != nullptr) {
+			for (size_t i = 0; i < readers->size() && i < paths.size(); ++i) {
+				const Array* of_file = (*readers)[i].getAsArray();
+				if (of_file == nullptr) {
+					continue;
+				}
+				std::vector<std::string>& names = index.readers[path_key(paths[i])];
+				for (const Value& number : *of_file) {
+					const size_t target = static_cast<size_t>(number.getAsInteger().value_or(-1));
+					if (target < targets->size()) {
+						names.push_back((*targets)[target].getAsString().value_or("").str());
+					}
+				}
+			}
+		}
 		for (auto& [file, in_file] : index.uses) {
 			std::sort(in_file.begin(), in_file.end(), [](const IndexedUse& a, const IndexedUse& b) { return a.offset < b.offset; });
 		}

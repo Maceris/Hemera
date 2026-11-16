@@ -182,14 +182,17 @@ namespace hemera::lsp {
 	void Checker::request(CheckJob job) {
 		{
 			std::lock_guard<std::mutex> lock(mutex);
+			const bool partial = !job.targets.empty();
 			for (auto it = waiting.begin(); it != waiting.end(); ++it) {
-				if (it->root == job.root) {
+				// Only one of the same kind is replaced: a quick check waiting isn't, by a full one
+				if (it->root == job.root && !it->targets.empty() == partial) {
 					delete_temporaries(it->temporaries);
 					waiting.erase(it);
 					break;
 				}
 			}
-			if (running != nullptr && running_root == job.root) {
+			// A full check queued behind a quick one doesn't stop it
+			if (running != nullptr && running_root == job.root && (partial || !running_partial)) {
 				running->stop();
 			}
 			waiting.push_back(std::move(job));
@@ -216,6 +219,7 @@ namespace hemera::lsp {
 				waiting.pop_front();
 				busy = true;
 				running_root = job.root;
+				running_partial = !job.targets.empty();
 				running = launch(job.arguments);
 				run = running.get();
 			}

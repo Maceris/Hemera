@@ -57,8 +57,12 @@ in a build, a build package's checks included, and nothing is written but what t
   [Diagnostics](compilation.md#diagnostics)). Errors, warnings and what compile-time code logs below the warning level
   are shown as errors, warnings and information.
 
-Checking as you type isn't done: a large build package can take tens of seconds to check, so checks come with opening
-and saving.
+In a build package, saving a file checks just the targets that read it first, which the last check's
+[name index](compilation.md#the-name-index) says, so its diagnostics come in a few seconds, then every target, for the
+rest and a new index. Until the first check of everything, which opening a file starts, each check is of everything.
+
+Checking as you type isn't done: a large build package can take tens of seconds to check in full, so checks come with
+opening and saving.
 
 A change to the settings clears every diagnostic shown and checks the open files again, so a file checked through
 another root doesn't keep what that root found.

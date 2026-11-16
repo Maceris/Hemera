@@ -336,47 +336,85 @@ namespace hemera::lsp {
 		return std::string(std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>());
 	}
 
-	void Server::check(const std::string& uri) {
+	CheckJob Server::job_for(const std::string& root, const std::vector<std::string>& targets) {
 		CheckJob job;
+		job.root = root;
+		job.generation = generation;
+		job.targets = targets;
+		job.arguments = { settings.compiler_path, "--check", "--diagnostics=json" };
+		job.arguments.insert(job.arguments.end(), settings.arguments.begin(), settings.arguments.end());
+		if (!targets.empty()) {
+			std::string named = "--targets=";
+			for (size_t i = 0; i < targets.size(); ++i) {
+				named += (i == 0 ? "" : ",") + targets[i];
+			}
+			job.arguments.push_back(named);
+		}
+		// The name index, for the answers that come from it (docs/editor.md), from a check of everything
+		llvm::SmallString<256> index_file;
+		if (targets.empty() && !llvm::sys::fs::createTemporaryFile("hemera-lsp-index", "json", index_file)) {
+			job.index_file = index_file.str().str();
+			job.temporaries.push_back(job.index_file);
+			job.arguments.push_back("--index=" + job.index_file);
+		}
+		// Each open document whose text isn't what's on disk is read from a file of its own instead
+		for (const auto& [key, open] : open_documents.all()) {
+			if (open.path.empty()) {
+				continue;
+			}
+			// What the check reads of it, which the index's offsets count in
+			job.texts[path_key(open.path)] = open.text;
+			if (read_file(open.path) == open.text) {
+				continue;
+			}
+			llvm::SmallString<256> temporary;
+			if (llvm::sys::fs::createTemporaryFile("hemera-lsp-buffer", "hsc", temporary)) {
+				continue;
+			}
+			std::ofstream file(temporary.str().str(), std::ios::binary);
+			file << open.text;
+			job.temporaries.push_back(temporary.str().str());
+			job.arguments.push_back("--overlay=" + open.path + "=" + temporary.str().str());
+		}
+		job.arguments.push_back(root);
+		return job;
+	}
+
+	void Server::check(const std::string& uri) {
+		std::vector<CheckJob> jobs;
 		{
 			std::lock_guard<std::mutex> lock(state);
 			const Document* document = open_documents.find_uri(uri);
 			if (document == nullptr || document->path.empty() || !document->path.ends_with(".hsc")) {
 				return;
 			}
-			job.root = root_for(document->path);
-			job.generation = generation;
-			job.arguments = { settings.compiler_path, "--check", "--diagnostics=json" };
-			job.arguments.insert(job.arguments.end(), settings.arguments.begin(), settings.arguments.end());
-			// The name index, for the answers that come from it (docs/editor.md)
-			llvm::SmallString<256> index_file;
-			if (!llvm::sys::fs::createTemporaryFile("hemera-lsp-index", "json", index_file)) {
-				job.index_file = index_file.str().str();
-				job.temporaries.push_back(job.index_file);
-				job.arguments.push_back("--index=" + job.index_file);
+			const std::string root = root_for(document->path);
+			/*
+			 * When the root's last full check says which of a build package's targets read the file, those first, for
+			 * diagnostics in a few seconds, then everything, for the rest and the index (docs/editor.md)
+			 */
+			const LoadedIndex* index = nullptr;
+			const std::vector<std::string>* readers = nullptr;
+			if (auto found = indexes.find(path_key(root)); found != indexes.end()) {
+				index = found->second.get();
+				auto of_file = index->readers.find(path_key(document->path));
+				readers = of_file != index->readers.end() && !of_file->second.empty() ? &of_file->second : nullptr;
 			}
-			// Each open document whose text isn't what's on disk is read from a file of its own instead
-			for (const auto& [key, open] : open_documents.all()) {
-				if (open.path.empty()) {
-					continue;
+			if (readers != nullptr) {
+				CheckJob quick = job_for(root, *readers);
+				const std::set<std::string> targets(readers->begin(), readers->end());
+				for (const auto& [file, of_file] : index->readers) {
+					if (std::any_of(of_file.begin(), of_file.end(), [&](const std::string& target) { return targets.contains(target); })) {
+						quick.covered.insert(file);
+					}
 				}
-				// What the check reads of it, which the index's offsets count in
-				job.texts[path_key(open.path)] = open.text;
-				if (read_file(open.path) == open.text) {
-					continue;
-				}
-				llvm::SmallString<256> temporary;
-				if (llvm::sys::fs::createTemporaryFile("hemera-lsp-buffer", "hsc", temporary)) {
-					continue;
-				}
-				std::ofstream file(temporary.str().str(), std::ios::binary);
-				file << open.text;
-				job.temporaries.push_back(temporary.str().str());
-				job.arguments.push_back("--overlay=" + open.path + "=" + temporary.str().str());
+				jobs.push_back(std::move(quick));
 			}
-			job.arguments.push_back(job.root);
+			jobs.push_back(job_for(root, {}));
 		}
-		checker->request(std::move(job));
+		for (CheckJob& job : jobs) {
+			checker->request(std::move(job));
+		}
 	}
 
 	uint32_t token_end(std::string_view line, uint32_t column) {
@@ -478,13 +516,25 @@ namespace hemera::lsp {
 					messages.push_back(Object{ { "jsonrpc", "2.0" }, { "method", "textDocument/publishDiagnostics" },
 						{ "params", Object{ { "uri", uri }, { "diagnostics", std::move(published_diagnostics) } } } });
 				}
-				// What had diagnostics from this root before and has none now is cleared
+				/*
+				 * What had diagnostics from this root before and has none now is cleared: anything, after a check of
+				 * everything, but after a check of some targets, only what they read, the rest kept as it was
+				 */
+				std::set<std::string> kept;
 				for (const std::string& uri : published[job.root]) {
-					if (!now.contains(uri)) {
+					const bool checked_now = job.targets.empty() || job.covered.contains(path_key(path_from_uri(uri)));
+					if (now.contains(uri)) {
+						continue;
+					}
+					if (checked_now) {
 						messages.push_back(Object{ { "jsonrpc", "2.0" }, { "method", "textDocument/publishDiagnostics" },
 							{ "params", Object{ { "uri", uri }, { "diagnostics", Array{} } } } });
 					}
+					else {
+						kept.insert(uri);
+					}
 				}
+				now.insert(kept.begin(), kept.end());
 				published[job.root] = std::move(now);
 			}
 		}

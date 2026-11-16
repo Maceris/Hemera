@@ -108,6 +108,44 @@ TEST(Checker, ANewerCheckOfTheSameRootStopsTheOneRunning) {
 	EXPECT_EQ(std::vector<std::string>{ "a:second" }, finished);
 }
 
+TEST(Checker, AFullCheckWaitsForAQuickOneOfTheSameRoot) {
+	std::mutex mutex;
+	std::condition_variable launched;
+	std::vector<HeldRun*> runs;
+	std::vector<std::string> finished;
+	Checker checker(
+		[&](const std::vector<std::string>& arguments) -> std::unique_ptr<hemera::lsp::Run> {
+			auto run = std::make_unique<HeldRun>(arguments.back());
+			std::lock_guard<std::mutex> lock(mutex);
+			runs.push_back(run.get());
+			launched.notify_all();
+			return run;
+		},
+		[&](const CheckJob& job, const RunResult& result) {
+			std::lock_guard<std::mutex> lock(mutex);
+			finished.push_back(job.root + ":" + result.output);
+		});
+
+	CheckJob quick{ "a", { "hemera", "quick" }, {} };
+	quick.targets = { "kernel" };
+	checker.request(std::move(quick));
+	{
+		std::unique_lock<std::mutex> lock(mutex);
+		launched.wait(lock, [&] { return runs.size() == 1; });
+	}
+	// Queued behind it, not stopping it
+	checker.request(CheckJob{ "a", { "hemera", "full" }, {} });
+	{
+		std::unique_lock<std::mutex> lock(mutex);
+		runs[0]->release();
+		launched.wait(lock, [&] { return runs.size() == 2; });
+		runs[1]->release();
+	}
+	checker.wait_idle();
+
+	EXPECT_EQ((std::vector<std::string>{ "a:quick", "a:full" }), finished);
+}
+
 TEST(Checker, OtherRootsWaitTheirTurn) {
 	std::vector<std::string> finished;
 	std::mutex mutex;
