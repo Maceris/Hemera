@@ -2,9 +2,9 @@
 
 `hemera-lsp` is Hemera's language server. An editor starts it and speaks the
 [Language Server Protocol](https://microsoft.github.io/language-server-protocol/) to it over standard input and output,
-and it shows the compiler's errors and warnings where they are, each time a file is opened or saved, and formats,
-outlines and folds files. The VS Code extension is built with it; another editor with a language server client can
-start `hemera-lsp` the same way.
+and it shows the compiler's errors and warnings where they are, each time a file is opened or saved, formats,
+outlines and folds files, and finds what names refer to. The VS Code extension is built with it; another editor with a
+language server client can start `hemera-lsp` the same way.
 
 ## Building
 
@@ -79,11 +79,30 @@ These come from the server's own lexer and parser, in its own process, as you ty
 
 There's no range formatting, as a part of a file's layout depends on what's around it.
 
+## Definitions, Hover, References and Renaming
+
+Each check also writes the [name index](compilation.md#the-name-index), what each name in the program refers to, and
+these come from the last one, so they're there once a file's package has been checked, and follow it from save to
+save:
+
+* **Go to Definition** leads from a name to where it's declared, in another package, `std`, or `base`, whose files
+  are the ones beside the compiler.
+* **Hover** shows a declaration's line, a local's or a field's type, and its doc comment.
+* **Find All References** lists every use of a name across the program, in each of a build package's targets.
+* **Rename Symbol** changes every use of a name and its declaration at once. It's refused, saying why, for a name
+  declared outside the workspace, and when a file it's used in has changed since the check: save, and rename once
+  it's checked.
+
+What you've typed since the check moves with the text: a name before or after your changes is still found, and one in
+them is known once the file is checked again. Code that compile-time code inserts, like `#insert`'s, isn't indexed,
+so names in it lead nowhere yet.
+
 ## Other Editors
 
 `hemera-lsp` takes no arguments. It answers `initialize` with whole-document sync, open, close and save
 notifications, UTF-8 positions when the client offers them, else UTF-16, and `textDocument/formatting`,
-`textDocument/documentSymbol` and `textDocument/foldingRange`. Its settings come in initialize's
+`textDocument/documentSymbol`, `textDocument/foldingRange`, `textDocument/definition`, `textDocument/hover`,
+`textDocument/references`, `textDocument/prepareRename` and `textDocument/rename`. Its settings come in initialize's
 `initializationOptions`, and later in `workspace/didChangeConfiguration`'s `settings.hemera`, as an object with
 `compilerPath`, `root` and `arguments`, named as above without `hemera.`. It exits 0 after `shutdown` and `exit`, and 1
 when `exit`, or the end of its standard input, comes without `shutdown` before it.

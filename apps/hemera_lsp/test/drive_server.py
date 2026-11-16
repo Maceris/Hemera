@@ -130,6 +130,19 @@ def drive(server, compiler, folder):
                                                             "text": HELPER}})
     assert client.diagnostics_for(uri_of(main)) == []
 
+    # Tier 3, from the name index that check wrote: main's call to helper, as the unsaved buffer has it
+    at_call = {"textDocument": {"uri": uri_of(main)}, "position": {"line": 3, "character": 12}}
+    definition = client.request("textDocument/definition", at_call)["result"]
+    assert definition and definition["uri"].lower() == uri_of(helper).lower(), definition
+    assert definition["range"] == {"start": {"line": 2, "character": 0}, "end": {"line": 2, "character": 6}}, definition
+    hover = client.request("textDocument/hover", at_call)["result"]
+    assert hover and "helper :: fn() -> int" in hover["contents"]["value"], hover
+    references = client.request("textDocument/references", dict(at_call, context={"includeDeclaration": True}))["result"]
+    assert sorted(location["uri"].lower() for location in references) == sorted([uri_of(main).lower(), uri_of(helper).lower()]), references
+    renamed = client.request("textDocument/rename", dict(at_call, newName="assist"))
+    assert "error" not in renamed, renamed
+    assert sum(len(edits) for edits in renamed["result"]["changes"].values()) == 2, renamed
+
     # Tier 2, answered in the server's own process: formatting, the outline and folding
     for capability in ("documentFormattingProvider", "documentSymbolProvider", "foldingRangeProvider"):
         assert result["result"]["capabilities"].get(capability), capability
