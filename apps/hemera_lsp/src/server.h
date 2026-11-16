@@ -123,6 +123,19 @@ namespace hemera::lsp {
 
 		llvm::json::Value definition(const llvm::json::Object* params);
 		llvm::json::Value hover(const llvm::json::Object* params);
+		llvm::json::Value references(const llvm::json::Object* params);
+
+		/*
+		 * Why the name at params' position can't be renamed (decision 5): it isn't one the index knows, it's declared
+		 * outside the workspace, or a file it's named in has changed since the check. Empty if it can, when named is
+		 * set to it.
+		 */
+		std::optional<std::string> refuse_rename(const llvm::json::Object* params, std::optional<Named>& named);
+		llvm::json::Value prepare_rename(const llvm::json::Object* params);
+		llvm::json::Value rename(const llvm::json::Object* params);
+
+		// Why the request being answered failed, set by what answers it, which is answered as an error instead
+		std::optional<std::string> refusal;
 		// Last, so it's stopped before what its thread uses goes
 		std::unique_ptr<Checker> checker;
 
@@ -163,6 +176,8 @@ namespace hemera::lsp {
 		constexpr int64_t METHOD_NOT_FOUND = -32601;
 		constexpr int64_t INVALID_PARAMS = -32602;
 		constexpr int64_t SERVER_NOT_INITIALIZED = -32002;
+		// A request that was understood, but couldn't be done, like a rename that's refused
+		constexpr int64_t REQUEST_FAILED = -32803;
 	}
 
 	/*

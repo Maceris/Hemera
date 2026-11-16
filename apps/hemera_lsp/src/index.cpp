@@ -44,12 +44,13 @@ namespace hemera::lsp {
 		}
 		if (with_declaration) {
 			const IndexedDeclaration& declared_at = declarations[declaration];
-			found.push_back(Place{ path_key(declared_at.file), declared_at.name_offset, declared_at.name_length });
+			found.push_back(Place{ declared_at.file, declared_at.name_offset, declared_at.name_length });
 		}
 		for (const auto& [file, in_file] : uses) {
 			for (const IndexedUse& use : in_file) {
 				if (use.declaration == declaration) {
-					found.push_back(Place{ file, use.offset, use.length });
+					auto path = paths.find(file);
+					found.push_back(Place{ path != paths.end() ? path->second : file, use.offset, use.length });
 				}
 			}
 		}
@@ -87,6 +88,9 @@ namespace hemera::lsp {
 			paths.push_back(std::move(path));
 		}
 		LoadedIndex index;
+		for (const std::string& path : paths) {
+			index.paths[path_key(path)] = path;
+		}
 		for (const Value& entry : *declarations) {
 			const Object* object = entry.getAsObject();
 			const Array* name = object != nullptr ? object->getArray("name") : nullptr;

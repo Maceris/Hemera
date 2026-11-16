@@ -45,6 +45,8 @@ namespace hemera::lsp {
 		// By path_key of the file
 		std::map<std::string, std::vector<IndexedUse>> uses;
 		std::map<std::string, std::vector<size_t>> declared;
+		// Each file's path, as the index names it with / throughout, by path_key
+		std::map<std::string, std::string> paths;
 		/*
 		 * The text the check read for each document that was open when it started, by path_key; a file that wasn't
 		 * open was read from disk, and is taken to be as it is there.
@@ -65,8 +67,8 @@ namespace hemera::lsp {
 		std::optional<NameAt> name_at(const std::string& file, size_t offset) const;
 
 		/*
-		 * Every place declaration is named, in every file: its uses and its own name, each as a file (path_key) and
-		 * the offset and length of the name, in the text the check read.
+		 * Every place declaration is named, in every file: its uses and, with with_declaration, its own name, each as
+		 * a file, by its path, and the offset and length of the name, in the text the check read.
 		 */
 		struct Place {
 			std::string file;

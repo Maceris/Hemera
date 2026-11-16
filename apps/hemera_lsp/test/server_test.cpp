@@ -652,7 +652,7 @@ namespace {
 				"{{\"file\":0,\"name\":[28,6],\"span\":[28,62],\"kind\":\"function\",\"type\":\"fn() -> int\",\"brief\":\"Helps.\","
 				"\"tags\":[[\"return\",\"\",\"Nothing much.\"]]}}],\n"
 				"\"uses\":[\n[1,47,6,0]]}}\n", helper, main);
-			session.initialize();
+			session.initialize({}, {}, Array{ Object{ { "uri", hemera::lsp::uri_from_path(folder) }, { "name", "indexed" } } });
 		}
 
 		// Opens main.hsc, and waits for its check
@@ -719,6 +719,76 @@ TEST(Server, AnswersMoveWithEditsSinceTheCheck) {
 	EXPECT_EQ("5:11-5:17", range_text(*found->getAsObject()->getObject("range")));
 	// What's in the change isn't known until the next check
 	EXPECT_EQ(Value(nullptr), *indexed.ask(24, "textDocument/hover", 2, 1));
+}
+
+TEST(Server, ReferencesListEveryUse) {
+	Indexed indexed;
+	indexed.open_main();
+	const auto references = [&](bool with_declaration) {
+		indexed.session.request(25, "textDocument/references", Object{
+			{ "textDocument", Object{ { "uri", hemera::lsp::uri_from_path(indexed.main) } } },
+			{ "position", Object{ { "line", 3 }, { "character", 13 } } },
+			{ "context", Object{ { "includeDeclaration", with_declaration } } } });
+		std::vector<std::string> found;
+		for (const Value& location : *indexed.session.last().getArray("result")) {
+			const Object& object = *location.getAsObject();
+			found.push_back(std::filesystem::path(hemera::lsp::path_from_uri(*object.getString("uri"))).filename().string() + " "
+				+ range_text(*object.getObject("range")));
+		}
+		return found;
+	};
+
+	EXPECT_EQ((std::vector<std::string>{ "helper.hsc 3:0-3:6", "main.hsc 3:11-3:17" }), references(true));
+	EXPECT_EQ((std::vector<std::string>{ "main.hsc 3:11-3:17" }), references(false));
+}
+
+TEST(Server, RenameChangesEveryPlaceANameIsUsed) {
+	Indexed indexed;
+	indexed.open_main();
+	const Object at{ { "textDocument", Object{ { "uri", hemera::lsp::uri_from_path(indexed.main) } } },
+		{ "position", Object{ { "line", 3 }, { "character", 13 } } } };
+
+	indexed.session.request(26, "textDocument/prepareRename", at);
+	ASSERT_EQ(0, indexed.session.last_error());
+	const Object& prepared = *indexed.session.last().getObject("result");
+	EXPECT_EQ("helper", prepared.getString("placeholder"));
+	EXPECT_EQ("3:11-3:17", range_text(*prepared.getObject("range")));
+
+	Object renaming = at;
+	renaming["newName"] = "assist";
+	indexed.session.request(27, "textDocument/rename", renaming);
+	ASSERT_EQ(0, indexed.session.last_error());
+	const Object& changes = *indexed.session.last().getObject("result")->getObject("changes");
+	std::vector<std::string> found;
+	for (const auto& [uri, edits] : changes) {
+		for (const Value& edit : *edits.getAsArray()) {
+			found.push_back(std::filesystem::path(hemera::lsp::path_from_uri(uri.str())).filename().string() + " "
+				+ range_text(*edit.getAsObject()->getObject("range")) + " " + edit.getAsObject()->getString("newText")->str());
+		}
+	}
+	std::sort(found.begin(), found.end());
+	EXPECT_EQ((std::vector<std::string>{ "helper.hsc 3:0-3:6 assist", "main.hsc 3:11-3:17 assist" }), found);
+}
+
+TEST(Server, RenameIsRefusedWithAReason) {
+	Indexed indexed;
+	indexed.open_main();
+	Object renaming{ { "textDocument", Object{ { "uri", hemera::lsp::uri_from_path(indexed.main) } } },
+		{ "position", Object{ { "line", 3 }, { "character", 13 } } }, { "newName", "2fast" } };
+
+	// Not a name
+	indexed.session.request(28, "textDocument/rename", renaming);
+	EXPECT_EQ(hemera::lsp::error_codes::REQUEST_FAILED, indexed.session.last_error());
+	// A file it's named in has changed since the check
+	indexed.session.notify("textDocument/didChange", Object{
+		{ "textDocument", Object{ { "uri", hemera::lsp::uri_from_path(indexed.main) }, { "version", 2 } } },
+		{ "contentChanges", Array{ Object{ { "text", CALLER + "// more\n" } } } },
+	});
+	renaming["newName"] = "assist";
+	indexed.session.request(29, "textDocument/rename", renaming);
+	EXPECT_EQ(hemera::lsp::error_codes::REQUEST_FAILED, indexed.session.last_error());
+	const std::string message = indexed.session.last().getObject("error")->getString("message")->str();
+	EXPECT_NE(std::string::npos, message.find("has changed since it was checked")) << message;
 }
 
 TEST(TokenEnd, CoversWordsStringsAndSingleCharacters) {

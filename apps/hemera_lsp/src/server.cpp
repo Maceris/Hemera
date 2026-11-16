@@ -118,8 +118,14 @@ namespace hemera::lsp {
 			return;
 		}
 		if (std::optional<Value> answer = document_request(method, params)) {
+			std::optional<std::string> refused = std::exchange(refusal, std::nullopt);
 			lock.unlock();
-			respond(id, std::move(*answer));
+			if (refused.has_value()) {
+				respond_error(id, error_codes::REQUEST_FAILED, std::move(*refused));
+			}
+			else {
+				respond(id, std::move(*answer));
+			}
 			return;
 		}
 		lock.unlock();
@@ -315,6 +321,8 @@ namespace hemera::lsp {
 				{ "foldingRangeProvider", true },
 				{ "definitionProvider", true },
 				{ "hoverProvider", true },
+				{ "referencesProvider", true },
+				{ "renameProvider", Object{ { "prepareProvider", true } } },
 			} },
 			{ "serverInfo", Object{ { "name", "hemera-lsp" }, { "version", VERSION_STR } } },
 		};
@@ -496,6 +504,15 @@ namespace hemera::lsp {
 		if (method == "textDocument/hover") {
 			return hover(params);
 		}
+		if (method == "textDocument/references") {
+			return references(params);
+		}
+		if (method == "textDocument/prepareRename") {
+			return prepare_rename(params);
+		}
+		if (method == "textDocument/rename") {
+			return rename(params);
+		}
 		if (method == "textDocument/foldingRange") {
 			// This version, from its tokens, whether it parses or not (decision 4)
 			const Parses* parses_of = uri.has_value() ? parsed(*uri) : nullptr;
@@ -672,6 +689,100 @@ namespace hemera::lsp {
 			{ "range", Object{ { "start", position_at(lines, named->start, position_encoding) },
 				{ "end", position_at(lines, named->end, position_encoding) } } },
 		};
+	}
+
+	Value Server::references(const Object* params) {
+		const std::optional<Named> named = named_at(params);
+		if (!named.has_value()) {
+			return nullptr;
+		}
+		const Object* context = params->getObject("context");
+		const bool with_declaration = context != nullptr && context->getBoolean("includeDeclaration").value_or(false);
+		Array found;
+		for (const LoadedIndex::Place& place : named->index->places_of(named->declaration, with_declaration)) {
+			Value location = location_of(*named->index, place.file, place.offset, static_cast<size_t>(place.offset) + place.length);
+			if (location.getAsObject() != nullptr) {
+				found.push_back(std::move(location));
+			}
+		}
+		return found;
+	}
+
+	std::optional<std::string> Server::refuse_rename(const Object* params, std::optional<Named>& named) {
+		named = named_at(params);
+		if (!named.has_value()) {
+			return std::string("There's no name here that the last check knows. Save, and try again once it's checked.");
+		}
+		const IndexedDeclaration& declaration = named->index->declarations[named->declaration];
+		const bool in_workspace = std::any_of(workspace_folders.begin(), workspace_folders.end(),
+			[&](const std::string& folder) { return within(declaration.file, folder); });
+		if (!in_workspace) {
+			return "It's declared outside the workspace, in " + declaration.file + ".";
+		}
+		for (const LoadedIndex::Place& place : named->index->places_of(named->declaration, true)) {
+			const std::optional<std::pair<std::string, std::string>> texts = texts_of(*named->index, place.file);
+			if (!texts.has_value() || texts->first != texts->second) {
+				return place.file + " has changed since it was checked. Save, and try again once it's checked.";
+			}
+		}
+		return std::nullopt;
+	}
+
+	Value Server::prepare_rename(const Object* params) {
+		std::optional<Named> named;
+		if (std::optional<std::string> why = refuse_rename(params, named)) {
+			refusal = "Can't rename: " + *why;
+			return nullptr;
+		}
+		const std::optional<std::string> uri = document_uri(params);
+		const Document* document = open_documents.find_uri(*uri);
+		const LineIndex lines(document->text);
+		return Object{
+			{ "range", Object{ { "start", position_at(lines, named->start, position_encoding) },
+				{ "end", position_at(lines, named->end, position_encoding) } } },
+			{ "placeholder", document->text.substr(named->start, named->end - named->start) },
+		};
+	}
+
+	// Whether text can be a name: letters, digits and _, or anything past ASCII, not starting with a digit
+	static bool is_name(std::string_view text) {
+		if (text.empty() || (text[0] >= '0' && text[0] <= '9')) {
+			return false;
+		}
+		return std::all_of(text.begin(), text.end(), [](char c) {
+			const unsigned char byte = static_cast<unsigned char>(c);
+			return byte >= 0x80 || byte == '_' || (byte >= '0' && byte <= '9') || (byte >= 'a' && byte <= 'z') || (byte >= 'A' && byte <= 'Z');
+		});
+	}
+
+	Value Server::rename(const Object* params) {
+		const std::string new_name = params != nullptr ? params->getString("newName").value_or("").str() : std::string();
+		if (!is_name(new_name)) {
+			refusal = "Can't rename: \"" + new_name + "\" isn't a name.";
+			return nullptr;
+		}
+		std::optional<Named> named;
+		if (std::optional<std::string> why = refuse_rename(params, named)) {
+			refusal = "Can't rename: " + *why;
+			return nullptr;
+		}
+		// Every place it's named, as one edit, file by file
+		Object changes;
+		for (const LoadedIndex::Place& place : named->index->places_of(named->declaration, true)) {
+			Value location = location_of(*named->index, place.file, place.offset, static_cast<size_t>(place.offset) + place.length);
+			const Object* found = location.getAsObject();
+			if (found == nullptr) {
+				continue;
+			}
+			const std::string uri = found->getString("uri")->str();
+			Value* edits = changes.get(uri);
+			if (edits == nullptr) {
+				changes[uri] = Array{};
+				edits = changes.get(uri);
+			}
+			edits->getAsArray()->push_back(Object{ { "range", *found->get("range") }, { "newText", new_name } });
+		}
+		return Object{ { "changes", std::move(changes) } };
 	}
 
 	const Server::Parses* Server::parsed(const std::string& uri) {

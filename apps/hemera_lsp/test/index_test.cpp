@@ -66,7 +66,8 @@ TEST(Index, ListsEveryPlaceADeclarationIsNamed) {
 
 	const auto places = index->places_of(0, true);
 	ASSERT_EQ(3u, places.size());
-	EXPECT_EQ(hemera::lsp::path_key("D:/p/shapes.hsc"), places[0].file);
+	EXPECT_EQ("D:/p/shapes.hsc", places[0].file);
+	EXPECT_EQ("D:/p/main.hsc", places[1].file);
 	EXPECT_EQ(10u, places[0].offset);
 	EXPECT_EQ(20u, places[1].offset);
 	EXPECT_EQ(80u, places[2].offset);
