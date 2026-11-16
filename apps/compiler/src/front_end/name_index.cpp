@@ -201,7 +201,8 @@ namespace hemera {
 						made.start = std::numeric_limits<uint32_t>::max();
 						widen(field, made.start, made.end);
 						made.kind = "field";
-						if (TypeInfoVariant::STRUCT == structure->variant) {
+						// An instance's fields have its own types, so a generic's field is typed by its line alone
+						if (TypeInfoVariant::STRUCT == structure->variant && found->second->generic == nullptr) {
 							for (const StructMember& candidate : static_cast<const TypeInfoStruct*>(structure)->members) {
 								if (candidate.name == member && candidate.member_type != nullptr) {
 									made.type = to_string(candidate.member_type);
@@ -227,7 +228,23 @@ namespace hemera {
 				// A name alone is in nodes, and one at the head of a chain, like a in a.b, in heads
 				for (const auto* table : { &checked->nodes, &checked->heads }) {
 					for (const auto& [node, value] : *table) {
-						if (value.local == nullptr || !checked->is_node(node) || !placed(node)) {
+						if (!checked->is_node(node) || !placed(node)) {
+							continue;
+						}
+						/*
+						 * A declaration the checked body says a name is, however it was found, as one found the first
+						 * time may not have been looked up through a walk this time
+						 */
+						Declaration* named = value.declaration != nullptr ? value.declaration : value.called_declaration;
+						if (value.local == nullptr && named != nullptr && uses_counted && ast::NodeType::IDENTIFIER == node->node_type
+							&& names(node, original(named)->name)) {
+							if (const std::optional<IndexPlace> target = add_declaration(named)) {
+								if (!(target->file == file && target->offset == node->value.offset)) {
+									index.uses[place_of(file, node)] = *target;
+								}
+							}
+						}
+						if (value.local == nullptr) {
 							continue;
 						}
 						const ast::Node* defined = static_cast<const ast::Node*>(value.local);
@@ -242,7 +259,8 @@ namespace hemera {
 								made.start = at.offset;
 								made.end = at.offset + at.length;
 								made.kind = "local";
-								if (value.type != nullptr) {
+								// An instance's is its own, so a generic's local is typed by the generic's body alone
+								if (value.type != nullptr && declaration->generic == nullptr) {
 									made.type = to_string(value.type);
 								}
 								index.declarations.emplace(at, std::move(made));
@@ -262,9 +280,14 @@ namespace hemera {
 			}
 
 			void run() {
-				for (Declaration& declaration : program.names.storage) {
-					add_declaration(&declaration);
-					add_locals(&declaration);
+				// Generics' own bodies before their instances', so a local is described by the generic, whatever the order
+				for (const bool instances : { false, true }) {
+					for (Declaration& declaration : program.names.storage) {
+						if ((declaration.generic != nullptr) == instances) {
+							add_declaration(&declaration);
+							add_locals(&declaration);
+						}
+					}
 				}
 				if (program.name_uses == nullptr) {
 					return;
