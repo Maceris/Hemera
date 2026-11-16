@@ -183,6 +183,8 @@ namespace hemera {
 		uint16_t column = 0;
 		// The text after the code, as printed: an error's title, with what's added to it after ". "
 		std::string message;
+		// The build package's target whose check found it (ReportScope::target); empty for none, as outside a build
+		std::string target;
 	};
 
 	/// <summary>
@@ -203,6 +205,8 @@ namespace hemera {
 		size_t errors = 0;
 		// Which of its warnings are shown
 		WarningRules warnings;
+		// The build package's target it's the check of, given to each diagnostic reported in it; empty for none
+		std::string target;
 	};
 
 	/// <summary>
@@ -249,7 +253,7 @@ namespace hemera {
 	 * A diagnostic as one line of JSON, without its newline (docs/compilation.md, Diagnostics as JSON):
 	 * {"severity":"error","code":"hemera:E4015","file":"D:/project/main.hsc","line":12,"column":5,"message":"..."}.
 	 * severity is error, warning or information; code is left out for information, which has none; file has / for
-	 * \. Text is escaped as JSON needs, and bytes that aren't UTF-8 are passed through as they are.
+	 * \; "target":"name" comes last for a build target's diagnostic, and not otherwise. Text is escaped as JSON needs, and bytes that aren't UTF-8 are passed through as they are.
 	 */
 	std::string diagnostic_json(const Diagnostic& diagnostic);
 

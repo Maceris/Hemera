@@ -105,6 +105,8 @@ namespace hemera {
 		std::vector<std::unique_ptr<ReportScope>> scopes;
 		for (size_t i = 0; i < count; ++i) {
 			scopes.push_back(std::make_unique<ReportScope>());
+			// Each diagnostic says which target found it, for a tool that keeps them by target, like an editor's
+			scopes.back()->target = registry.targets[i].name;
 		}
 		std::vector<char> finished(count, 0);
 		std::vector<char> succeeded(count, 0);
