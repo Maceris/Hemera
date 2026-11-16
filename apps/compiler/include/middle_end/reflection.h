@@ -91,6 +91,29 @@ namespace hemera {
 			return types;
 		}
 
+		/// <summary>
+		/// Where the memory stood at a point, for freeing what's made after it (release).
+		/// </summary>
+		struct Mark {
+			size_t blocks = 0;
+			uint8_t* free_start = nullptr;
+			size_t free_size = 0;
+			size_t made = 0;
+		};
+
+		/// <summary>
+		/// Starts keeping track of what's made from here on, for release. Marks don't nest: one is taken, then
+		/// released, before the next.
+		/// </summary>
+		Mark mark();
+
+		/// <summary>
+		/// Frees everything made since mark: memory, records and descriptors, whose types needn't outlive them
+		/// afterward. Nothing kept may point into it, constant_values included, which the caller clears. A
+		/// descriptor made again since, of a type made partial before, is made again once more when asked for.
+		/// </summary>
+		void release(const Mark& mark);
+
 		ProgramInfo* const program;
 
 		/// <summary>
@@ -117,6 +140,11 @@ namespace hemera {
 		std::set<const TypeInfo*> partial;
 		std::set<const TypeInfo*> describing;
 		bool reached_partial = false;
+		/// <summary>
+		/// While marked, each descriptor made, and its type, for release.
+		/// </summary>
+		bool marked = false;
+		std::vector<std::pair<const TypeInfo*, uint8_t*>> made;
 	};
 
 	/// <summary>

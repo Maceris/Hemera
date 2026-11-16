@@ -20,6 +20,7 @@
 #include "hmir/hmir_dialect.h"
 #include "middle_end/build.h"
 #include "middle_end/generate.h"
+#include "middle_end/reflection.h"
 #include "../string_cache_guard.h"
 
 #include "llvm/IR/LLVMContext.h"
@@ -1476,6 +1477,49 @@ TEST(Serve, RestartsForAnotherProgram)
 	ASSERT_EQ(answers.size(), 2u);
 	EXPECT_EQ(answers[0].back(), "{\"done\":true,\"exit\":0,\"restart\":false}");
 	EXPECT_EQ(answers[1].back(), "{\"done\":false,\"restart\":true}");
+}
+
+/*
+ * What a program's compile-time memory gets after a mark goes when it's released, as hemera --serve does with the
+ * build's after each check: the descriptors made since, and the memory, which is given out again from the same place.
+ */
+TEST(Serve, ReleasesWhatTheBuildsMemoryGotInACheck)
+{
+	hemera::reset_reporting_storage();
+	StringCacheGuard string_cache;
+	mlir::MLIRContext context;
+	context.loadDialect<mlir::BuiltinDialect>();
+	context.loadDialect<hmir::HemeraDialect>();
+	mlir::OpBuilder builder(&context);
+	mlir::ModuleOp module = mlir::ModuleOp::create(builder, builder.getUnknownLoc(), "released");
+	auto program_info = std::make_unique<hemera::ProgramInfo>(&context, &builder, &module);
+	const std::filesystem::path folder = std::filesystem::path(HEMERA_TEST_OUTPUT_DIR) / "serve_released";
+	std::filesystem::create_directories(folder);
+	hemera::Options options;
+	options.input = std::filesystem::canonical(scenario("check_runs_statements"));
+	options.builtin_paths[hemera::BuiltinPackage::STD] = std::filesystem::canonical(std_folder());
+	options.output_name = (folder / "released").string();
+	options.build_extent = hemera::BuildExtent::CHECK;
+	hemera::kick_off_processing(program_info.get(), &options);
+	ASSERT_EQ(hemera::error_count(), 0);
+
+	hemera::CompileTimeData& data = hemera::compile_time_data(program_info.get());
+	const hemera::TypeInfoStruct* described = data.compiler_struct("ProgramInfo");
+	ASSERT_NE(described, nullptr);
+	const size_t before = data.described_types().size();
+	const hemera::CompileTimeData::Mark mark = data.mark();
+	uint8_t* first = data.allocate(64, 8);
+	ASSERT_NE(data.descriptor(described), nullptr);
+	EXPECT_GT(data.described_types().size(), before);
+	data.release(mark);
+	EXPECT_EQ(data.described_types().size(), before);
+
+	// The same memory again, and the descriptor made again when asked for
+	const hemera::CompileTimeData::Mark again = data.mark();
+	EXPECT_EQ(data.allocate(64, 8), first);
+	EXPECT_NE(data.descriptor(described), nullptr);
+	EXPECT_GT(data.described_types().size(), before);
+	data.release(again);
 }
 
 #ifdef _WIN32

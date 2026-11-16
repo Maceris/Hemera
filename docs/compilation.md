@@ -554,7 +554,11 @@ changed:
 The build's own diagnostics are reported again with each check that reuses it. Any other check is answered
 `{"done":false,"restart":true}` without running, for a compiler started afresh to answer, so every answer is what a
 fresh `hemera` would give. A build whose compile-time code reads other files than these wouldn't see them change.
-Each check's targets are freed once it's done.
+
+Each check's targets are freed once it's done, with what the build's checks were given about them: the
+`BuildOptions`, the `ProgramInfo` and its packages, and the type values in them. A check can use those while it runs,
+but mustn't keep them, in a global for instance, for a later call to read: by then they're gone. What the build made
+before its first target, like what `build` registered, stays.
 
 ## Compile-Time Permissions
 

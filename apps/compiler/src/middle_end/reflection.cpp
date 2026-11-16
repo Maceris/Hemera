@@ -93,6 +93,30 @@ namespace hemera {
 		return *static_cast<CompileTimeData*>(program->compile_time_data.get());
 	}
 
+	CompileTimeData::Mark CompileTimeData::mark() {
+		std::scoped_lock<std::recursive_mutex> lock(mutex);
+		marked = true;
+		return Mark{ blocks.size(), free_start, free_size, made.size() };
+	}
+
+	void CompileTimeData::release(const Mark& at) {
+		std::scoped_lock<std::recursive_mutex> lock(mutex);
+		for (size_t i = at.made; i < made.size(); ++i) {
+			const auto& [type, record] = made[i];
+			auto found = descriptors.find(type);
+			if (found != descriptors.end() && found->second == record) {
+				descriptors.erase(found);
+			}
+			partial.erase(type);
+			types.erase(reinterpret_cast<uintptr_t>(record));
+		}
+		made.resize(at.made);
+		marked = false;
+		blocks.resize(at.blocks);
+		free_start = at.free_start;
+		free_size = at.free_size;
+	}
+
 	uint8_t* CompileTimeData::allocate(size_t size, size_t alignment) {
 		std::scoped_lock<std::recursive_mutex> lock(mutex);
 		alignment = std::max<size_t>(alignment, 1);
@@ -291,6 +315,9 @@ namespace hemera {
 		// Before its fields, which may refer to it, like a struct with a pointer to its own type
 		descriptors[type] = record;
 		types[reinterpret_cast<uintptr_t>(record)] = type;
+		if (marked) {
+			made.emplace_back(type, record);
+		}
 		const bool outer_reached_partial = reached_partial;
 		reached_partial = false;
 		describing.insert(type);

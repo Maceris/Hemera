@@ -190,6 +190,15 @@ namespace hemera {
 			return only.empty() || std::find(only.begin(), only.end(), target.name) != only.end();
 		};
 
+		/*
+		 * What the build's memory gets from here on, describing targets to its checks, goes once they're done, for
+		 * a compiler that checks them again (hemera --serve): otherwise it would hold every check's
+		 */
+		CompileTimeData::Mark build_memory_mark;
+		if (build_options.free_targets) {
+			build_memory_mark = compile_time_data(build).mark();
+		}
+
 		// Each worker takes the next target, and what's finished is printed in order
 		std::atomic<size_t> next{ 0 };
 		auto work = [&]() {
@@ -236,9 +245,9 @@ namespace hemera {
 		if (BuildExtent::CHECK == build_options.build_extent || !only.empty()) {
 			const bool built = worked && error_count() == 0;
 			/*
-			 * Each target's program freed, for a compiler that goes on to check them again (hemera --serve), but its
-			 * types: the build's descriptions of them, from its checks, are kept by their addresses. The build's
-			 * constants worked out for them go, being kept by their declarations' addresses.
+			 * Each target's program freed, for a compiler that goes on to check them again (hemera --serve), with
+			 * what the build's memory got for them: its descriptions of their types and the constants worked out
+			 * for them, kept by their addresses, which later programs may reuse.
 			 */
 			if (build_options.free_targets) {
 				CompileTimeData& data = compile_time_data(build);
@@ -246,20 +255,13 @@ namespace hemera {
 					std::scoped_lock<std::mutex> lock(data.constant_values_mutex);
 					data.constant_values.clear();
 				}
-				static std::mutex kept_types_mutex;
-				static auto* kept_types = new std::vector<std::unique_ptr<TypeInfo>>();
+				data.release(build_memory_mark);
 				for (size_t i = 0; i < count; ++i) {
 					if (programs[i] == nullptr) {
 						continue;
 					}
-					{
-						std::scoped_lock<std::mutex> lock(kept_types_mutex);
-						std::vector<std::unique_ptr<TypeInfo>>& owned = programs[i]->names.owned_types;
-						kept_types->insert(kept_types->end(), std::make_move_iterator(owned.begin()), std::make_move_iterator(owned.end()));
-						owned.clear();
-					}
-					programs[i]->~ProgramInfo();
-					programs_options[i]->~Options();
+					alloc.delete_object(programs[i]);
+					alloc.delete_object(programs_options[i]);
 					made[i].module->erase();
 					delete made[i].module;
 					delete made[i].builder;

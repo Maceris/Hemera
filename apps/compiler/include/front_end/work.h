@@ -61,8 +61,17 @@ namespace hemera {
 	/// A top-level #if, with any #else_if and #else after it, in one file.
 	/// </summary>
 	struct IfChain {
-		FileLocation file;
-		std::vector<ast::Node*> branches;
+		/// <summary>
+		/// Made through an Allocator, like the program's packages, its list of branches is kept in the same memory.
+		/// </summary>
+		using allocator_type = Allocator<ast::Node*>;
+
+		FileLocation file{};
+		MyVector<ast::Node*> branches;
+
+		explicit IfChain(const allocator_type& allocator)
+			: branches{ allocator } {
+		}
 	};
 
 	union WorkTargetValue {

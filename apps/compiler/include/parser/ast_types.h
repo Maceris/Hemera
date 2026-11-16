@@ -98,7 +98,14 @@ namespace hemera::ast {
 		NodeType node_type;
 		const char padding[4] = { 0 };
 
+		/// <summary>
+		/// What a node's children are kept with: a node made through an Allocator, like a program's node_alloc,
+		/// keeps them in the same memory, so they go when it does.
+		/// </summary>
+		using allocator_type = Allocator<Node*>;
+
 		Node(NodeType type, Token value);
+		Node(NodeType type, Token value, const allocator_type& allocator);
 		Node(const Node&) = delete;
 		Node(Node&&) = delete;
 		Node& operator=(const Node&) = delete;

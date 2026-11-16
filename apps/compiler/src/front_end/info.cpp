@@ -99,10 +99,11 @@ namespace hemera {
 	ProgramInfo::ProgramInfo(mlir::MLIRContext* mlir_context,
 		mlir::OpBuilder* mlir_op_builder,
 		mlir::ModuleOp* mlir_module)
-		: packages{}
+		: memory{ std::make_unique<std::pmr::synchronized_pool_resource>() }
+		, packages{}
 		, expressions{}
 		, functions{}
-		, node_alloc{}
+		, node_alloc{ memory.get() }
 		, next_location_id{}
 		, types_mutex{}
 		, packages_mutex{}
@@ -113,5 +114,17 @@ namespace hemera {
 		, module{ mlir_module }
 		, debug_build{ false }
 	{}
-	ProgramInfo::~ProgramInfo() = default;
+	ProgramInfo::~ProgramInfo() {
+		/*
+		 * Its packages and files are in memory, which frees them as it goes, but what their lists hold is on the
+		 * heap: each is destroyed here, so that goes too. Imports, #if chains and nodes keep nothing anywhere else.
+		 */
+		for (auto& [path, package] : packages) {
+			for (auto& [name, file] : package->files) {
+				file->~FileInfo();
+			}
+			package->~PackageInfo();
+		}
+		packages.clear();
+	}
 }

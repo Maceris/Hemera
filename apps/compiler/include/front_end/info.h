@@ -214,12 +214,20 @@ namespace hemera {
 	};
 
 	struct ProgramInfo {
+		/*
+		 * The memory its parsed trees, packages, files and imports are made in, freed with it, as a long-lived
+		 * compiler checks program after program (hemera --serve). First, so it goes last.
+		 */
+		std::unique_ptr<std::pmr::synchronized_pool_resource> memory;
 		/// <summary>
-		/// Map from (canonical) package path to package info.
+		/// Map from (canonical) package path to package info, each made in memory.
 		/// </summary>
 		MyMap<InternedString, PackageInfo*> packages;
 		MyMap<ExpressionID, ExpressionInfo*> expressions;
 		MyMap<FunctionID, FunctionInfo*> functions;
+		/// <summary>
+		/// Makes nodes in memory, their lists of children too.
+		/// </summary>
 		Allocator<> node_alloc;
 
 		/// <summary>

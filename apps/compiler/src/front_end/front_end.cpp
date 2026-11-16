@@ -365,7 +365,8 @@ namespace hemera {
 		});
 		
 		Allocator<> work_allocator{};
-		Allocator<> info_allocator{};
+		// Packages, files and imports are the program's, made in its memory (ProgramInfo::memory)
+		Allocator<> info_allocator{ program_info->memory.get() };
 		program_info->check_documentation = options == nullptr || options->check_documentation;
 
 		GlobalThreadData global_data{ program_info, options, &work_allocator, 

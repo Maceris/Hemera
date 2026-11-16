@@ -15,6 +15,15 @@ namespace hemera::ast {
 		, node_type{ node_type }
 	{
 	}
+	Node::Node(NodeType node_type, Token value, const allocator_type& allocator)
+		: value{ value }
+		, parent{ nullptr }
+		, children{ allocator }
+		, type{ nullptr }
+		, node_type{ node_type }
+	{
+	}
+
 	Node::~Node() = default;
 
 	std::string_view name_of(NodeType type) {
