@@ -27,7 +27,8 @@ cmake --build --preset release
 ```
 
 That builds into `build/windows`, with the compiler at `build/windows/bin/Release/hemera.exe`. See
-[the compiler's README](/apps/compiler/README.md) for requirements and details.
+[the compiler's README](/apps/compiler/README.md) for requirements and details, and
+[Editor Support](/docs/editor.md) for the language server and the VS Code extension.
 
 ## Folders
 
