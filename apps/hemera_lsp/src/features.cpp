@@ -4,6 +4,7 @@
 
 namespace hemera::lsp {
 
+	using llvm::json::Array;
 	using llvm::json::Object;
 	using llvm::json::Value;
 
@@ -44,5 +45,170 @@ namespace hemera::lsp {
 	Value position_at(const LineIndex& index, size_t offset, Encoding encoding) {
 		const auto [line, byte] = index.line_and_byte(offset);
 		return Object{ { "line", line }, { "character", index.character(line, byte, encoding) } };
+	}
+
+	namespace {
+
+		// The Language Server Protocol's SymbolKind numbers this uses
+		namespace symbol_kinds {
+			constexpr int64_t FIELD = 8;
+			constexpr int64_t ENUM = 10;
+			constexpr int64_t FUNCTION = 12;
+			constexpr int64_t CONSTANT = 14;
+			constexpr int64_t ENUM_MEMBER = 22;
+			constexpr int64_t STRUCT = 23;
+			constexpr int64_t TYPE_PARAMETER = 26;
+		}
+
+		// A run of bytes in the text, empty until widened
+		struct Span {
+			size_t start = SIZE_MAX;
+			size_t end = 0;
+
+			bool empty() const { return start == SIZE_MAX; }
+		};
+
+		// span widened to take in node's token and every token under it
+		void widen(const ast::Node* node, Span& span) {
+			if (node->value.offset != Token::NO_SPAN) {
+				span.start = std::min<size_t>(span.start, node->value.offset);
+				span.end = std::max<size_t>(span.end, static_cast<size_t>(node->value.offset) + node->value.length);
+			}
+			for (const ast::Node* child : node->children) {
+				widen(child, span);
+			}
+		}
+
+		Span span_of(const ast::Node* node) {
+			Span span;
+			widen(node, span);
+			return span;
+		}
+
+		// A symbol's JSON, with its children if it has any
+		struct Symbols {
+			const ParsedDocument& document;
+			const LineIndex index;
+			const Encoding encoding;
+
+			Value range(size_t start, size_t end) const {
+				return Object{ { "start", position_at(index, start, encoding) }, { "end", position_at(index, end, encoding) } };
+			}
+
+			Object symbol(const ast::Node* name, std::string_view detail, int64_t kind, size_t start, size_t end) const {
+				const size_t name_start = name->value.offset;
+				Object made{
+					{ "name", name->value.value != nullptr ? std::string(*name->value.value) : std::string() },
+					{ "detail", std::string(detail) },
+					{ "kind", kind },
+					{ "range", range(std::min(start, name_start), std::max<size_t>(end, name_start + name->value.length)) },
+					{ "selectionRange", range(name_start, name_start + name->value.length) },
+				};
+				return made;
+			}
+
+			// Where the last token before offset ends: a declaration's closing brace, which no node holds
+			size_t last_token_end_before(size_t offset) const {
+				// Tokens come in the order of their offsets
+				auto after = std::lower_bound(document.tokens.begin(), document.tokens.end(), offset,
+					[](const Token& token, size_t at) { return token.offset < at; });
+				while (after != document.tokens.begin()) {
+					--after;
+					if (after->offset != Token::NO_SPAN && TokenType::END_OF_FILE != after->type) {
+						return static_cast<size_t>(after->offset) + after->length;
+					}
+				}
+				return 0;
+			}
+
+			// The start of the doc comment right before start, with only blanks between, or start if there's none
+			size_t doc_comment_start(size_t start) const {
+				for (auto comment = document.comments.rbegin(); comment != document.comments.rend(); ++comment) {
+					const size_t comment_end = static_cast<size_t>(comment->offset) + comment->length;
+					if (comment->offset == Token::NO_SPAN || comment_end > start) {
+						continue;
+					}
+					const std::string_view between = std::string_view(document.text).substr(comment_end, start - comment_end);
+					const bool blank = between.find_first_not_of(" \t\r\n") == std::string_view::npos;
+					const bool doc = std::string_view(document.text).substr(comment->offset).starts_with("/**");
+					return blank && doc ? comment->offset : start;
+				}
+				return start;
+			}
+
+			// A struct's fields, an enum's members or a union's variants
+			Array members(const ast::Node* body) const {
+				Array found;
+				for (size_t i = 0; i < body->children.size(); ++i) {
+					const ast::Node* member = body->children[i];
+					if (ast::NodeType::STRUCT == body->node_type && ast::NodeType::DEFINITION == member->node_type && !member->children.empty()
+						&& ast::NodeType::IDENTIFIER == member->children[0]->node_type) {
+						const Span span = span_of(member);
+						found.push_back(symbol(member->children[0], "", symbol_kinds::FIELD, span.start, span.end));
+					}
+					else if (ast::NodeType::STRUCT != body->node_type && ast::NodeType::IDENTIFIER == member->node_type
+						&& member->value.offset != Token::NO_SPAN) {
+						Span span = span_of(member);
+						// A variant's payload is the node after its name
+						if (i + 1 < body->children.size() && ast::NodeType::PAREN_GROUP == body->children[i + 1]->node_type) {
+							widen(body->children[i + 1], span);
+						}
+						found.push_back(symbol(member, "", symbol_kinds::ENUM_MEMBER, span.start, span.end));
+					}
+				}
+				return found;
+			}
+
+			Array top_level() const {
+				Array found;
+				const MyVector<ast::Node*>& declarations = document.tree->children;
+				for (size_t i = 0; i < declarations.size(); ++i) {
+					const ast::Node* declaration = declarations[i];
+					if (ast::NodeType::DEFINITION != declaration->node_type || declaration->children.empty()
+						|| ast::NodeType::IDENTIFIER != declaration->children[0]->node_type
+						|| declaration->children[0]->value.offset == Token::NO_SPAN) {
+						continue;
+					}
+					std::string_view detail;
+					int64_t kind = symbol_kinds::CONSTANT;
+					const ast::Node* body = nullptr;
+					for (size_t j = 1; j < declaration->children.size() && body == nullptr && detail.empty(); ++j) {
+						const ast::Node* value = declaration->children[j];
+						const ast::NodeType type = value->node_type;
+						if (ast::NodeType::FUNCTION == type) {
+							detail = "fn";
+							kind = symbol_kinds::FUNCTION;
+						}
+						else if (ast::NodeType::STRUCT == type || ast::NodeType::ENUM == type || ast::NodeType::UNION == type) {
+							detail = ast::NodeType::STRUCT == type ? "struct" : ast::NodeType::ENUM == type ? "enum" : "union";
+							kind = ast::NodeType::STRUCT == type ? symbol_kinds::STRUCT : symbol_kinds::ENUM;
+							body = value;
+						}
+						else if (ast::NodeType::KEYWORD_ALIAS == type || ast::NodeType::KEYWORD_DISTINCT == type) {
+							detail = ast::NodeType::KEYWORD_DISTINCT == type ? "distinct alias" : "alias";
+							kind = symbol_kinds::TYPE_PARAMETER;
+						}
+					}
+					// To the last token before what comes next, so a closing brace is in it
+					const size_t next = i + 1 < declarations.size() && !span_of(declarations[i + 1]).empty()
+						? span_of(declarations[i + 1]).start : document.text.size();
+					const Span span = span_of(declaration);
+					Object made = symbol(declaration->children[0], detail, kind, doc_comment_start(span.start),
+						std::max(span.end, last_token_end_before(next)));
+					if (body != nullptr) {
+						made["children"] = members(body);
+					}
+					found.push_back(std::move(made));
+				}
+				return found;
+			}
+		};
+	}
+
+	Array document_symbols(const ParsedDocument& document, Encoding encoding) {
+		if (document.tree == nullptr) {
+			return Array{};
+		}
+		return Symbols{ document, LineIndex(document.text), encoding }.top_level();
 	}
 }

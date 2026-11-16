@@ -75,3 +75,14 @@ TEST(Parsing, Timing) {
 			<< (parsed ? "" : " (didn't parse)") << std::endl;
 	}
 }
+
+// The tree of the file HEMERA_LSP_DUMP_FILE names, printed, for seeing how the parser shapes something.
+TEST(Parsing, DISABLED_DumpForDevelopment) {
+	prepare_parsing();
+	const char* path = std::getenv("HEMERA_LSP_DUMP_FILE");
+	ASSERT_NE(nullptr, path);
+	std::ifstream file(path, std::ios::binary);
+	const auto parsed = parse_document(std::string(std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>()), 1, path);
+	ASSERT_NE(nullptr, parsed->tree);
+	std::cout << hemera::ast::dump(parsed->tree) << std::endl;
+}

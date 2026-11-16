@@ -310,6 +310,7 @@ namespace hemera::lsp {
 					{ "save", Object{ { "includeText", false } } },
 				} },
 				{ "documentFormattingProvider", true },
+				{ "documentSymbolProvider", true },
 			} },
 			{ "serverInfo", Object{ { "name", "hemera-lsp" }, { "version", VERSION_STR } } },
 		};
@@ -465,6 +466,12 @@ namespace hemera::lsp {
 		const std::optional<std::string> uri = document_uri(params);
 		if (method == "textDocument/formatting") {
 			return uri.has_value() ? format(*uri) : Value(Array{});
+		}
+		if (method == "textDocument/documentSymbol") {
+			// The last version that parsed, when this one doesn't (decision 4)
+			const Parses* parses_of = uri.has_value() ? parsed(*uri) : nullptr;
+			return parses_of != nullptr && parses_of->last_tree != nullptr ? document_symbols(*parses_of->last_tree, position_encoding)
+				: Value(Array{});
 		}
 		return std::nullopt;
 	}

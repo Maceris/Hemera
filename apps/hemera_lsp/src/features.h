@@ -6,6 +6,7 @@
 #include <string_view>
 
 #include "documents.h"
+#include "parsing.h"
 
 #include "llvm/Support/JSON.h"
 
@@ -28,4 +29,12 @@ namespace hemera::lsp {
 
 	// A Language Server Protocol position, {line, character}, for byte offset in index's text, in encoding's units.
 	llvm::json::Value position_at(const LineIndex& index, size_t offset, Encoding encoding);
+
+	/*
+	 * textDocument/documentSymbol's answer for a document that parsed: its top-level declarations as DocumentSymbols,
+	 * functions, structs, enums, unions, aliases and constants, with a struct's fields, an enum's members and a
+	 * union's variants as their children. A declaration's range runs from its doc comment, if it has one, to its last
+	 * token, closing brace included; its selection range is its name. Empty for a document with no tree.
+	 */
+	llvm::json::Array document_symbols(const ParsedDocument& document, Encoding encoding);
 }

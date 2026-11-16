@@ -455,6 +455,108 @@ TEST(Server, FormattingAFormattedFileChangesNothing) {
 	EXPECT_TRUE(formatting_edits(session, uri).empty());
 }
 
+namespace {
+
+	const std::string DECLARATIONS =
+		"package main\n"
+		"\n"
+		"import runtime from \"base:runtime\"\n"
+		"\n"
+		"/** Adds. */\n"
+		"add :: fn(a : int, b : int) -> int {\n"
+		"    x := 1\n"
+		"    return a + b\n"
+		"}\n"
+		"\n"
+		"Point :: struct {\n"
+		"    x : int,\n"
+		"    y : int = 2,\n"
+		"}\n"
+		"\n"
+		"Color :: enum #backed_by(u8) {\n"
+		"    Red,\n"
+		"    Green = 3,\n"
+		"}\n"
+		"\n"
+		"Shape :: union {\n"
+		"    Circle(f32),\n"
+		"    Square,\n"
+		"}\n"
+		"\n"
+		"LIMIT :: 10\n"
+		"Alias :: alias int\n"
+		"Distinct :: distinct alias int\n";
+
+	// textDocument/documentSymbol's answer for uri
+	Array symbols_of(Session& session, const std::string& uri) {
+		session.request(11, "textDocument/documentSymbol", Object{ { "textDocument", Object{ { "uri", uri } } } });
+		const Value* result = session.last().get("result");
+		return result != nullptr && result->getAsArray() != nullptr ? *result->getAsArray() : Array{};
+	}
+
+	// A symbol's name, kind, and its range's first and last lines, as "name kind first-last"
+	std::string summary(const Value& symbol) {
+		const Object& object = *symbol.getAsObject();
+		const Object& range = *object.getObject("range");
+		return std::format("{} {} {}-{}", object.getString("name")->str(), *object.getInteger("kind"),
+			*range.getObject("start")->getInteger("line"), *range.getObject("end")->getInteger("line"));
+	}
+}
+
+TEST(Server, DocumentSymbolsListDeclarationsAndTheirMembers) {
+	Session session;
+	session.initialize();
+	const std::string uri = "file:///d%3A/project/main.hsc";
+	session.notify("textDocument/didOpen", document(uri, DECLARATIONS, 1));
+
+	const Array symbols = symbols_of(session, uri);
+	std::vector<std::string> found;
+	for (const Value& symbol : symbols) {
+		found.push_back(summary(symbol));
+		if (const Array* children = symbol.getAsObject()->getArray("children")) {
+			for (const Value& child : *children) {
+				found.push_back("  " + summary(child));
+			}
+		}
+	}
+	EXPECT_EQ((std::vector<std::string>{
+		// The doc comment and the closing brace are in the function's range
+		"add 12 4-8",
+		"Point 23 10-13",
+		"  x 8 11-11",
+		"  y 8 12-12",
+		"Color 10 15-18",
+		"  Red 22 16-16",
+		"  Green 22 17-17",
+		"Shape 10 20-23",
+		"  Circle 22 21-21",
+		"  Square 22 22-22",
+		"LIMIT 14 25-25",
+		"Alias 26 26-26",
+		"Distinct 26 27-27",
+	}), found);
+	const Object& add = *symbols[0].getAsObject();
+	EXPECT_EQ("fn", add.getString("detail"));
+	const Object& name = *add.getObject("selectionRange");
+	EXPECT_EQ(5, name.getObject("start")->getInteger("line"));
+	EXPECT_EQ(0, name.getObject("start")->getInteger("character"));
+	EXPECT_EQ(3, name.getObject("end")->getInteger("character"));
+}
+
+TEST(Server, DocumentSymbolsKeepTheLastVersionThatParsed) {
+	Session session;
+	session.initialize();
+	const std::string uri = "file:///d%3A/project/main.hsc";
+	session.notify("textDocument/didOpen", document(uri, DECLARATIONS, 1));
+	EXPECT_EQ(7u, symbols_of(session, uri).size());
+	session.notify("textDocument/didChange", Object{
+		{ "textDocument", Object{ { "uri", uri }, { "version", 2 } } },
+		{ "contentChanges", Array{ Object{ { "text", DECLARATIONS + "broken :: fn( {\n" } } } },
+	});
+
+	EXPECT_EQ(7u, symbols_of(session, uri).size());
+}
+
 TEST(TokenEnd, CoversWordsStringsAndSingleCharacters) {
 	EXPECT_EQ(12u, hemera::lsp::token_end("abc := value", 7));
 	EXPECT_EQ(3u, hemera::lsp::token_end("abc := value", 0));
