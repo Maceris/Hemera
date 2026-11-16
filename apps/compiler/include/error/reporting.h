@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <cstdio>
 #include <mutex>
 #include <set>
 #include <string>
@@ -95,6 +96,8 @@ namespace hemera {
 		// Folders whose warnings aren't shown, the built-in packages', but for shown_folder, the root package's
 		std::vector<std::string> quiet_folders;
 		std::string shown_folder;
+		// std's folder, with / throughout, for compile-time code's <std>/... names (path_on_disk); empty for none
+		std::string std_folder;
 		// While the front end reads the packages, whose own lists may come after their warnings, they're held
 		bool holding = false;
 		// Starts not yet released: a package loaded while compiling (compiler.load_package) starts again, inside
@@ -126,10 +129,19 @@ namespace hemera {
 	/*
 	 * Starts a build's warning rules, in the thread's scope or for the process: what the build allows and denies, the
 	 * folders whose warnings aren't shown, and the root package's, which is shown wherever it is. Warnings are held
-	 * from here until release_warnings.
+	 * from here until release_warnings. shown_folder and std_folder (empty for none) are also what path_on_disk
+	 * resolves names against.
 	 */
 	void start_warning_rules(std::vector<std::string> allowed, std::vector<std::string> denied,
-		std::vector<std::string> quiet_folders, std::string shown_folder);
+		std::vector<std::string> quiet_folders, std::string shown_folder, std::string std_folder = {});
+
+	/*
+	 * A file as compile-time code names it (#source_location, docs/compilation.md, Deterministic Output) turned back
+	 * into the path on disk that diagnostics give: <std>/... beneath the build's std folder, and a relative path
+	 * beneath its root package's folder, from the thread's scope's warning rules or the process's. <base>/... and
+	 * absolute paths are returned as they are, as is anything when the build gave no folder for it.
+	 */
+	std::string path_on_disk(std::string_view name);
 
 	// A package's own ALLOWED_WARNINGS, for warnings in its folder.
 	void allow_warnings_in_package(std::string folder, std::vector<std::string> patterns);
@@ -186,6 +198,8 @@ namespace hemera {
 		std::string errors_output;
 		// The diagnostics in output, which join the process's (diagnostics) when it's printed
 		std::vector<Diagnostic> diagnostics;
+		// Its diagnostics as JSON lines, in place of their text in output, when they're printed that way
+		std::string json_output;
 		size_t errors = 0;
 		// Which of its warnings are shown
 		WarningRules warnings;
@@ -230,4 +244,19 @@ namespace hemera {
 	 * (print_report_scope), not before. Emptied by reset_reporting_storage.
 	 */
 	std::vector<Diagnostic> diagnostics();
+
+	/*
+	 * A diagnostic as one line of JSON, without its newline (docs/compilation.md, Diagnostics as JSON):
+	 * {"severity":"error","code":"hemera:E4015","file":"D:/project/main.hsc","line":12,"column":5,"message":"..."}.
+	 * severity is error, warning or information; code is left out for information, which has none; file has / for
+	 * \. Text is escaped as JSON needs, and bytes that aren't UTF-8 are passed through as they are.
+	 */
+	std::string diagnostic_json(const Diagnostic& diagnostic);
+
+	/*
+	 * From now on, each diagnostic is written to stream as a line of JSON (diagnostic_json), flushed, in place of
+	 * the text it's printed as; null goes back to text. stream isn't owned, and has to stay open until then. Only
+	 * diagnostics change: other output, like --time-phases', goes where it did.
+	 */
+	void print_diagnostics_as_json(std::FILE* stream);
 }

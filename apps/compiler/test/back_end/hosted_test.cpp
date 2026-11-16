@@ -1262,6 +1262,86 @@ TEST(Build, ChecksProgramsThroughGeneration)
 	module.erase();
 }
 
+// What the compiler wrote when run as a program, to standard output and standard error, and its exit code.
+struct CompilerRun {
+	std::string output;
+	std::string error;
+	int exit_code = 0;
+};
+
+// The compiler run as a program with arguments, its output kept in a folder of the test's own, named name.
+static CompilerRun run_compiler(std::string_view name, std::string_view arguments) {
+	const std::filesystem::path folder = std::filesystem::path(HEMERA_TEST_OUTPUT_DIR) / name;
+	std::filesystem::create_directories(folder);
+	const std::filesystem::path output_file = folder / "output.txt";
+	const std::filesystem::path error_file = folder / "error.txt";
+	CompilerRun run;
+	// On Windows, cmd takes off the outermost quotes
+	run.exit_code = std::system(std::format("\"\"{}\" {} > \"{}\" 2> \"{}\"\"", HEMERA_COMPILER, arguments, output_file.string(),
+		error_file.string()).c_str());
+	run.output = read_file(output_file);
+	run.error = read_file(error_file);
+	return run;
+}
+
+// Text's lines, without their line ends.
+static std::vector<std::string> lines_of(const std::string& text) {
+	std::vector<std::string> lines;
+	std::istringstream stream(text);
+	for (std::string line; std::getline(stream, line);) {
+		if (!line.empty() && line.back() == '\r') {
+			line.pop_back();
+		}
+		lines.push_back(line);
+	}
+	return lines;
+}
+
+#ifdef _WIN32
+/*
+ * hemera --diagnostics=json: standard output holds the diagnostics as JSON, a line each, and nothing else; what
+ * compile-time code prints, through base and through C's stdio, goes to standard error.
+ */
+TEST(Diagnostics, JsonAloneOnStandardOutput)
+{
+	const std::filesystem::path folder = std::filesystem::canonical(scenario("json_diagnostics"));
+	const CompilerRun run = run_compiler("json_diagnostics", std::format("--check --diagnostics=json \"{}\"", folder.string()));
+	EXPECT_EQ(run.exit_code, 0) << run.error;
+	const std::vector<std::string> lines = lines_of(run.output);
+	ASSERT_EQ(lines.size(), 1u) << run.output;
+	EXPECT_TRUE(lines[0].starts_with(std::format(R"({{"severity":"warning","code":"hemera:W4001","file":"{}/)", folder.generic_string()))) << lines[0];
+	EXPECT_TRUE(lines[0].ends_with(R"(json_diagnostics/main.hsc","line":20,"column":28,"message":"Compile-time code warned. a \"quoted\" warning"})"))
+		<< lines[0];
+	EXPECT_NE(run.error.find("printed through base"), std::string::npos) << run.error;
+	EXPECT_NE(run.error.find("printed through C"), std::string::npos) << run.error;
+}
+
+// hemera --overlay=path=file: file's bytes are read in place of path's, and reported as path.
+TEST(Diagnostics, OverlaysAreReadInPlaceOfTheirFiles)
+{
+	const std::filesystem::path folder = std::filesystem::canonical(scenario("json_diagnostics"));
+	const std::filesystem::path overlay = std::filesystem::path(HEMERA_TEST_OUTPUT_DIR) / "overlay_main.hsc";
+	{
+		std::ofstream file(overlay, std::ios::binary);
+		file << "package main\n\nmain :: fn() -> int {\n    return \"not a number\"\n}\n";
+	}
+	// Written with \ and in another case, as an editor might: it's the same file
+	std::string replaced = (folder / "main.hsc").string();
+	std::replace(replaced.begin(), replaced.end(), '/', '\\');
+	replaced[0] = static_cast<char>(replaced[0] >= 'a' && replaced[0] <= 'z' ? replaced[0] - 'a' + 'A' : replaced[0] - 'A' + 'a');
+	const CompilerRun run = run_compiler("json_diagnostics_overlaid", std::format("--check --diagnostics=json --overlay=\"{}={}\" \"{}\"",
+		replaced, overlay.string(), folder.string()));
+	EXPECT_NE(run.exit_code, 0);
+	const std::vector<std::string> lines = lines_of(run.output);
+	ASSERT_FALSE(lines.empty()) << run.error;
+	for (const std::string& line : lines) {
+		EXPECT_TRUE(line.starts_with(R"({"severity":"error","code":"hemera:E)")) << line;
+		EXPECT_NE(line.find(R"(json_diagnostics/main.hsc","line":4,)"), std::string::npos) << line;
+	}
+	EXPECT_EQ(run.error.find("printed through"), std::string::npos) << "main.hsc's own code didn't run";
+}
+#endif
+
 // A typed library built from the package in sources to output_name, for Windows, in the caller's string cache: whether it built.
 static bool build_typed_library(const std::filesystem::path& sources, const std::string& output_name)
 {

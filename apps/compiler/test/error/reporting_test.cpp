@@ -144,6 +144,46 @@ TEST_F(Reporting, ScopesRecordsJoinWhenPrinted) {
 	EXPECT_TRUE(scope.diagnostics.empty());
 }
 
+TEST_F(Reporting, JsonHasEveryField) {
+	const Diagnostic diagnostic{ Severity::ERROR, "hemera", "E4015", "D:\\project\\main.hsc", 12, 5, "a \"quoted\"\tword\\\n" };
+
+	EXPECT_EQ(R"({"severity":"error","code":"hemera:E4015","file":"D:/project/main.hsc","line":12,"column":5,)"
+		R"("message":"a \"quoted\"\tword\\\n"})", hemera::diagnostic_json(diagnostic));
+}
+
+TEST_F(Reporting, JsonInformationHasNoCode) {
+	const Diagnostic diagnostic{ Severity::INFORMATION, "", "", "build.hsc", 9, 1, std::string("bell\x07", 5) };
+
+	EXPECT_EQ(R"({"severity":"information","file":"build.hsc","line":9,"column":1,"message":"bell\u0007"})",
+		hemera::diagnostic_json(diagnostic));
+}
+
+TEST_F(Reporting, JsonGoesToItsStreamInPlaceOfText) {
+	std::FILE* stream = std::tmpfile();
+	ASSERT_NE(stream, nullptr);
+	hemera::enable_reporting_printing();
+	hemera::print_diagnostics_as_json(stream);
+	hemera::report_coded(false, "fonts", "W0003", "fonts.hsc", 5, 3, "a missing kerning table");
+	hemera::ReportScope scope;
+	hemera::set_report_scope(&scope);
+	hemera::report_coded(true, "fonts", "E0002", "scoped.hsc", 4, 2, "no glyphs");
+	hemera::set_report_scope(nullptr);
+	EXPECT_TRUE(scope.output.empty()) << "no text for a diagnostic printed as JSON";
+	hemera::print_report_scope(scope);
+	hemera::print_diagnostics_as_json(nullptr);
+	hemera::disable_reporting_printing();
+
+	std::rewind(stream);
+	std::string written;
+	char buffer[256];
+	for (size_t read; (read = std::fread(buffer, 1, sizeof(buffer), stream)) > 0;) {
+		written.append(buffer, read);
+	}
+	std::fclose(stream);
+	EXPECT_EQ(R"({"severity":"warning","code":"fonts:W0003","file":"fonts.hsc","line":5,"column":3,"message":"a missing kerning table"})" "\n"
+		R"({"severity":"error","code":"fonts:E0002","file":"scoped.hsc","line":4,"column":2,"message":"no glyphs"})" "\n", written);
+}
+
 TEST_F(Reporting, ResetForgetsRecords) {
 	hemera::report_error(hemera::ErrorCode::E4015, "main.hsc", 1, 1);
 	hemera::reset_reporting_storage();

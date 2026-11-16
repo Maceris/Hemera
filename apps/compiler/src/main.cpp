@@ -70,6 +70,15 @@ namespace hemera {
 		initialize_reporting_storage();
 		enable_reporting();
 		enable_reporting_printing();
+		// Standard output for diagnostics alone, before any compile-time code can print to it
+		if (options->diagnostics_json) {
+			std::FILE* diagnostics = take_standard_output();
+			if (diagnostics == nullptr) {
+				std::cerr << "Standard output couldn't be kept for diagnostics" << std::endl;
+				return 1;
+			}
+			print_diagnostics_as_json(diagnostics);
+		}
 
 		mlir::MLIRContext mlir_context;
 		mlir_context.loadDialect<mlir::BuiltinDialect>();

@@ -53,6 +53,12 @@ the build's checks (`add_check`) and generated, and the build's steps don't run,
 built. The compiler writes nothing, but the build's code and checks run as they always do, so whatever they write
 themselves is still written. `--check` takes the place of `-s`, `-S` and `-c`, and can't be given with any of them.
 
+`--overlay=path=file` reads `file` wherever the compiler would read `path`, and reports what it finds as `path`'s, so an
+editor can check its unsaved changes: it writes each changed buffer to a file of its own and passes an overlay for
+each, separated by commas or as several flags. Two spellings of a path match when they name the same file, with `.`
+and `..` resolved and, on Windows, `\` for `/` and in any case. Packages are still found by listing their folders, so
+an overlay can only stand in for a file that's on disk.
+
 ## Deterministic Output
 
 The same inputs (source, `base` and `std`, options and settings, and the same compiler) give the
@@ -141,6 +147,32 @@ check_glyphs :: fn(font: Font, location := #caller_location) {
 
 `compiler.report_error` and `compiler.report_warning` report with the compiler's codes for compile-time code's
 diagnostics, `hemera:E4029` and `hemera:W4001`, for a message that doesn't need a code of its own.
+
+A diagnostic names its file by its path on disk, compile-time code's too: a `#source_location` is given back its folder,
+so `../shared/parse.hsc` is reported beneath the root package's folder, and `<std>/...` beneath std's. `base`'s files,
+which aren't on disk, keep their `<base>/...` names.
+
+### Diagnostics as JSON
+
+`hemera --diagnostics=json` prints each diagnostic as a JSON object on a line of its own, for tools like an editor to
+read, in place of its text (`--diagnostics=text`, the default):
+
+```
+{"severity":"error","code":"hemera:E4015","file":"D:/project/main.hsc","line":12,"column":5,"message":"Type mismatch. the returned value needs int, not a string"}
+```
+
+* `severity` is `error`, `warning` or `information`, the last for what compile-time code logs below the warning level.
+* `code` is the prefix and code, as the text gives them. Information has none, and leaves it out.
+* `file` is the path on disk, with `/` throughout, or `<base>/...` for `base`'s files.
+* `line` and `column` count from 1, and the column counts bytes. Either is 0 when the diagnostic is about no line or
+  column in particular, like a file that can't be written.
+* `message` is the text after the code.
+
+They come in the order the text would, a build package's targets in order, and the exit code is the same.
+
+Standard output carries those lines and nothing else. Everything else that would go there goes to standard error
+instead: the compiler's other output, and what compile-time code prints, whether through `base` or through a C library
+it calls. So a reader can take every line of standard output as a diagnostic.
 
 ### Allowing and Denying Warnings
 

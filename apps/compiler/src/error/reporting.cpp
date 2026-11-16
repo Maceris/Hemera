@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <filesystem>
 #include <format>
 #include <iostream>
 #include <mutex>
@@ -24,6 +25,62 @@ namespace hemera {
 	 */
 	static std::set<std::string>* reported_storage;
 	static thread_local ReportScope* current_scope = nullptr;
+	// Where diagnostics go as JSON lines (print_diagnostics_as_json), or null for text; guarded by cout_mutex
+	static std::FILE* json_stream = nullptr;
+
+	// Text written to the JSON stream, whole, while printing's on; cout_mutex held
+	static void write_json(const std::string& text) {
+		if (printing_enabled && json_stream != nullptr && !text.empty()) {
+			std::fwrite(text.data(), 1, text.size(), json_stream);
+			std::fflush(json_stream);
+		}
+	}
+
+	void print_diagnostics_as_json(std::FILE* stream) {
+		std::lock_guard<std::mutex> lock(cout_mutex);
+		json_stream = stream;
+	}
+
+	// text as the inside of a JSON string
+	static void append_json_string(std::string& out, std::string_view text) {
+		for (const char c : text) {
+			switch (c) {
+			case '"': out += "\\\""; break;
+			case '\\': out += "\\\\"; break;
+			case '\n': out += "\\n"; break;
+			case '\r': out += "\\r"; break;
+			case '\t': out += "\\t"; break;
+			default:
+				if (static_cast<unsigned char>(c) < 0x20) {
+					out += std::format("\\u{:04x}", static_cast<unsigned char>(c));
+				}
+				else {
+					out += c;
+				}
+			}
+		}
+	}
+
+	std::string diagnostic_json(const Diagnostic& diagnostic) {
+		std::string out = "{\"severity\":\"";
+		out += Severity::ERROR == diagnostic.severity ? "error" : Severity::WARNING == diagnostic.severity ? "warning" : "information";
+		out += '"';
+		if (!diagnostic.code.empty()) {
+			out += ",\"code\":\"";
+			append_json_string(out, diagnostic.prefix);
+			out += ':';
+			append_json_string(out, diagnostic.code);
+			out += '"';
+		}
+		std::string file = diagnostic.file;
+		std::replace(file.begin(), file.end(), '\\', '/');
+		out += ",\"file\":\"";
+		append_json_string(out, file);
+		out += std::format("\",\"line\":{},\"column\":{},\"message\":\"", diagnostic.line, diagnostic.column);
+		append_json_string(out, diagnostic.message);
+		out += "\"}";
+		return out;
+	}
 
 	void set_report_scope(ReportScope* scope) {
 		current_scope = scope;
@@ -37,11 +94,13 @@ namespace hemera {
 		std::string output;
 		std::string errors_output;
 		std::vector<Diagnostic> kept;
+		std::string json_output;
 		{
 			std::lock_guard<std::mutex> scope_lock(scope.mutex);
 			output.swap(scope.output);
 			errors_output.swap(scope.errors_output);
 			kept.swap(scope.diagnostics);
+			json_output.swap(scope.json_output);
 		}
 		{
 			std::lock_guard<std::mutex> storage_lock(storage_mutex);
@@ -57,6 +116,7 @@ namespace hemera {
 		if (!errors_output.empty()) {
 			std::cerr << errors_output << std::flush;
 		}
+		write_json(json_output);
 	}
 
 	// A line of output, printed, or kept in the thread's scope.
@@ -73,19 +133,36 @@ namespace hemera {
 		}
 	}
 
-	// A diagnostic, kept with the thread's scope's or the process's, and printed as line
+	// Whether diagnostics are printed as JSON (print_diagnostics_as_json)
+	static bool printing_json() {
+		std::lock_guard<std::mutex> lock(cout_mutex);
+		return json_stream != nullptr;
+	}
+
+	// A diagnostic, kept with the thread's scope's or the process's, and printed as line, or as JSON
 	static void emit(Diagnostic diagnostic, const std::string& line) {
+		const bool json = printing_json();
+		std::string json_line = json ? diagnostic_json(diagnostic) + "\n" : std::string();
 		if (current_scope != nullptr) {
 			std::lock_guard<std::mutex> lock(current_scope->mutex);
 			current_scope->diagnostics.push_back(std::move(diagnostic));
+			current_scope->json_output += json_line;
 		}
 		else {
-			std::lock_guard<std::mutex> lock(storage_mutex);
-			if (diagnostic_storage != nullptr) {
-				diagnostic_storage->push_back(std::move(diagnostic));
+			{
+				std::lock_guard<std::mutex> lock(storage_mutex);
+				if (diagnostic_storage != nullptr) {
+					diagnostic_storage->push_back(std::move(diagnostic));
+				}
+			}
+			if (json) {
+				std::lock_guard<std::mutex> lock(cout_mutex);
+				write_json(json_line);
 			}
 		}
-		write_line(line);
+		if (!json) {
+			write_line(line);
+		}
 	}
 
 	// The diagnostic printed as prefix:code, like hemera:E4015, from coded
@@ -377,8 +454,21 @@ namespace hemera {
 		return true;
 	}
 
+	std::string path_on_disk(std::string_view name) {
+		constexpr std::string_view STD = "<std>/";
+		WarningRules& rules = warning_rules();
+		std::lock_guard<std::mutex> lock(rules.mutex);
+		if (name.starts_with(STD)) {
+			return rules.std_folder.empty() ? std::string(name) : rules.std_folder + "/" + std::string(name.substr(STD.size()));
+		}
+		if (name.empty() || name.starts_with('<') || rules.shown_folder.empty() || std::filesystem::path(name).is_absolute()) {
+			return std::string(name);
+		}
+		return (std::filesystem::path(rules.shown_folder) / name).lexically_normal().generic_string();
+	}
+
 	void start_warning_rules(std::vector<std::string> allowed, std::vector<std::string> denied,
-		std::vector<std::string> quiet_folders, std::string shown_folder) {
+		std::vector<std::string> quiet_folders, std::string shown_folder, std::string std_folder) {
 
 		WarningRules& rules = warning_rules();
 		std::lock_guard<std::mutex> lock(rules.mutex);
@@ -394,6 +484,7 @@ namespace hemera {
 			rules.quiet_folders.push_back(with_slashes(folder));
 		}
 		rules.shown_folder = with_slashes(shown_folder);
+		rules.std_folder = with_slashes(std_folder);
 		rules.holding = true;
 		rules.held.clear();
 	}

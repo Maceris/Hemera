@@ -518,6 +518,8 @@ namespace hemera {
 			case hemera::arg_parse::OUTPUT:
 			case hemera::arg_parse::PACKAGE_PATH:
 			case hemera::arg_parse::SETTING:
+			case hemera::arg_parse::OVERLAY:
+			case hemera::arg_parse::DIAGNOSTICS:
 			case hemera::arg_parse::ALLOW_WARNINGS:
 			case hemera::arg_parse::DENY_WARNINGS:
 			case hemera::arg_parse::SHOW_INSERTED:
@@ -1003,6 +1005,26 @@ namespace hemera {
 						return false;
 					}
 					output.settings.emplace_back(std::string(value.substr(0, equals)), std::string(value.substr(equals + 1)));
+				}
+				break;
+			case hemera::arg_parse::OVERLAY:
+				for (MyString value : option_with_value.values) {
+					const size_t equals = value.find("=");
+					if (equals == std::string::npos || equals == 0 || equals + 1 == value.size()) {
+						cout << "An overlay is written path=file, not " << value << endl;
+						return false;
+					}
+					output.overlays.emplace_back(overlay_key(std::filesystem::path(std::string(value.substr(0, equals)))),
+						std::string(value.substr(equals + 1)));
+				}
+				break;
+			case hemera::arg_parse::DIAGNOSTICS:
+				if (option_with_value.values[0] == "json") {
+					output.diagnostics_json = true;
+				}
+				else if (option_with_value.values[0] != "text") {
+					cout << "Diagnostics are printed as text or json, not " << option_with_value.values[0] << endl;
+					return false;
 				}
 				break;
 			case hemera::arg_parse::ALLOW_WARNINGS:

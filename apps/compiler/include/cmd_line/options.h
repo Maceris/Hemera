@@ -647,6 +647,16 @@ namespace hemera {
         /// --setting=name=value, which compile-time code reads with compiler.target_setting.
         /// </summary>
         std::vector<std::pair<std::string, std::string>> settings;
+        /*
+         * --overlay=path=file: files read in place of others, as an editor's unsaved buffers are. Each is the
+         * replaced file's overlay_key, then the path of the file read instead, as given.
+         */
+        std::vector<std::pair<std::string, std::string>> overlays;
+        /*
+         * --diagnostics=json: each diagnostic is a JSON object on a line of its own on standard output, and
+         * everything else that would go there goes to standard error (docs/compilation.md, Diagnostics as JSON).
+         */
+        bool diagnostics_json = false;
         /// <summary>
         /// Warnings not shown, and warnings made errors (--allow, --deny): prefix:code, prefix:* or *
         /// (docs/compilation.md, Allowing and Denying Warnings).
@@ -672,4 +682,16 @@ namespace hemera {
 	/// every output's file is named from output_name, and the linked one by adding its extension.
 	/// </summary>
 	std::string output_stem(const std::string& name, OSType os, bool typed_library);
+
+	/*
+	 * How --overlay names a file, so two spellings of one path match: absolute, with . and .. resolved and links
+	 * followed as far as the path exists, with / throughout; on Windows, in lowercase too, as its paths ignore case.
+	 */
+	std::string overlay_key(const std::filesystem::path& path);
+
+	/*
+	 * The file read in place of path (--overlay), as it was given; null when there's none. Valid while options
+	 * isn't changed.
+	 */
+	const std::string* find_overlay(const Options& options, const std::filesystem::path& path);
 }

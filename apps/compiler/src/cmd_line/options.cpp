@@ -1,5 +1,8 @@
 #include "cmd_line/options.h"
 
+#include <algorithm>
+#include <system_error>
+
 namespace hemera {
 	Options::Options()
 		: build_extent{ BuildExtent::LINK }
@@ -48,5 +51,31 @@ namespace hemera {
 			}
 		}
 		return name.substr(0, name.size() - extension.size());
+	}
+
+	std::string overlay_key(const std::filesystem::path& path) {
+		std::error_code error;
+		std::filesystem::path full = std::filesystem::weakly_canonical(std::filesystem::absolute(path, error), error);
+		if (error) {
+			full = std::filesystem::absolute(path, error).lexically_normal();
+		}
+		std::string key = full.generic_string();
+#ifdef _WIN32
+		std::transform(key.begin(), key.end(), key.begin(), [](char c) { return c >= 'A' && c <= 'Z' ? static_cast<char>(c - 'A' + 'a') : c; });
+#endif
+		return key;
+	}
+
+	const std::string* find_overlay(const Options& options, const std::filesystem::path& path) {
+		if (options.overlays.empty()) {
+			return nullptr;
+		}
+		const std::string key = overlay_key(path);
+		for (const auto& [replaced, file] : options.overlays) {
+			if (replaced == key) {
+				return &file;
+			}
+		}
+		return nullptr;
 	}
 }

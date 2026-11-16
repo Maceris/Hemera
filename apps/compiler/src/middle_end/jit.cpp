@@ -424,7 +424,8 @@ namespace hemera {
 
 			const std::string message = format_log(std::string_view(text, static_cast<size_t>(text_count)), params,
 				static_cast<size_t>(params_count));
-			const std::string path(file, static_cast<size_t>(file_count));
+			// With the path on disk, as the compiler's own diagnostics are
+			const std::string path = path_on_disk(std::string_view(file, static_cast<size_t>(file_count)));
 			const uint32_t at_line = static_cast<uint32_t>(line);
 			const uint16_t at_column = static_cast<uint16_t>(column);
 			if (level >= LOG_ERROR) {
@@ -470,7 +471,7 @@ namespace hemera {
 		[[noreturn]] void compile_time_fail(const char* message, int64_t message_count, const char* file, int64_t file_count, int64_t line,
 			int64_t column) {
 
-			report_error(ErrorCode::E4029, std::string(file, static_cast<size_t>(file_count)), static_cast<uint32_t>(line),
+			report_error(ErrorCode::E4029, path_on_disk(std::string_view(file, static_cast<size_t>(file_count))), static_cast<uint32_t>(line),
 				static_cast<uint16_t>(column), std::format("assertion failed: {}", std::string_view(message, static_cast<size_t>(message_count))));
 			Active* run = active;
 			run->escaped = true;

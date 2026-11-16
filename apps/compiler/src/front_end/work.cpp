@@ -843,8 +843,13 @@ namespace hemera {
 		}
 
 		std::string file_path = dir_path.append(*location.file_name).generic_string();
-		// Binary, so the lexer sees the file's own bytes, and its offsets are the file's (the lexer takes CRLF)
-		std::ifstream file(file_path, std::ios::binary);
+		/*
+		 * Binary, so the lexer sees the file's own bytes, and its offsets are the file's (the lexer takes CRLF). An
+		 * overlay's bytes are read in its place, still reported as this file.
+		 */
+		const Options* options = executor.global_data->options;
+		const std::string* overlay = options != nullptr ? find_overlay(*options, file_path) : nullptr;
+		std::ifstream file(overlay != nullptr ? *overlay : file_path, std::ios::binary);
 
 		if (!file.is_open()) {
 			report_error(ErrorCode::E4000, file_path, 0, 0);

@@ -12880,6 +12880,8 @@ namespace hemera {
 				uint32_t line = 0;
 				uint16_t column = 0;
 				read_location(call, 0, file, line, column);
+				// Reported with the path on disk, as the compiler's own diagnostics are
+				file = path_on_disk(file);
 				const std::string message = format_compile_time(read_string(call.arguments[1]),
 					reinterpret_cast<const void*>(read_u64(call.arguments[2] + 8)), read_u64(call.arguments[2]));
 				// Held until the run is known to count: one that described a function too early is run again
@@ -12903,6 +12905,8 @@ namespace hemera {
 				uint32_t line = 0;
 				uint16_t column = 0;
 				read_location(call, 3, file, line, column);
+				// Reported with the path on disk, as the compiler's own diagnostics are
+				file = path_on_disk(file);
 				const std::string message = format_compile_time(read_string(call.arguments[4]),
 					reinterpret_cast<const void*>(read_u64(call.arguments[5] + 8)), read_u64(call.arguments[5]));
 				const char letter = error ? 'E' : 'W';
@@ -13156,6 +13160,7 @@ namespace hemera {
 			result.builtin_paths[package] = from_build(build, path);
 		}
 		result.settings = target.settings;
+		result.overlays = build.overlays;
 		result.allowed_warnings.clear();
 		result.denied_warnings.clear();
 		if (!add_warning_patterns(target.allowed_warnings, result.allowed_warnings)

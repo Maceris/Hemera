@@ -379,13 +379,17 @@ namespace hemera {
 		 * until every package's own ALLOWED_WARNINGS is read.
 		 */
 		std::vector<std::string> quiet_folders{ "<base>" };
+		std::string std_on_disk;
 		for (const BuiltinPackage builtin : { BuiltinPackage::STD, BuiltinPackage::VENDOR }) {
 			if (auto found = options->builtin_paths.find(builtin); found != options->builtin_paths.end()) {
 				std::error_code error;
 				quiet_folders.push_back(std::filesystem::weakly_canonical(found->second, error).string());
+				if (BuiltinPackage::STD == builtin) {
+					std_on_disk = quiet_folders.back();
+				}
 			}
 		}
-		start_warning_rules(options->allowed_warnings, options->denied_warnings, quiet_folders, options->input.string());
+		start_warning_rules(options->allowed_warnings, options->denied_warnings, quiet_folders, options->input.string(), std_on_disk);
 
 		/*
 		 * std's schema, for a typed library's interface record or a program's imports, whose types the compiler
