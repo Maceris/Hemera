@@ -885,6 +885,11 @@ namespace hemera {
 			}
 			auto archetype = new TypeInfoArchetype(intern(name), generic->name);
 			archetype->owner = generic;
+			// The program's, freed with it, like the types made from others
+			{
+				std::scoped_lock<std::mutex> lock(names.types_mutex);
+				names.owned_types.emplace_back(archetype);
+			}
 			check->archetypes.push_back(archetype);
 			arguments.push_back(archetype);
 			values.push_back({});
@@ -898,13 +903,9 @@ namespace hemera {
 		}
 		ast::Node* body = function_body(generic);
 		sized = sized || (body != nullptr && sizes_a_type(body, value_names, false));
-		{
-			if (sized) {
-				for (TypeInfoArchetype* archetype : check->archetypes) {
-					delete archetype;
-				}
-				return;
-			}
+		// Its archetypes are the program's, freed with it
+		if (sized) {
+			return;
 		}
 		{
 			std::scoped_lock<std::mutex> lock(names.mutex);

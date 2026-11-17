@@ -2,6 +2,7 @@
 #include <chrono>
 #include <format>
 #include <map>
+#include <memory_resource>
 #include <thread>
 #include <tuple>
 
@@ -364,7 +365,12 @@ namespace hemera {
 			MAX_SEARCHERS = std::max(1u, THREAD_COUNT / 2);
 		});
 		
-		Allocator<> work_allocator{};
+		/*
+		 * The work, made by every thread, and freed with this memory once it's all done, as nothing holds it after: a
+		 * compiler that checks programs again and again (hemera --serve) would otherwise keep each one's
+		 */
+		std::pmr::synchronized_pool_resource work_memory;
+		Allocator<> work_allocator{ &work_memory };
 		// Packages, files and imports are the program's, made in its memory (ProgramInfo::memory)
 		Allocator<> info_allocator{ program_info->memory.get() };
 		program_info->check_documentation = options == nullptr || options->check_documentation;
@@ -461,6 +467,10 @@ namespace hemera {
 			}
 			//NOTE(ches) the destructors for the threads will .join() them here
 		}
+		for (WorkThreadData* thread : global_data.thread_data) {
+			delete thread;
+		}
+		global_data.thread_data.clear();
 		check_import_names(*program_info);
 		check_name_security(*program_info);
 		release_warnings();
