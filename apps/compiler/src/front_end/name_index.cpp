@@ -163,8 +163,143 @@ namespace hemera {
 					made.type = to_string(declaration->value_type);
 				}
 				document(made, file, name);
+				// In the index before what it leads to, which may lead back to it
 				index.declarations.emplace(at, std::move(made));
+				if (declaration->generic == nullptr && "type" != index.declarations[at].kind) {
+					index.declarations[at].of = type_place(declaration->value_type);
+				}
+				if ("type" == index.declarations[at].kind) {
+					add_members(declaration, at);
+				}
 				return at;
+			}
+
+			/*
+			 * Where the declaration of the type whose members follow a . after a value of type is: through aliases and
+			 * pointers, or a function's first result; empty when it isn't a struct, enum or union declared in the program
+			 */
+			std::optional<IndexPlace> type_place(const TypeInfo* type) {
+				for (int depth = 0; type != nullptr && depth < 16; ++depth) {
+					type = get_base_type(type);
+					if (type == nullptr) {
+						return std::nullopt;
+					}
+					if (TypeInfoVariant::POINTER == type->variant) {
+						type = static_cast<const TypeInfoPointer*>(type)->base_type;
+						continue;
+					}
+					if (TypeInfoVariant::FUNCTION == type->variant) {
+						const auto* function = static_cast<const TypeInfoFunction*>(type);
+						type = function->output.empty() ? nullptr : function->output[0].type;
+						continue;
+					}
+					if (TypeInfoVariant::STRUCT != type->variant && TypeInfoVariant::ENUM != type->variant
+						&& TypeInfoVariant::UNION != type->variant) {
+						return std::nullopt;
+					}
+					auto found = program.names.type_declarations.find(type);
+					if (found == program.names.type_declarations.end()) {
+						return std::nullopt;
+					}
+					return add_declaration(found->second);
+				}
+				return std::nullopt;
+			}
+
+			/*
+			 * A type's members in the index, each in it: a struct's fields, typed when it isn't a generic, an enum's
+			 * members and a union's variants. One already there, as a use of it was met first, is put in it.
+			 */
+			void add_members(Declaration* declaration, const IndexPlace& type_at) {
+				if (declaration->node == nullptr) {
+					return;
+				}
+				const ast::Node* body = nullptr;
+				for (const ast::Node* child : declaration->node->children) {
+					if (ast::NodeType::STRUCT == child->node_type || ast::NodeType::UNION == child->node_type
+						|| ast::NodeType::ENUM == child->node_type) {
+						body = child;
+						break;
+					}
+				}
+				if (body == nullptr) {
+					return;
+				}
+				const std::string file = type_at.file;
+				const TypeInfo* type = declaration->generic == nullptr && declaration->type_value != nullptr
+					? get_base_type(declaration->type_value) : nullptr;
+				for (size_t i = 0; i < body->children.size(); ++i) {
+					const ast::Node* member = body->children[i];
+					const ast::Node* name = nullptr;
+					std::string kind;
+					if (ast::NodeType::STRUCT == body->node_type) {
+						if (ast::NodeType::DEFINITION != member->node_type || member->children.empty()
+							|| ast::NodeType::IDENTIFIER != member->children[0]->node_type) {
+							continue;
+						}
+						name = member->children[0];
+						kind = "field";
+					}
+					else if (ast::NodeType::IDENTIFIER == member->node_type) {
+						name = member;
+						kind = ast::NodeType::ENUM == body->node_type ? "member" : "variant";
+					}
+					if (name == nullptr || !placed(name)) {
+						continue;
+					}
+					const IndexPlace at = place_of(file, name);
+					auto [entry, made_now] = index.declarations.try_emplace(at);
+					IndexDeclaration& made = entry->second;
+					made.in = type_at;
+					if (!made_now) {
+						continue;
+					}
+					made.name = at;
+					made.start = std::numeric_limits<uint32_t>::max();
+					made.end = 0;
+					widen(member, made.start, made.end);
+					// A variant's payload is the node after its name
+					if ("variant" == kind && i + 1 < body->children.size() && ast::NodeType::PAREN_GROUP == body->children[i + 1]->node_type) {
+						widen(body->children[i + 1], made.start, made.end);
+					}
+					made.kind = kind;
+					document(made, file, name);
+					if ("member" == kind) {
+						made.type = std::string(*declaration->name);
+						index.declarations[at].of = type_at;
+					}
+					else if ("field" == kind && type != nullptr && TypeInfoVariant::STRUCT == type->variant) {
+						for (const StructMember& candidate : static_cast<const TypeInfoStruct*>(type)->members) {
+							if (candidate.name == name->value.value && candidate.member_type != nullptr) {
+								index.declarations[at].type = to_string(candidate.member_type);
+								const std::optional<IndexPlace> of = type_place(candidate.member_type);
+								index.declarations[at].of = of;
+							}
+						}
+					}
+				}
+			}
+
+			// The imports in a file of the program's own code, each by the name it's used by
+			void add_imports(const std::string& file, const FileInfo& info) {
+				for (const ImportInfo* import : info.imports) {
+					if (import == nullptr || import->node == nullptr || import->resolved_path == nullptr || import->node->children.empty()) {
+						continue;
+					}
+					// import name, or import name as alias: the name it's used by is the last identifier before from
+					const ast::Node* used_by = nullptr;
+					for (const ast::Node* child : import->node->children) {
+						if (ast::NodeType::KEYWORD_FROM == child->node_type) {
+							break;
+						}
+						if (ast::NodeType::IDENTIFIER == child->node_type) {
+							used_by = child;
+						}
+					}
+					if (used_by != nullptr && placed(used_by)) {
+						index.imports[place_of(file, used_by)] = with_slashes(std::string(*import->resolved_path));
+					}
+				}
 			}
 
 			// The STRUCT or UNION node under a type's declaration
@@ -188,6 +323,8 @@ namespace hemera {
 				if (body == nullptr) {
 					return std::nullopt;
 				}
+				// The type first, which adds its members, in it
+				add_declaration(declaration);
 				const std::string file = file_of(declaration);
 				for (const ast::Node* field : body->children) {
 					if (ast::NodeType::DEFINITION != field->node_type || field->children.empty() || !placed(field->children[0])
@@ -252,21 +389,27 @@ namespace hemera {
 							continue;
 						}
 						const IndexPlace at = place_of(file, defined);
-						if (node == defined) {
-							if (!index.declarations.contains(at)) {
-								IndexDeclaration made;
-								made.name = at;
-								made.start = at.offset;
-								made.end = at.offset + at.length;
-								made.kind = "local";
-								// An instance's is its own, so a generic's local is typed by the generic's body alone
-								if (value.type != nullptr && declaration->generic == nullptr) {
-									made.type = to_string(value.type);
-								}
-								index.declarations.emplace(at, std::move(made));
+						/*
+						 * Declared where it's defined, or at its first use, as one only used at the head of a chain, like a
+						 * parameter p in p.x, may be met only there; typed by either, as both have its type
+						 */
+						if (!index.declarations.contains(at)) {
+							IndexDeclaration made;
+							made.name = at;
+							made.start = at.offset;
+							made.end = at.offset + at.length;
+							made.kind = "local";
+							// An instance's is its own, so a generic's local is typed by the generic's body alone
+							if (value.type != nullptr && declaration->generic == nullptr) {
+								made.type = to_string(value.type);
+							}
+							index.declarations.emplace(at, std::move(made));
+							if (value.type != nullptr && declaration->generic == nullptr) {
+								const std::optional<IndexPlace> of = type_place(value.type);
+								index.declarations[at].of = of;
 							}
 						}
-						else if (uses_counted && ast::NodeType::IDENTIFIER == node->node_type
+						if (node != defined && uses_counted && ast::NodeType::IDENTIFIER == node->node_type
 							&& names(node, defined->value.value)) {
 							index.uses[place_of(file, node)] = at;
 						}
@@ -286,6 +429,14 @@ namespace hemera {
 						if ((declaration.generic != nullptr) == instances) {
 							add_declaration(&declaration);
 							add_locals(&declaration);
+						}
+					}
+				}
+				for (const auto& [path, package] : program.packages) {
+					for (const auto& [file_name, file] : package->files) {
+						const std::string file_path = with_slashes(file_path_of(path, file_name));
+						if (file != nullptr && counts(file_path)) {
+							add_imports(file_path, *file);
 						}
 					}
 				}
@@ -374,6 +525,14 @@ namespace hemera {
 		for (const auto& [file, targets] : index.readers) {
 			files.emplace(file, 0);
 		}
+		for (const auto& [place, folder] : index.imports) {
+			files.emplace(place.file, 0);
+		}
+		// Each declaration's number, for those that name another
+		std::map<IndexPlace, size_t> numbers;
+		for (const auto& [place, declaration] : index.declarations) {
+			numbers.emplace(place, numbers.size());
+		}
 		std::string out = "{\"version\":1,\"files\":[";
 		size_t number = 0;
 		for (auto& [file, file_number] : files) {
@@ -381,14 +540,21 @@ namespace hemera {
 			file_number = number++;
 		}
 		out += "],\"declarations\":[";
-		std::map<IndexPlace, size_t> numbers;
+		bool first_declaration = true;
 		for (const auto& [place, declaration] : index.declarations) {
-			out += numbers.empty() ? "\n" : ",\n";
-			numbers.emplace(place, numbers.size());
+			out += first_declaration ? "\n" : ",\n";
+			first_declaration = false;
 			out += std::format("{{\"file\":{},\"name\":[{},{}],\"span\":[{},{}],\"kind\":{}", files[place.file], place.offset,
 				place.length, declaration.start, declaration.end, json_text(declaration.kind));
 			if (!declaration.type.empty()) {
 				out += ",\"type\":" + json_text(declaration.type);
+			}
+			for (const auto& [key, named] : { std::pair{ "in", &declaration.in }, std::pair{ "of", &declaration.of } }) {
+				if (named->has_value()) {
+					if (auto found = numbers.find(**named); found != numbers.end()) {
+						out += std::format(",\"{}\":{}", key, found->second);
+					}
+				}
 			}
 			if (!declaration.brief.empty()) {
 				out += ",\"brief\":" + json_text(declaration.brief);
@@ -417,6 +583,16 @@ namespace hemera {
 			first = false;
 		}
 		out += "]";
+		if (!index.imports.empty()) {
+			out += ",\"imports\":[";
+			bool first_import = true;
+			for (const auto& [place, folder] : index.imports) {
+				out += std::format("{}[{},{},{},{}]", first_import ? "\n" : ",\n", files[place.file], place.offset, place.length,
+					json_text(folder));
+				first_import = false;
+			}
+			out += "]";
+		}
 		// A build package's targets, each numbered in order, and the targets that read each file, in the files' order
 		if (!index.readers.empty()) {
 			std::map<std::string, size_t> targets;

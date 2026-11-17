@@ -3,6 +3,7 @@
 #include <compare>
 #include <cstdint>
 #include <map>
+#include <optional>
 #include <set>
 #include <mutex>
 #include <string>
@@ -67,10 +68,18 @@ namespace hemera {
 		// From its first byte to its last, in the same file: a declaration's own tokens, not its doc comment
 		uint32_t start = 0;
 		uint32_t end = 0;
-		// function, type, constant, field or local
+		// function, type, constant, field, member (an enum's), variant (a union's) or local
 		std::string kind;
 		// Its type as the compiler writes it, for a value, a function or a field; empty for a type
 		std::string type;
+		// For a field, member or variant, the type it's in, by where that's declared
+		std::optional<IndexPlace> in;
+		/*
+		 * The declaration of the type whose members follow a . after it, by where that's declared: a value's, a field's or
+		 * a member's type, through aliases and pointers, or a function's first result's; empty when that isn't a struct,
+		 * enum or union declared in the program, or for a generic's own locals and fields, whose types its instances decide
+		 */
+		std::optional<IndexPlace> of;
 		// Its doc comment, parsed: the summary, the rest of the text, and each tag's kind, name and text
 		std::string brief;
 		std::string details;
@@ -91,6 +100,8 @@ namespace hemera {
 		std::map<IndexPlace, IndexPlace> uses;
 		// For a build package, the targets that read each file, by their names; empty for a program alone
 		std::map<std::string, std::set<std::string>> readers;
+		// Each import in the program's own code, by where the name it's used by is: the folder of the package it names
+		std::map<IndexPlace, std::string> imports;
 	};
 
 	/*

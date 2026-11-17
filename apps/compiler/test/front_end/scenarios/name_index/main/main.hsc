@@ -15,3 +15,8 @@ main :: fn() -> int {
     word := first("a", "b")
     return end.x + small + helper()
 }
+
+shifted :: fn(at : ptr[shapes.Point]) -> int {
+    way := shapes.Direction.left
+    return at.x
+}

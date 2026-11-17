@@ -17,3 +17,14 @@ Point :: struct {
 moved :: fn(point : Point, by : int) -> Point {
     return Point.{ x = point.x + by, y = point.y }
 }
+
+/** Which way. */
+Direction :: enum {
+    left,
+    right = 4,
+}
+
+Shape :: union {
+    circle(int),
+    square(int),
+}

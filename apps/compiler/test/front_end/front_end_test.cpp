@@ -1717,4 +1717,32 @@ TEST(FrontEnd, IndexesWhatNamesReferTo)
 	for (const auto& [use, target] : index.uses) {
 		EXPECT_TRUE(index.declarations.contains(target)) << where(use) << " -> " << where(target);
 	}
+
+	// Every member is there, in its type, used or not, and each value says whose members follow a . after it
+	const auto in_of = [&](const std::string& at) {
+		const hemera::IndexDeclaration* declaration = declarations.contains(at) ? declarations[at] : nullptr;
+		if (declaration == nullptr) {
+			return std::string("missing");
+		}
+		return std::format("{} in {} of {}", declaration->kind, declaration->in.has_value() ? where(*declaration->in) : "-",
+			declaration->of.has_value() ? where(*declaration->of) : "-");
+	};
+	EXPECT_EQ("field in shapes.hsc:4:1 of -", in_of("shapes.hsc:7:5"));
+	EXPECT_EQ("member in shapes.hsc:22:1 of shapes.hsc:22:1", in_of("shapes.hsc:23:5"));
+	EXPECT_EQ("member in shapes.hsc:22:1 of shapes.hsc:22:1", in_of("shapes.hsc:24:5"));
+	EXPECT_EQ("variant in shapes.hsc:27:1 of -", in_of("shapes.hsc:28:5"));
+	// A local of a struct, one a function gave, one through a pointer, and an enum's
+	EXPECT_EQ("local in - of shapes.hsc:4:1", in_of("main.hsc:12:5"));
+	EXPECT_EQ("local in - of shapes.hsc:4:1", in_of("main.hsc:13:5"));
+	EXPECT_EQ("local in - of shapes.hsc:4:1", in_of("main.hsc:19:15"));
+	EXPECT_EQ("local in - of shapes.hsc:22:1", in_of("main.hsc:20:5"));
+	// A function, by its result
+	EXPECT_EQ("function in - of shapes.hsc:4:1", in_of("shapes.hsc:17:1"));
+	// A generic's local isn't typed, as its instances decide
+	EXPECT_EQ("local in - of -", in_of("main.hsc:7:16"));
+
+	// Each import, by the name it's used by: the folder of the package it names
+	ASSERT_EQ(1u, index.imports.size());
+	EXPECT_EQ("main.hsc:3:8", where(index.imports.begin()->first));
+	EXPECT_TRUE(index.imports.begin()->second.ends_with("/name_index/shapes")) << index.imports.begin()->second;
 }

@@ -42,6 +42,16 @@ File Import --> Parse --> Type Check <--\
         Executable Generation
 ```
 
+A syntax error doesn't end a file's parse: each one is reported, and the parser goes on. A line left unfinished, as
+while it's typed, keeps its statement: a name missing after a `.`, or an operand missing after an operator at the
+end of a line or before a closing bracket, is reported, and the rest of the statement is parsed. An operand on the
+next line is the statement's own only if it's indented further than the operator's line starts. A statement with
+another error is skipped to the next line that starts at or left of it, outside any block it opened, and a top-level
+declaration or import with one to the next line that starts with a name or directive at the line's start. A block
+still open at the file's end is taken to have ended before the first declaration at a line's start in it, as its }
+most likely went missing there. A top-level declaration with a syntax error anywhere in it isn't checked, so names it
+declares are unknown to the rest of the program until it's fixed.
+
 ## Checking Without Building
 
 `hemera --check` runs a program through MLIR generation and stops there, writing nothing: no MLIR, object file or
@@ -196,9 +206,17 @@ build package, it's the build's own code and every target's, merged.
 
 * `files` are the files it mentions, by their paths on disk with `/` throughout, or `<base>/...` for `base`'s.
 * Each declaration has its file's number, its name's offset and length, and the first and last byte of its tokens,
-  all in bytes from the file's start. Its `kind` is `function`, `type`, `constant`, `field` or `local`. It has its
-  `type` as errors write it, except a type's, and its doc comment's `brief`, `details` and `tags`, each tag its kind,
-  name and text, when it has one.
+  all in bytes from the file's start. Its `kind` is `function`, `type`, `constant`, `field`, `member` (an enum's),
+  `variant` (a union's) or `local`. It has its `type` as errors write it, except a type's, and its doc comment's
+  `brief`, `details` and `tags`, each tag its kind, name and text, when it has one.
+* Every struct's fields, enum's members and union's variants are there, used or not, each with `in`, the number of
+  the type's declaration.
+* A value, a field, a member or a function has `of`, the number of the declaration of the type whose members a `.`
+  after it names: its type's, through aliases and pointers, or a function's first result's. There's none when that
+  isn't a struct, enum or union the program declares, or for a generic's own locals and fields, whose types its
+  instances decide.
+* `imports` lists each import in the program's own code: a file's number, the offset and length of the name the
+  package is used by, and the folder of the package, `<base>/...` for `base`'s.
 * Each use is a file's number, the offset and length of the name used, and the number of the declaration it names,
   counting from 0. A use of a generic's instance is a use of the generic.
 * Uses are only in the program's own code: not in `base`, `std` or `vendor`, unless the package being built is in one
