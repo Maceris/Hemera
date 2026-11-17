@@ -10,6 +10,7 @@
 #include <map>
 #include <memory>
 #include <optional>
+#include <set>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -67,6 +68,13 @@ namespace hemera {
 			return std::string(std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>());
 		}
 
+		// How a later check finds the build: as it was, changed, or as it was but for a loaded package with errors
+		enum class Freshness {
+			SAME,
+			CHANGED,
+			BROKEN,
+		};
+
 		// A build package's state, kept from the check that made it for the checks after it
 		struct Kept {
 			Allocator<> alloc;
@@ -87,6 +95,13 @@ namespace hemera {
 			std::vector<std::pair<std::string, std::vector<std::string>>> listings;
 			// Whether a check can reuse it: only a build package's, and only one checked without errors
 			bool reusable = false;
+			/*
+			 * Each loaded package's constants, as the build read them, by its folder: taken before it's first checked
+			 * again, which a reloaded one is compared with
+			 */
+			std::map<std::string, std::string> constants;
+			// The loaded packages whose files have errors now, checked again by each check until they don't
+			std::set<std::string> broken;
 
 			// The files a program read, by their bytes' hashes, as options read them; not base's, the compiler's own
 			static std::map<std::string, uint64_t> read_files(ProgramInfo* program, const Options& reading) {
@@ -116,11 +131,12 @@ namespace hemera {
 			/*
 			 * Whether a check with arguments, read as options, finds the build as it was. A package load_package loaded
 			 * whose files changed is checked again, and the build is as it was if its constants are, which is what the
-			 * build could have read of it.
+			 * build could have read of it. One that has errors now leaves the build as it was, but for this check, which
+			 * reports them, as a fresh check's build would, and checks no targets: what it reports is in reported.
 			 */
-			bool refresh(const std::vector<std::string>& given, const Options& reading) {
+			Freshness refresh(const std::vector<std::string>& given, const Options& reading, std::vector<Diagnostic>& reported) {
 				if (!reusable || deciding(given) != arguments || read_files(build, reading) != files) {
-					return false;
+					return Freshness::CHANGED;
 				}
 				for (const auto& [folder, listed] : listings) {
 					std::error_code error;
@@ -132,40 +148,48 @@ namespace hemera {
 					}
 					std::sort(now.begin(), now.end());
 					if (error || now != listed) {
-						return false;
+						return Freshness::CHANGED;
 					}
 				}
 				for (const auto& [folder, program] : loaded_package_programs()) {
-					if (read_files(program, reading) == loaded[folder]) {
+					if (!broken.contains(folder) && read_files(program, reading) == loaded[folder]) {
 						continue;
 					}
 					/*
 					 * What the reloaded package reports is kept apart, as a fresh check would report it in the build's
-					 * own: one that reports anything, or that reported anything before, isn't as it was, and a fresh
+					 * own: warnings, or anything it reported before, make it a build that isn't as it was, and a fresh
 					 * compiler shows what it does
 					 */
 					for (const Diagnostic& diagnostic : diagnostics) {
 						if (std::filesystem::path(diagnostic.file).lexically_normal().string().starts_with(folder)) {
-							return false;
+							return Freshness::CHANGED;
 						}
 					}
-					const std::string before = loaded_constants(folder);
+					// The constants the build read, from the package as it was when the build was checked
+					if (!constants.contains(folder)) {
+						constants[folder] = loaded_constants(folder);
+					}
 					ReportScope reloading;
 					ReportScope* outer = report_scope();
 					set_report_scope(&reloading);
 					reload_package(folder, reading.overlays);
-					const std::string after = loaded_constants(folder);
 					set_report_scope(outer);
-					if (reloading.errors > 0 || !reloading.diagnostics.empty() || after != before) {
-						return false;
+					if (reloading.errors > 0) {
+						broken.insert(folder);
+						reported.insert(reported.end(), reloading.diagnostics.begin(), reloading.diagnostics.end());
+						continue;
 					}
+					if (!reloading.diagnostics.empty() || loaded_constants(folder) != constants[folder]) {
+						return Freshness::CHANGED;
+					}
+					broken.erase(folder);
 					for (const auto& [again, reloaded] : loaded_package_programs()) {
 						if (again == folder) {
 							loaded[folder] = read_files(reloaded, reading);
 						}
 					}
 				}
-				return true;
+				return broken.empty() ? Freshness::SAME : Freshness::BROKEN;
 			}
 
 			// What it depends on, recorded after a check, which may have loaded more
@@ -252,6 +276,22 @@ namespace hemera {
 			return exit;
 		}
 
+		/*
+		 * A later check while a package the build loaded has errors: the build's diagnostics and those, and none of its
+		 * targets checked, as a fresh check's build stops at errors
+		 */
+		int broken_check(Kept& kept, const std::vector<Diagnostic>& reported, const Options& options) {
+			for (const Diagnostic& diagnostic : kept.diagnostics) {
+				report_again(diagnostic);
+			}
+			for (const Diagnostic& diagnostic : reported) {
+				report_again(diagnostic);
+			}
+			std::unique_ptr<NameIndex> index = options.index_path.empty() ? nullptr : std::make_unique<NameIndex>();
+			write_asked_index(index.get(), *kept.build, options);
+			return FAILED;
+		}
+
 		// The arguments a request line asks for, or empty if it isn't one
 		std::optional<std::vector<std::string>> request_of(const std::string& line) {
 			llvm::Expected<llvm::json::Value> parsed = llvm::json::parse(line);
@@ -325,12 +365,14 @@ namespace hemera {
 					write_protocol_line("{\"done\":true,\"exit\":1,\"restart\":false}");
 					continue;
 				}
-				if (!kept.refresh(*given, *options)) {
+				std::vector<Diagnostic> reported;
+				const Freshness freshness = kept.refresh(*given, *options, reported);
+				if (Freshness::CHANGED == freshness) {
 					write_protocol_line("{\"done\":false,\"restart\":true}");
 					return 3;
 				}
 				options->free_targets = true;
-				exit = reusing_check(kept, *given, alloc, *options);
+				exit = Freshness::BROKEN == freshness ? broken_check(kept, reported, *options) : reusing_check(kept, *given, alloc, *options);
 			}
 			const bool restart = memory_limit != 0 && memory_in_use() > memory_limit;
 			write_protocol_line(std::format("{{\"done\":true,\"exit\":{},\"restart\":{}}}", exit, restart ? "true" : "false"));

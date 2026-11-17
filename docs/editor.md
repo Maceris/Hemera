@@ -67,7 +67,9 @@ Every check goes to a compiler the server keeps running, [`hemera --serve`](comp
 which keeps the build package's own check from one to the next, so a save's diagnostics take about as long as
 checking its targets: a second or two for a target or two. It starts again when it's asked to, or uses more memory
 than `hemera.checkerMemory`. A save that changes the build package itself checks every target, as its targets, or
-how they're made, may have changed.
+how they're made, may have changed. An error in a package the build package loads, to read its constants, stops the
+build before its targets, as it would in a build: the error is shown in place of what the checked targets found, and
+the index stays as it was until it's fixed.
 
 * **Hemera: Check Everything**, in the command palette, checks every target of each open file's package, for what a
   change outside the editor, like a file deleted or changed by another program, may have changed.

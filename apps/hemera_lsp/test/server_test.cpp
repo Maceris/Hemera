@@ -846,6 +846,30 @@ TEST(Server, ASaveChecksOnlyTheTargetsThatReadItsFile) {
 	EXPECT_EQ(0, last_published(after, indexed.helper));
 }
 
+/*
+ * A check whose build stopped at errors, before its targets, as one in a package the build loads makes it, shows them,
+ * and leaves the index as it was, so names still lead where they did.
+ */
+TEST(Server, ACheckThatCheckedNoTargetsKeepsTheIndex) {
+	Indexed indexed;
+	indexed.session.index_json.insert(indexed.session.index_json.rfind('}'), ",\"targets\":[\"a\",\"b\"],\"readers\":[[1],[0]]");
+	indexed.open_main();
+	ASSERT_NE(nullptr, indexed.ask(20, "textDocument/definition", 3, 13)->getAsObject());
+
+	// The build's own error, and an index of the build's names alone: none of its targets read anything
+	indexed.session.output = diagnostic_line(indexed.main, 4, 11);
+	indexed.session.index_json = "{\"version\":1,\"files\":[],\"declarations\":[],\"uses\":[]}\n";
+	indexed.session.notify("textDocument/didSave", Object{ { "textDocument", Object{ { "uri", hemera::lsp::uri_from_path(indexed.main) } } } });
+	const std::vector<Object> published = indexed.session.published();
+
+	ASSERT_EQ(2u, indexed.session.commands.size());
+	EXPECT_EQ("a", targets_of(indexed.session.commands[1]));
+	EXPECT_EQ(1, last_published(published, indexed.main));
+	const Value* found = indexed.ask(21, "textDocument/definition", 3, 13);
+	ASSERT_NE(nullptr, found->getAsObject());
+	EXPECT_EQ(hemera::lsp::path_key(indexed.helper), hemera::lsp::path_key(hemera::lsp::path_from_uri(*found->getAsObject()->getString("uri"))));
+}
+
 // A file no target read before, like a new one, is checked as the other files in its folder are.
 TEST(Server, ANewFileIsCheckedAsItsFoldersTargets) {
 	Indexed indexed;

@@ -585,14 +585,29 @@ namespace hemera::lsp {
 			else {
 				/*
 				 * The index, read whether the check found errors or not: a check of everything's replaces the root's, and
-				 * a check of some targets' is merged into it
+				 * a check of some targets' is merged into it. A build package's check that checked none of its targets,
+				 * as its build stopped at errors, leaves it as it was, so names lead where they did until it's fixed.
 				 */
 				const std::set<std::string> checked_targets(job.targets.begin(), job.targets.end());
 				if (!job.index_file.empty()) {
-					if (std::optional<LoadedIndex> index = read_index(read_file(job.index_file).value_or(""), base_folder)) {
+					std::optional<LoadedIndex> index = read_index(read_file(job.index_file).value_or(""), base_folder);
+					const auto found = indexes.find(path_key(job.root));
+					const std::shared_ptr<const LoadedIndex> kept = found != indexes.end() ? found->second : nullptr;
+					const auto checked_none = [&] {
+						if (kept == nullptr || kept->readers.empty()) {
+							return false;
+						}
+						for (const auto& [file, readers] : index->readers) {
+							if (job.targets.empty() ? !readers.empty() : std::any_of(readers.begin(), readers.end(),
+								[&](const std::string& reader) { return checked_targets.contains(reader); })) {
+								return false;
+							}
+						}
+						return true;
+					};
+					if (index.has_value() && !checked_none()) {
 						index->texts = job.texts;
-						std::shared_ptr<const LoadedIndex>& kept = indexes[path_key(job.root)];
-						kept = !job.targets.empty() && kept != nullptr
+						indexes[path_key(job.root)] = !job.targets.empty() && kept != nullptr
 							? std::make_shared<const LoadedIndex>(merged_index(*kept, std::move(*index), checked_targets))
 							: std::make_shared<const LoadedIndex>(std::move(*index));
 					}

@@ -1480,6 +1480,55 @@ TEST(Serve, RestartsForAnotherProgram)
 }
 
 /*
+ * hemera --serve keeps a build package whose loaded package has errors for a while: each check reports them and checks
+ * no targets, as a fresh check would, and once they're gone, the build's targets are checked again, without a restart.
+ */
+TEST(Serve, KeepsABuildPackageWhileAPackageItLoadedHasErrors)
+{
+	const std::filesystem::path build = std::filesystem::canonical(scenario("build_discovery") / "build");
+	const std::filesystem::path alpha = std::filesystem::canonical(scenario("build_discovery") / "programs" / "alpha" / "alpha.hsc");
+	const std::filesystem::path folder = std::filesystem::path(HEMERA_TEST_OUTPUT_DIR) / "serve_loaded_errors";
+	std::filesystem::create_directories(folder);
+	const std::filesystem::path broken = folder / "broken.hsc";
+	const std::filesystem::path added = folder / "added.hsc";
+	{
+		std::ofstream file(broken, std::ios::binary);
+		file << read_file(alpha) << "\nbroken :: fn() -> int {\n    return \"not a number\"\n}\n";
+	}
+	{
+		std::ofstream file(added, std::ios::binary);
+		file << read_file(alpha) << "\nadded :: fn() -> int {\n    return 1\n}\n";
+	}
+	const std::string output = std::format("--setting=output={}", (folder / "alpha").generic_string());
+	const std::string broken_overlay = std::format("--overlay={}={}", alpha.generic_string(), broken.generic_string());
+	const std::string added_overlay = std::format("--overlay={}={}", alpha.generic_string(), added.generic_string());
+	const auto answers = serve_requests("serve_loaded_errors", {
+		check_request(build, { output }),
+		check_request(build, { output, broken_overlay }),
+		check_request(build, { output, broken_overlay }),
+		// As it was when the build was checked, but the package loaded now has errors: it's checked again
+		check_request(build, { output }),
+		check_request(build, { output, broken_overlay }),
+		check_request(build, { output, added_overlay }),
+	});
+
+	ASSERT_EQ(answers.size(), 6u);
+	const auto reports_error_in_alpha = [&](const std::vector<std::string>& lines) {
+		return std::any_of(lines.begin(), lines.end(), [](const std::string& line) {
+			return line.find("alpha.hsc") != std::string::npos && line.find("error") != std::string::npos;
+		});
+	};
+	for (size_t i : { 0u, 3u, 5u }) {
+		EXPECT_EQ(answers[i].back(), "{\"done\":true,\"exit\":0,\"restart\":false}") << i;
+		EXPECT_FALSE(reports_error_in_alpha(answers[i])) << i;
+	}
+	for (size_t i : { 1u, 2u, 4u }) {
+		EXPECT_EQ(answers[i].back(), "{\"done\":true,\"exit\":-1,\"restart\":false}") << i;
+		EXPECT_TRUE(reports_error_in_alpha(answers[i])) << i;
+	}
+}
+
+/*
  * What a program's compile-time memory gets after a mark goes when it's released, as hemera --serve does with the
  * build's after each check: the descriptors made since, and the memory, which is given out again from the same place.
  */

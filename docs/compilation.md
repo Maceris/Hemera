@@ -554,7 +554,11 @@ changed:
 * each package `load_package` loaded, which is checked again if its files changed, and still counts as the same if
   it reports nothing and its constants are what they were, which is what the build could have read of it.
 
-The build's own diagnostics are reported again with each check that reuses it. Any other check is answered
+The build's own diagnostics are reported again with each check that reuses it. A loaded package whose files now have
+errors keeps the build too: a fresh `hemera`'s build would stop at those errors, so each check reports them, checks
+no targets, and gives `hemera`'s exit code for errors. Once it has no errors, and its constants are as they were, the
+targets are checked again.
+Any other check is answered
 `{"done":false,"restart":true}` without running, for a compiler started afresh to answer, so every answer is what a
 fresh `hemera` would give. A build whose compile-time code reads other files than these wouldn't see them change.
 
