@@ -11,6 +11,7 @@
 #include <vector>
 
 #include "checker.h"
+#include "completion.h"
 #include "documents.h"
 #include "index.h"
 #include "parsing.h"
@@ -129,6 +130,12 @@ namespace hemera::lsp {
 		 */
 		std::optional<Named> named_at(const llvm::json::Object* params);
 
+		// textDocument/completion's answer (completion_items), for params' textDocument and position. state must be held.
+		llvm::json::Value completion(const llvm::json::Object* params);
+
+		// The tables completion looks up in, for the last index it was asked of, made again when that index isn't the same
+		std::shared_ptr<CompletionTables> completion_tables;
+
 		/*
 		 * A file's text as the index's offsets count it, and as it is now: an open document's, from when the check
 		 * began, and its own; another file's, from disk, both. Empty if the file can't be read. state must be held.
@@ -185,6 +192,7 @@ namespace hemera::lsp {
 		// What an open document parses to: its current version's, and the last version that made a tree, by URI
 		struct Parses {
 			std::shared_ptr<ParsedDocument> current;
+			// The last version that lexed, whose tree the parser recovered from any errors
 			std::shared_ptr<ParsedDocument> last_tree;
 		};
 		std::map<std::string, Parses> parses;

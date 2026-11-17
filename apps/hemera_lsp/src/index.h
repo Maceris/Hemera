@@ -20,9 +20,12 @@ namespace hemera::lsp {
 		uint32_t name_length = 0;
 		uint32_t start = 0;
 		uint32_t end = 0;
-		// function, type, constant, field or local
+		// function, type, constant, field, member (an enum's), variant (a union's) or local
 		std::string kind;
 		std::string type;
+		// For a field, member or variant, the type it's in; and the type whose members follow a . after it; by number
+		std::optional<size_t> in;
+		std::optional<size_t> of;
 		std::string brief;
 		std::string details;
 		struct Tag {
@@ -40,6 +43,13 @@ namespace hemera::lsp {
 		size_t declaration = 0;
 	};
 
+	// An import: the name it's used by, in bytes in the file the check read, and the folder of the package it names.
+	struct IndexedImport {
+		uint32_t offset = 0;
+		uint32_t length = 0;
+		std::string folder;
+	};
+
 	// An index, as the server keeps it: by file, each file's uses and declarations in the order of their offsets.
 	struct LoadedIndex {
 		std::vector<IndexedDeclaration> declarations;
@@ -50,6 +60,8 @@ namespace hemera::lsp {
 		std::map<std::string, std::string> paths;
 		// For a build package, the targets that read each file, by their names, by path_key; empty for a program
 		std::map<std::string, std::vector<std::string>> readers;
+		// Each file's imports, by path_key, in the order of their offsets
+		std::map<std::string, std::vector<IndexedImport>> imports;
 		/*
 		 * The text the check read for each document that was open when it started, by path_key; a file that wasn't
 		 * open was read from disk, and is taken to be as it is there.

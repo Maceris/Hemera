@@ -112,10 +112,22 @@ namespace hemera::lsp {
 		Array roots;
 		for (const auto& [root, index] : indexes) {
 			std::vector<std::string> declarations;
+			const auto key_of = [&](const std::optional<size_t>& number) {
+				if (!number.has_value()) {
+					return std::string("-");
+				}
+				const IndexedDeclaration& named = index->declarations[*number];
+				return std::format("{}@{}", path_key(named.file), named.name_offset);
+			};
 			for (const IndexedDeclaration& declaration : index->declarations) {
 				if (!declaration.file.empty()) {
-					declarations.push_back(std::format("{}|{}|{}|{}|{}|{}", path_key(declaration.file), declaration.name_offset,
-						declaration.start, declaration.end, declaration.kind, declaration.type));
+					declarations.push_back(std::format("{}|{}|{}|{}|{}|{}|in {}|of {}", path_key(declaration.file), declaration.name_offset,
+						declaration.start, declaration.end, declaration.kind, declaration.type, key_of(declaration.in), key_of(declaration.of)));
+				}
+			}
+			for (const auto& [file, in_file] : index->imports) {
+				for (const IndexedImport& import : in_file) {
+					declarations.push_back(std::format("import {}|{}|{} -> {}", file, import.offset, import.length, path_key(import.folder)));
 				}
 			}
 			std::vector<std::string> uses;
@@ -436,6 +448,7 @@ namespace hemera::lsp {
 				} },
 				{ "documentFormattingProvider", true },
 				{ "documentSymbolProvider", true },
+				{ "completionProvider", Object{ { "triggerCharacters", Array{ ".", "\"", "/", ":" } } } },
 				{ "foldingRangeProvider", true },
 				{ "definitionProvider", true },
 				{ "hoverProvider", true },
@@ -649,6 +662,36 @@ namespace hemera::lsp {
 					by_file[key].push_back(&diagnostic);
 					file_paths[key] = path;
 				}
+				/*
+				 * An open file of this root's that none of its build's targets read, like one only another architecture's
+				 * targets import, isn't checked at all: it says so, where the package statement is, rather than nothing
+				 */
+				std::vector<CompilerDiagnostic> notices;
+				notices.reserve(open_documents.all().size());
+				auto kept = indexes.find(path_key(job.root));
+				if (kept != indexes.end() && !kept->second->readers.empty()) {
+					for (const auto& [document_key, open] : open_documents.all()) {
+						const std::string open_key = path_key(open.path);
+						if (open.path.empty() || !open.path.ends_with(".hsc") || path_key(root_for(open.path)) != path_key(job.root)
+							|| kept->second->readers.contains(open_key)) {
+							continue;
+						}
+						CompilerDiagnostic notice;
+						notice.severity = "information";
+						notice.file = open.path;
+						// On the package statement's line, or the first
+						const size_t package_at = open.text.starts_with("package") ? 0 : open.text.find("\npackage");
+						notice.line = package_at == std::string::npos ? 1
+							: static_cast<uint32_t>(std::count(open.text.begin(), open.text.begin() + static_cast<std::ptrdiff_t>(package_at), '\n'))
+								+ (package_at == 0 ? 1 : 2);
+						notice.message = "No target of the build reads this file with the settings it's checked with, so it isn't "
+							"checked, and its names aren't known. A target that a setting adds, like another architecture's, is "
+							"checked with that setting in hemera.arguments, like --setting=name=value.";
+						notices.push_back(std::move(notice));
+						by_file[open_key].push_back(&notices.back());
+						file_paths[open_key] = open.path;
+					}
+				}
 				std::set<std::string> now;
 				for (const auto& [key, diagnostics] : by_file) {
 					const std::string& path = file_paths[key];
@@ -709,6 +752,9 @@ namespace hemera::lsp {
 		}
 		if (method == "textDocument/definition") {
 			return definition(params);
+		}
+		if (method == "textDocument/completion") {
+			return completion(params);
 		}
 		if (method == "textDocument/hover") {
 			return hover(params);
@@ -833,6 +879,54 @@ namespace hemera::lsp {
 			{ "range", Object{ { "start", position_at(lines, *start_now, position_encoding) },
 				{ "end", position_at(lines, *end_now, position_encoding) } } },
 		};
+	}
+
+	Value Server::completion(const Object* params) {
+		const std::optional<std::string> uri = document_uri(params);
+		const Document* document = uri.has_value() ? open_documents.find_uri(*uri) : nullptr;
+		const Object* position = params != nullptr ? params->getObject("position") : nullptr;
+		if (document == nullptr || position == nullptr) {
+			return Array{};
+		}
+		const Parses* parses_of = parsed(*uri);
+		CompletionRequest request;
+		request.file = document->path.empty() ? *uri : document->path;
+		request.text = document->text;
+		request.checked_text = document->text;
+		request.parsed = parses_of != nullptr ? parses_of->current.get() : nullptr;
+		request.base_folder = base_folder;
+		request.encoding = position_encoding;
+		const LineIndex lines(document->text);
+		request.offset = lines.offset_of(static_cast<uint32_t>(position->getInteger("line").value_or(0)),
+			static_cast<uint32_t>(position->getInteger("character").value_or(0)), position_encoding);
+		// The index of the document's root, or else any that knows the file, as for a name's declaration
+		std::shared_ptr<const LoadedIndex> index;
+		const std::string key = path_key(request.file);
+		if (auto found = indexes.find(path_key(root_for(request.file))); found != indexes.end()) {
+			index = found->second;
+		}
+		for (auto it = indexes.begin(); index == nullptr && it != indexes.end(); ++it) {
+			if (it->second->uses.contains(key) || it->second->declared.contains(key)) {
+				index = it->second;
+			}
+		}
+		std::optional<std::pair<std::string, std::string>> texts;
+		if (index != nullptr && !document->path.empty()) {
+			texts = texts_of(*index, document->path);
+			if (texts.has_value()) {
+				request.checked_text = texts->first;
+			}
+		}
+		if (index != nullptr && (completion_tables == nullptr || completion_tables->shared() != index)) {
+			// A file's text as the check read it: an open one's from the index, another's from disk
+			completion_tables = std::make_shared<CompletionTables>(index, [index](const std::string& file) {
+				if (auto then = index->texts.find(path_key(file)); then != index->texts.end()) {
+					return then->second;
+				}
+				return read_file(file).value_or(std::string());
+			});
+		}
+		return completion_items(request, index != nullptr ? completion_tables.get() : nullptr);
 	}
 
 	Value Server::definition(const Object* params) {
@@ -1002,7 +1096,7 @@ namespace hemera::lsp {
 		Parses& entry = parses[uri];
 		if (entry.current == nullptr || entry.current->version != document->version || entry.current->text != document->text) {
 			entry.current = parse_document(document->text, document->version, document->path.empty() ? uri : document->path);
-			if (entry.current->tree != nullptr) {
+			if (entry.current->recovered != nullptr) {
 				entry.last_tree = entry.current;
 			}
 		}

@@ -46,6 +46,7 @@ namespace hemera::lsp {
 				}
 			}
 			ast::Node* tree = parser::file(path, parsed->tokens, parsed->node_alloc, &parsed->quotes);
+			parsed->recovered = tree;
 			if (tree != nullptr && thread_error_count() == errors_before) {
 				parsed->tree = tree;
 			}

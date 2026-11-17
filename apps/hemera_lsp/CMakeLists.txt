@@ -3,6 +3,7 @@
 # name. What it does is in HemeraLspLib, so the tests drive it without a client.
 ADD_LIBRARY(HemeraLspLib STATIC
   src/checker.cpp
+  src/completion.cpp
   src/checker.h
   src/documents.cpp
   src/documents.h
@@ -42,6 +43,7 @@ ENDIF()
 
 ADD_EXECUTABLE(HemeraLspTest
   test/checker_test.cpp
+  test/completion_test.cpp
   test/documents_test.cpp
   test/features_test.cpp
   test/index_test.cpp

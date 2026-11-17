@@ -32,6 +32,11 @@ namespace hemera::lsp {
 		bool lexed = false;
 		// The file's tree, or null when it didn't lex or parse
 		ast::Node* tree = nullptr;
+		/*
+		 * The file's tree as far as the parser could make it, going on past its errors, each top-level declaration with
+		 * one in an ERROR node (parser::file); the same as tree when it parsed, and null only when it didn't lex
+		 */
+		ast::Node* recovered = nullptr;
 
 		ParsedDocument() = default;
 		ParsedDocument(const ParsedDocument&) = delete;

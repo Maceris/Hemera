@@ -63,6 +63,10 @@ target's diagnostics or index can change. What those targets find replaces what 
 targets found stays. A file no target read yet, like a new one, is checked as the other files in its folder are; one
 in a folder no target read is a check of everything.
 
+An open file that no target reads even then, like one only another architecture's targets import, isn't checked, and
+its names lead nowhere: it says so, as information on its package statement. A setting that adds the targets that
+read it, given in `hemera.arguments` like `--setting=name=value`, checks those instead.
+
 Every check goes to a compiler the server keeps running, [`hemera --serve`](compilation.md#a-long-lived-compiler),
 which keeps the build package's own check from one to the next, so a save's diagnostics take about as long as
 checking its targets: a second or two for a target or two. It starts again when it's asked to, or uses more memory
@@ -91,12 +95,30 @@ These come from the server's own lexer and parser, in its own process, as you ty
   tab size and spaces settings don't apply, as the layout is fixed; to format on save, turn on VS Code's
   `editor.formatOnSave` for Hemera.
 * **The outline** lists a file's declarations: functions, structs, enums, unions, aliases and constants, with a
-  struct's fields, an enum's members and a union's variants under them. While a file doesn't parse, it shows the last
-  version that did.
+  struct's fields, an enum's members and a union's variants under them. A declaration with a syntax error is still
+  there, as far as it was written, and so are those after it. While a file doesn't lex, like with a string left open,
+  it shows the last version that did.
 * **Folding** folds blocks, brackets over several lines, block comments, runs of line comments, and runs of imports,
   whether the file parses or not.
 
 There's no range formatting, as a part of a file's layout depends on what's around it.
+
+## Completion
+
+Completion comes as you type, and after a `.`, from the last check's [name index](compilation.md#the-name-index) and
+the file as it is now, without a check, so it's there once a file's package has been checked:
+
+* **After a `.`:** a package's declarations after an import's name; an enum's members after its name; a value's
+  fields, following each `.` before it through the fields' types, through pointers, and through what a call's function
+  gives, like `shapes.moved(p).x`. A name typed since the check is found by name: a local declared before it, an
+  import, or the package's own declaration.
+* **A name:** the locals declared before it in the same declaration, those typed since the check included, the
+  package's declarations in every file, the file's imports, the builtin types and the keywords.
+* **In an import's string:** the folders the path can go on to: `std:`, `vendor:` and `base:` beside the compiler,
+  or folders relative to the file.
+
+Each comes with its kind, its type, and its doc comment. A file with syntax errors still completes: the parser goes on
+past them. Nothing's offered in a string or a comment, or after a `.` whose name the index doesn't know the type of.
 
 ## Definitions, Hover, References and Renaming
 
@@ -121,7 +143,8 @@ so names in it lead nowhere yet.
 `hemera-lsp` takes no arguments. It answers `initialize` with whole-document sync, open, close and save
 notifications, UTF-8 positions when the client offers them, else UTF-16, and `textDocument/formatting`,
 `textDocument/documentSymbol`, `textDocument/foldingRange`, `textDocument/definition`, `textDocument/hover`,
-`textDocument/references`, `textDocument/prepareRename` and `textDocument/rename`, and `workspace/executeCommand` for
+`textDocument/references`, `textDocument/prepareRename`, `textDocument/rename` and `textDocument/completion`, with
+`.`, `"`, `/` and `:` as trigger characters, and `workspace/executeCommand` for
 `hemera.checkEverything`, Check Everything, with no arguments. Its settings come in initialize's
 `initializationOptions`, and later in `workspace/didChangeConfiguration`'s `settings.hemera`, as an object with
 `compilerPath`, `root`, `arguments` and `checkerMemory`, named as above without `hemera.`. It exits 0 after

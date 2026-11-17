@@ -108,6 +108,12 @@ namespace hemera::lsp {
 				declaration.type = text_of(*object, "type");
 				declaration.brief = text_of(*object, "brief");
 				declaration.details = text_of(*object, "details");
+				if (const std::optional<int64_t> in = object->getInteger("in"); in.has_value() && *in >= 0) {
+					declaration.in = static_cast<size_t>(*in);
+				}
+				if (const std::optional<int64_t> of = object->getInteger("of"); of.has_value() && *of >= 0) {
+					declaration.of = static_cast<size_t>(*of);
+				}
 				if (const Array* tags = object->getArray("tags")) {
 					for (const Value& tag : *tags) {
 						const Array* parts = tag.getAsArray();
@@ -152,8 +158,35 @@ namespace hemera::lsp {
 				}
 			}
 		}
+		// The numbers declarations give each other, only where they're declarations
+		for (IndexedDeclaration& declaration : index.declarations) {
+			for (std::optional<size_t>* number : { &declaration.in, &declaration.of }) {
+				if (number->has_value() && (**number >= index.declarations.size() || index.declarations[**number].file.empty())) {
+					number->reset();
+				}
+			}
+		}
+		if (const Array* imports = root->getArray("imports")) {
+			for (const Value& entry : *imports) {
+				const Array* import = entry.getAsArray();
+				if (import == nullptr || import->size() != 4) {
+					continue;
+				}
+				const size_t file = number_at(*import, 0);
+				std::string folder = (*import)[3].getAsString().value_or("").str();
+				if (folder.starts_with("<base>/") && !base_folder.empty()) {
+					folder = base_folder + folder.substr(std::string_view("<base>").size());
+				}
+				if (file < paths.size()) {
+					index.imports[path_key(paths[file])].push_back(IndexedImport{ number_at(*import, 1), number_at(*import, 2), std::move(folder) });
+				}
+			}
+		}
 		for (auto& [file, in_file] : index.uses) {
 			std::sort(in_file.begin(), in_file.end(), [](const IndexedUse& a, const IndexedUse& b) { return a.offset < b.offset; });
+		}
+		for (auto& [file, in_file] : index.imports) {
+			std::sort(in_file.begin(), in_file.end(), [](const IndexedImport& a, const IndexedImport& b) { return a.offset < b.offset; });
 		}
 		return index;
 	}
@@ -192,6 +225,7 @@ namespace hemera::lsp {
 		};
 		LoadedIndex merged;
 		merged.declarations = std::move(fresh.declarations);
+		const size_t fresh_count = merged.declarations.size();
 		std::map<Key, size_t> numbers;
 		for (size_t i = 0; i < merged.declarations.size(); ++i) {
 			if (!merged.declarations[i].file.empty()) {
@@ -213,6 +247,18 @@ namespace hemera::lsp {
 				renumbered[i] = merged.declarations.size();
 				numbers.emplace(key, merged.declarations.size());
 				merged.declarations.push_back(declaration);
+			}
+		}
+		// What those kept from old name, in merged's numbers, once every one has its number
+		for (size_t i = 0; i < old.declarations.size(); ++i) {
+			if (!renumbered[i].has_value() || *renumbered[i] < fresh_count) {
+				continue;
+			}
+			IndexedDeclaration& kept = merged.declarations[*renumbered[i]];
+			for (std::optional<size_t>* number : { &kept.in, &kept.of }) {
+				if (number->has_value()) {
+					*number = **number < renumbered.size() ? renumbered[**number] : std::nullopt;
+				}
 			}
 		}
 
@@ -240,6 +286,21 @@ namespace hemera::lsp {
 			if (!merged.declarations[i].file.empty()) {
 				merged.declared[path_key(merged.declarations[i].file)].push_back(i);
 			}
+		}
+
+		// Imports: fresh's, and old's in the files it doesn't replace, each once
+		merged.imports = std::move(fresh.imports);
+		for (const auto& [file, in_file] : old.imports) {
+			if (replaced.contains(file)) {
+				continue;
+			}
+			std::vector<IndexedImport>& imports = merged.imports[file];
+			for (const IndexedImport& import : in_file) {
+				if (std::none_of(imports.begin(), imports.end(), [&](const IndexedImport& other) { return other.offset == import.offset; })) {
+					imports.push_back(import);
+				}
+			}
+			std::sort(imports.begin(), imports.end(), [](const IndexedImport& a, const IndexedImport& b) { return a.offset < b.offset; });
 		}
 
 		merged.paths = old.paths;

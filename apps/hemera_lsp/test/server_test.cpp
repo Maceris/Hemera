@@ -559,18 +559,32 @@ TEST(Server, DocumentSymbolsListDeclarationsAndTheirMembers) {
 	EXPECT_EQ(3, name.getObject("end")->getInteger("character"));
 }
 
-TEST(Server, DocumentSymbolsKeepTheLastVersionThatParsed) {
+/*
+ * A declaration with an error is still in the outline, as are those after it, and one whose statement has an error;
+ * a file that doesn't lex keeps the last outline.
+ */
+TEST(Server, DocumentSymbolsComeFromWhatTheParserRecovered) {
 	Session session;
 	session.initialize();
 	const std::string uri = "file:///d%3A/project/main.hsc";
 	session.notify("textDocument/didOpen", document(uri, DECLARATIONS, 1));
 	EXPECT_EQ(7u, symbols_of(session, uri).size());
+	std::string broken_statement = DECLARATIONS;
+	broken_statement.replace(broken_statement.find("x := 1"), 6, "x := (1 +");
 	session.notify("textDocument/didChange", Object{
 		{ "textDocument", Object{ { "uri", uri }, { "version", 2 } } },
-		{ "contentChanges", Array{ Object{ { "text", DECLARATIONS + "broken :: fn( {\n" } } } },
+		{ "contentChanges", Array{ Object{ { "text", broken_statement + "broken :: fn( {\n" } } } },
 	});
+	const Array symbols = symbols_of(session, uri);
+	ASSERT_EQ(8u, symbols.size());
+	EXPECT_EQ("add", symbols[0].getAsObject()->getString("name")->str());
+	EXPECT_EQ("broken", symbols[7].getAsObject()->getString("name")->str());
 
-	EXPECT_EQ(7u, symbols_of(session, uri).size());
+	session.notify("textDocument/didChange", Object{
+		{ "textDocument", Object{ { "uri", uri }, { "version", 3 } } },
+		{ "contentChanges", Array{ Object{ { "text", DECLARATIONS + "x :: \"never closed\n" } } } },
+	});
+	EXPECT_EQ(8u, symbols_of(session, uri).size());
 }
 
 namespace {
@@ -690,6 +704,27 @@ TEST(Server, DefinitionLeadsToTheDeclaration) {
 	EXPECT_EQ("3:0-3:6", range_text(*found->getAsObject()->getObject("range")));
 	// Nothing where there's no name
 	EXPECT_EQ(Value(nullptr), *indexed.ask(21, "textDocument/definition", 0, 2));
+}
+
+// Completion is offered, and names what the package declares, from the index, with its type and doc comment.
+TEST(Server, CompletionOffersThePackagesDeclarations) {
+	Indexed indexed;
+	EXPECT_NE(nullptr, indexed.session.sent.front().getAsObject()->getObject("result")->getObject("capabilities")->getObject("completionProvider"));
+	indexed.open_main();
+
+	const Value* found = indexed.ask(23, "textDocument/completion", 3, 13);
+	ASSERT_NE(nullptr, found);
+	ASSERT_NE(nullptr, found->getAsArray());
+	const Object* helper = nullptr;
+	for (const Value& item : *found->getAsArray()) {
+		if (item.getAsObject()->getString("label") == llvm::StringRef("helper")) {
+			helper = item.getAsObject();
+		}
+	}
+	ASSERT_NE(nullptr, helper);
+	EXPECT_EQ(3, helper->getInteger("kind"));
+	EXPECT_EQ("fn() -> int", helper->getString("detail")->str());
+	EXPECT_EQ("Helps.", helper->getObject("documentation")->getString("value")->str());
 }
 
 TEST(Server, HoverShowsTheSignatureAndDocumentation) {
@@ -870,6 +905,38 @@ TEST(Server, ACheckThatCheckedNoTargetsKeepsTheIndex) {
 	EXPECT_EQ(hemera::lsp::path_key(indexed.helper), hemera::lsp::path_key(hemera::lsp::path_from_uri(*found->getAsObject()->getString("uri"))));
 }
 
+/*
+ * An open file that none of the build's targets read, like one only another architecture's targets import, says so,
+ * on its package statement's line, until a check finds a target that reads it.
+ */
+TEST(Server, AFileNoTargetReadsSaysSo) {
+	Indexed indexed;
+	indexed.session.index_json.insert(indexed.session.index_json.rfind('}'), ",\"targets\":[\"a\",\"b\"],\"readers\":[[1],[0]]");
+	const std::string other = indexed.folder + "/other.hsc";
+	write_file(other, "// Another architecture's\npackage main\n");
+	indexed.session.notify("textDocument/didOpen", document(hemera::lsp::uri_from_path(other), "// Another architecture's\npackage main\n", 1));
+	std::vector<Object> published = indexed.session.published();
+	ASSERT_EQ(1, last_published(published, other));
+	const Object* notice = nullptr;
+	for (const Object& params : published) {
+		if (hemera::lsp::path_key(hemera::lsp::path_from_uri(*params.getString("uri"))) == hemera::lsp::path_key(other)) {
+			notice = params.getArray("diagnostics")->front().getAsObject();
+		}
+	}
+	ASSERT_NE(nullptr, notice);
+	EXPECT_EQ(3, notice->getInteger("severity"));
+	EXPECT_EQ(1, notice->getObject("range")->getObject("start")->getInteger("line"));
+	// Not a file a target reads
+	EXPECT_LE(last_published(published, indexed.main), 0);
+
+	// Read by a target now: cleared
+	indexed.session.index_json = std::format(
+		"{{\"version\":1,\"files\":[\"{}\",\"{}\",\"{}\"],\"declarations\":[],\"uses\":[],\"targets\":[\"a\"],\"readers\":[[0],[0],[0]]}}\n",
+		indexed.helper, indexed.main, other);
+	indexed.session.request(41, "workspace/executeCommand", Object{ { "command", "hemera.checkEverything" } });
+	EXPECT_EQ(0, last_published(indexed.session.published(), other));
+}
+
 // A file no target read before, like a new one, is checked as the other files in its folder are.
 TEST(Server, ANewFileIsCheckedAsItsFoldersTargets) {
 	Indexed indexed;
@@ -938,6 +1005,52 @@ TEST(Index, MergingKeepsWhatOtherTargetsFound) {
 	EXPECT_EQ(1u, merged.declared.at(hemera::lsp::path_key("D:/p/a.hsc")).size());
 	EXPECT_EQ(8u, merged.declarations[merged.declared.at(hemera::lsp::path_key("D:/p/a.hsc"))[0]].name_offset);
 	EXPECT_EQ((std::vector<std::string>{ "b", "a" }), merged.readers.at(hemera::lsp::path_key("D:/p/shared.hsc")));
+}
+
+// What a declaration kept from the old index is in, and of, is renumbered with it; an import is kept with its file.
+TEST(Index, MergingRenumbersWhatDeclarationsName) {
+	using hemera::lsp::IndexedDeclaration;
+	using hemera::lsp::LoadedIndex;
+	const auto declared = [](const std::string& file, uint32_t offset, const std::string& kind) {
+		IndexedDeclaration declaration;
+		declaration.file = file;
+		declaration.name_offset = offset;
+		declaration.name_length = 1;
+		declaration.start = offset;
+		declaration.end = offset + 1;
+		declaration.kind = kind;
+		return declaration;
+	};
+	// b.hsc, which only b read, has a type, its field, and a local of the type
+	LoadedIndex old;
+	old.declarations = { declared("D:/p/a.hsc", 0, "function"), declared("D:/p/b.hsc", 0, "type"),
+		declared("D:/p/b.hsc", 10, "field"), declared("D:/p/b.hsc", 20, "local") };
+	old.declarations[2].in = 1;
+	old.declarations[3].of = 1;
+	for (const std::string file : { "D:/p/a.hsc", "D:/p/b.hsc" }) {
+		old.paths[hemera::lsp::path_key(file)] = file;
+	}
+	old.readers[hemera::lsp::path_key("D:/p/a.hsc")] = { "a" };
+	old.readers[hemera::lsp::path_key("D:/p/b.hsc")] = { "b" };
+	old.imports[hemera::lsp::path_key("D:/p/b.hsc")] = { hemera::lsp::IndexedImport{ 30, 1, "D:/q" } };
+
+	// a checked again, with three declarations now, so b.hsc's come after them
+	LoadedIndex fresh;
+	fresh.declarations = { declared("D:/p/a.hsc", 0, "function"), declared("D:/p/a.hsc", 5, "constant"), declared("D:/p/a.hsc", 9, "constant") };
+	fresh.paths[hemera::lsp::path_key("D:/p/a.hsc")] = "D:/p/a.hsc";
+	fresh.readers[hemera::lsp::path_key("D:/p/a.hsc")] = { "a" };
+
+	const LoadedIndex merged = hemera::lsp::merged_index(old, fresh, { "a" });
+	const std::vector<size_t>& in_b = merged.declared.at(hemera::lsp::path_key("D:/p/b.hsc"));
+	ASSERT_EQ(3u, in_b.size());
+	const IndexedDeclaration& field = merged.declarations[in_b[1]];
+	const IndexedDeclaration& local = merged.declarations[in_b[2]];
+	ASSERT_TRUE(field.in.has_value());
+	EXPECT_EQ(in_b[0], *field.in);
+	ASSERT_TRUE(local.of.has_value());
+	EXPECT_EQ(in_b[0], *local.of);
+	ASSERT_EQ(1u, merged.imports.at(hemera::lsp::path_key("D:/p/b.hsc")).size());
+	EXPECT_EQ("D:/q", merged.imports.at(hemera::lsp::path_key("D:/p/b.hsc"))[0].folder);
 }
 
 TEST(TokenEnd, CoversWordsStringsAndSingleCharacters) {

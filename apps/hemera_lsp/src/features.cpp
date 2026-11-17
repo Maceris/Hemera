@@ -161,7 +161,17 @@ namespace hemera::lsp {
 
 			Array top_level() const {
 				Array found;
-				const MyVector<ast::Node*>& declarations = document.tree->children;
+				// A declaration with an error is in an ERROR node, with what the parser made of it
+				std::vector<const ast::Node*> declarations;
+				for (const ast::Node* child : document.recovered->children) {
+					if (ast::NodeType::ERROR != child->node_type) {
+						declarations.push_back(child);
+						continue;
+					}
+					for (const ast::Node* made : child->children) {
+						declarations.push_back(made);
+					}
+				}
 				for (size_t i = 0; i < declarations.size(); ++i) {
 					const ast::Node* declaration = declarations[i];
 					if (ast::NodeType::DEFINITION != declaration->node_type || declaration->children.empty()
@@ -306,7 +316,7 @@ namespace hemera::lsp {
 	}
 
 	Array document_symbols(const ParsedDocument& document, Encoding encoding) {
-		if (document.tree == nullptr) {
+		if (document.recovered == nullptr) {
 			return Array{};
 		}
 		return Symbols{ document, LineIndex(document.text), encoding }.top_level();

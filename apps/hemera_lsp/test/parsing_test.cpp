@@ -26,12 +26,14 @@ TEST(Parsing, ParsesTextWithItsCommentsApart) {
 	EXPECT_EQ(hemera::TokenType::END_OF_FILE, parsed->tokens.back().type);
 }
 
-TEST(Parsing, ASyntaxErrorLeavesTokensButNoTree) {
+TEST(Parsing, ASyntaxErrorLeavesARecoveredTreeButNoTree) {
 	prepare_parsing();
 	const auto parsed = parse_document("package main\n\nmain :: fn( {\n", 1, "main.hsc");
 
 	EXPECT_TRUE(parsed->lexed);
 	EXPECT_EQ(nullptr, parsed->tree);
+	ASSERT_NE(nullptr, parsed->recovered);
+	EXPECT_EQ(2u, parsed->recovered->children.size()) << "the package, and main in an ERROR node";
 	EXPECT_FALSE(parsed->tokens.empty());
 }
 
