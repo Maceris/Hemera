@@ -84,6 +84,17 @@ namespace hemera {
 			append_json_string(out, diagnostic.target);
 			out += '"';
 		}
+		if (!diagnostic.inserted.empty()) {
+			out += ",\"inserted\":[";
+			for (size_t i = 0; i < diagnostic.inserted.size(); ++i) {
+				std::string site_file = diagnostic.inserted[i].file;
+				std::replace(site_file.begin(), site_file.end(), '\\', '/');
+				out += i == 0 ? "{\"file\":\"" : ",{\"file\":\"";
+				append_json_string(out, site_file);
+				out += std::format("\",\"line\":{},\"column\":{}}}", diagnostic.inserted[i].line, diagnostic.inserted[i].column);
+			}
+			out += ']';
+		}
 		out += '}';
 		return out;
 	}
@@ -146,9 +157,23 @@ namespace hemera {
 	}
 
 	// A diagnostic, kept with the thread's scope's or the process's, and printed as line, or as JSON
+	// The sites what this thread reports now was inserted at (InsertedAt), or null
+	static thread_local const std::vector<DiagnosticSite>* inserted_sites = nullptr;
+
+	InsertedAt::InsertedAt(std::vector<DiagnosticSite> sites) : sites(std::move(sites)) {
+		inserted_sites = &this->sites;
+	}
+
+	InsertedAt::~InsertedAt() {
+		inserted_sites = nullptr;
+	}
+
 	static void emit(Diagnostic diagnostic, const std::string& line) {
 		if (current_scope != nullptr && diagnostic.target.empty()) {
 			diagnostic.target = current_scope->target;
+		}
+		if (inserted_sites != nullptr && diagnostic.inserted.empty()) {
+			diagnostic.inserted = *inserted_sites;
 		}
 		const bool json = printing_json();
 		std::string json_line = json ? diagnostic_json(diagnostic) + "\n" : std::string();
@@ -181,7 +206,7 @@ namespace hemera {
 		const size_t colon = coded.find(':');
 		return Diagnostic{ severity, std::string(coded.substr(0, colon)),
 			colon == std::string_view::npos ? std::string() : std::string(coded.substr(colon + 1)), std::string(file),
-			line_number, column_number, std::string(message), std::string() };
+			line_number, column_number, std::string(message), std::string(), {} };
 	}
 
 	void report_to_standard_error(std::string_view line) {
@@ -350,7 +375,7 @@ namespace hemera {
 		std::string line = std::format("{}({},{}): {} {}:{}: {}", file, line_number, column_number, "error",
 			COMPILER_PREFIX, info.string_value, message);
 		emit(Diagnostic{ Severity::ERROR, std::string(COMPILER_PREFIX), std::string(info.string_value), std::string(file),
-			line_number, column_number, std::move(message), std::string() }, line);
+			line_number, column_number, std::move(message), std::string(), {} }, line);
 	}
 
 	// Errors reported on each thread, including ones already reported elsewhere.
@@ -639,7 +664,7 @@ namespace hemera {
 			return;
 		}
 		emit(Diagnostic{ Severity::ERROR, std::string(prefix), std::string(code), std::string(file), line_number,
-			column_number, std::string(message), std::string() }, std::format("{}({},{}): error {}: {}", file, line_number, column_number,
+			column_number, std::string(message), std::string(), {} }, std::format("{}({},{}): error {}: {}", file, line_number, column_number,
 			coded, message));
 	}
 
@@ -649,7 +674,7 @@ namespace hemera {
 		if (!reporting_enabled) {
 			return;
 		}
-		emit(Diagnostic{ Severity::INFORMATION, "", "", std::string(file), line_number, column_number, std::string(text), std::string() },
+		emit(Diagnostic{ Severity::INFORMATION, "", "", std::string(file), line_number, column_number, std::string(text), std::string(), {} },
 			std::format("{}({},{}): {}: {}", file, line_number, column_number, kind, text));
 	}
 

@@ -52,11 +52,16 @@ namespace hemera {
 	// That where, in walk's file, names the member called member of the struct type structure, if being indexed.
 	void record_member_use(Walk& walk, const ast::Node* where, const TypeInfo* structure, InternedString member);
 
-	// A run of bytes in a file: the file as diagnostics name it, with / throughout, then the offset and length.
+	/*
+	 * A run of bytes in a file: the file as diagnostics name it, with / throughout, then the offset and length. For a
+	 * declaration inserted code made, the #insert's, and its name, as several can be made at one #insert; empty for a
+	 * name that's written there.
+	 */
 	struct IndexPlace {
 		std::string file;
 		uint32_t offset = 0;
 		uint32_t length = 0;
+		std::string text;
 
 		auto operator<=>(const IndexPlace&) const = default;
 	};
@@ -74,6 +79,8 @@ namespace hemera {
 		std::string type;
 		// For a field, member or variant, the type it's in, by where that's declared
 		std::optional<IndexPlace> in;
+		// For one inserted code made, where its name is written, in the quote, when its name was written at all
+		std::optional<IndexPlace> written;
 		/*
 		 * The declaration of the type whose members follow a . after it, by where that's declared: a value's, a field's or
 		 * a member's type, through aliases and pointers, or a function's first result's; empty when that isn't a struct,

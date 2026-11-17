@@ -304,6 +304,7 @@ namespace hemera {
 			where != nullptr ? where->value.line_number : 0,
 			where != nullptr ? where->value.column_number : 0,
 			origin != nullptr ? inserted_note(*origin) : std::string(),
+			origin,
 		});
 		if (walk.owner != nullptr) {
 			names.parked_resolvers[walk.owner] = &list.back();
@@ -2083,7 +2084,7 @@ namespace hemera {
 			}
 			const std::shared_ptr<const ast::Origin> origin = program->made_nodes.origin(insert);
 			const ast::InsertionSite site{ origin != nullptr ? origin->file : walk.file_path, insert->value.line_number,
-				insert->value.column_number };
+				insert->value.column_number, insert->value.offset, insert->value.length };
 			const ast::Node* inserted = copy_to_insert(program->made_nodes, program->quotes, tree, site, origin.get());
 			if (inserted == nullptr) {
 				return Progress::FAILED;
@@ -3093,6 +3094,7 @@ namespace hemera {
 				continue;
 			}
 			seen.insert(where);
+			const InsertedAt sites(parked->origin != nullptr ? diagnostic_sites(*parked->origin) : std::vector<DiagnosticSite>{});
 			report_error(ErrorCode::E4008, parked->file_path, parked->line, parked->column,
 				std::string(std::string_view(*parked->key.name)) + parked->note);
 			++reported;

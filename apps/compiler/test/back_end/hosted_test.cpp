@@ -3,6 +3,7 @@
 #include <format>
 #include <fstream>
 #include <iterator>
+#include <map>
 #include <memory>
 #include <sstream>
 #include <string>
@@ -20,6 +21,7 @@
 #include "hmir/hmir_dialect.h"
 #include "middle_end/build.h"
 #include "middle_end/generate.h"
+#include "llvm/Support/JSON.h"
 #include "middle_end/reflection.h"
 #include "../string_cache_guard.h"
 
@@ -1429,6 +1431,148 @@ static std::string check_request(const std::filesystem::path& folder, const std:
 	}
 	std::string path = folder.generic_string();
 	return std::format("{{\"arguments\":[{},\"{}\"]}}", arguments, path);
+}
+
+// A folder of the test's own with a program of one file, main.hsc, written with text.
+static std::filesystem::path program_of(std::string_view name, const std::string& text) {
+	const std::filesystem::path folder = std::filesystem::path(HEMERA_TEST_OUTPUT_DIR) / name / "main";
+	std::filesystem::remove_all(folder);
+	std::filesystem::create_directories(folder);
+	std::ofstream file(folder / "main.hsc", std::ios::binary);
+	file << text;
+	return std::filesystem::canonical(folder);
+}
+
+/*
+ * An error in inserted code is reported where its quote is written, and, with --diagnostics=json, each #insert that put
+ * it there is given as inserted, the first first, besides the note in the message.
+ */
+TEST(Diagnostics, AnErrorInInsertedCodeSaysWhereItWasInserted)
+{
+	const std::filesystem::path folder = program_of("inserted_error",
+		"package main\n"
+		"\n"
+		"import compiler from \"base:compiler\"\n"
+		"\n"
+		"broken :: fn() -> compiler.Code {\n"
+		"    return #code {\n"
+		"        value : int = \"not a number\"\n"
+		"    }\n"
+		"}\n"
+		"\n"
+		"main :: fn() -> int {\n"
+		"    #insert broken()\n"
+		"    return 0\n"
+		"}\n");
+	const CompilerRun run = run_compiler("inserted_error", std::format("--check --diagnostics=json \"{}\"", folder.generic_string()));
+
+	std::string found;
+	for (const std::string& line : lines_of(run.output)) {
+		if (line.find("\"inserted\"") != std::string::npos) {
+			found = line;
+		}
+	}
+	ASSERT_FALSE(found.empty()) << run.output << run.error;
+	EXPECT_NE(found.find("main.hsc\",\"line\":7,"), std::string::npos) << found;
+	EXPECT_NE(found.find(std::format("\"inserted\":[{{\"file\":\"{}\",\"line\":12,\"column\":4}}]",
+		(folder / "main.hsc").generic_string())), std::string::npos) << found;
+}
+
+/*
+ * The name index has what inserted code declares, at the #insert that put it in the program, with its name as text:
+ * a function, a struct and its fields, and a function whose name compile-time code made; a use of each lands there,
+ * and where a name is written in the quote is given too.
+ */
+TEST(Build, IndexesWhatInsertedCodeDeclares)
+{
+	const std::string text =
+		"package main\n"
+		"\n"
+		"import compiler from \"base:compiler\"\n"
+		"\n"
+		"LIMIT :: 1\n"
+		"\n"
+		"made :: fn() -> compiler.Code {\n"
+		"    return #code {\n"
+		"        helper :: fn() -> int {\n"
+		"            return LIMIT\n"
+		"        }\n"
+		"        Pair :: struct {\n"
+		"            left : int,\n"
+		"            right : int,\n"
+		"        }\n"
+		"    }\n"
+		"}\n"
+		"\n"
+		"named :: fn() -> compiler.Code {\n"
+		"    return #code {\n"
+		"        #insert compiler.name(\"gen\", \"erated\") :: fn() -> int {\n"
+		"            return 2\n"
+		"        }\n"
+		"    }\n"
+		"}\n"
+		"\n"
+		"limit #macro :: fn() -> compiler.Code {\n"
+		"    return #code(LIMIT + 1)\n"
+		"}\n"
+		"\n"
+		"#insert made()\n"
+		"#insert named()\n"
+		"\n"
+		"main :: fn() -> int {\n"
+		"    pair := Pair.{ left = 1, right = 2 }\n"
+		"    return helper() + generated() + pair.left + limit!()\n"
+		"}\n";
+	const std::filesystem::path folder = program_of("inserted_index", text);
+	const std::filesystem::path index_file = folder.parent_path() / "index.json";
+	const CompilerRun run = run_compiler("inserted_index", std::format("--check --index=\"{}\" \"{}\"", index_file.generic_string(),
+		folder.generic_string()));
+	ASSERT_EQ(run.exit_code, 0) << run.output << run.error;
+	const std::string json = read_file(index_file);
+	llvm::Expected<llvm::json::Value> parsed = llvm::json::parse(json);
+	ASSERT_TRUE(static_cast<bool>(parsed)) << json;
+	const llvm::json::Object& root = *parsed->getAsObject();
+	const llvm::json::Array& declarations = *root.getArray("declarations");
+	const llvm::json::Array& uses = *root.getArray("uses");
+
+	// Each declaration with text, by its text: where it's indexed, and its kind
+	const size_t made_at = text.find("#insert made()");
+	const size_t named_at = text.find("#insert named()");
+	std::map<std::string, std::pair<int64_t, std::string>> inserted;
+	std::map<std::string, size_t> numbers;
+	for (size_t i = 0; i < declarations.size(); ++i) {
+		const llvm::json::Object& declaration = *declarations[i].getAsObject();
+		if (const std::optional<llvm::StringRef> name = declaration.getString("text")) {
+			inserted[name->str()] = { *(*declaration.getArray("name"))[0].getAsInteger(), declaration.getString("kind")->str() };
+			numbers[name->str()] = i;
+			EXPECT_EQ(name->str() == "generated", declaration.get("written") == nullptr) << name->str();
+		}
+	}
+	EXPECT_EQ(inserted["helper"], std::make_pair(static_cast<int64_t>(made_at), std::string("function")));
+	EXPECT_EQ(inserted["Pair"], std::make_pair(static_cast<int64_t>(made_at), std::string("type")));
+	EXPECT_EQ(inserted["left"], std::make_pair(static_cast<int64_t>(made_at), std::string("field")));
+	EXPECT_EQ(inserted["right"], std::make_pair(static_cast<int64_t>(made_at), std::string("field")));
+	EXPECT_EQ(inserted["generated"], std::make_pair(static_cast<int64_t>(named_at), std::string("function")));
+
+	// Uses in main land on them
+	std::map<int64_t, size_t> used;
+	for (const llvm::json::Value& use : uses) {
+		used[*(*use.getAsArray())[1].getAsInteger()] = static_cast<size_t>(*(*use.getAsArray())[3].getAsInteger());
+	}
+	const size_t main_at = text.find("main :: fn");
+	EXPECT_EQ(used[static_cast<int64_t>(text.find("helper()", main_at))], numbers["helper"]);
+	EXPECT_EQ(used[static_cast<int64_t>(text.find("generated()", main_at))], numbers["generated"]);
+	EXPECT_EQ(used[static_cast<int64_t>(text.find("Pair.{", main_at))], numbers["Pair"]);
+	EXPECT_EQ(used[static_cast<int64_t>(text.find("left + limit", main_at))], numbers["left"]);
+	// A use in the quote, where it's written, of the constant it names where it's inserted
+	const size_t limit_use = text.find("return LIMIT") + std::string_view("return ").size();
+	ASSERT_TRUE(used.contains(static_cast<int64_t>(limit_use)));
+	const llvm::json::Object& limit = *declarations[used[static_cast<int64_t>(limit_use)]].getAsObject();
+	EXPECT_EQ(*(*limit.getArray("name"))[0].getAsInteger(), static_cast<int64_t>(text.find("LIMIT ::")));
+	// And in a macro's, the same way: a macro call is an #insert
+	const size_t macro_use = text.find("LIMIT + 1");
+	ASSERT_TRUE(used.contains(static_cast<int64_t>(macro_use)));
+	EXPECT_EQ(used[static_cast<int64_t>(macro_use)], used[static_cast<int64_t>(limit_use)]);
 }
 
 /*

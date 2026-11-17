@@ -251,6 +251,9 @@ namespace hemera {
 	/// Reports an error at a node: where it's written in file_path, or for code #insert put there, where
 	/// the code was written, with each place it was inserted (docs/compilation.md, Code Values).
 	/// </summary>
+	// An origin's #insert sites, as a diagnostic gives them (Diagnostic::inserted), the first first.
+	std::vector<DiagnosticSite> diagnostic_sites(const ast::Origin& origin);
+
 	void report_at(ErrorCode code, const std::string& file_path, const ast::NodeStore* made, const ast::Node* where,
 		std::string_view details = "");
 

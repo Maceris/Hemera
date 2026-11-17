@@ -175,6 +175,9 @@ namespace hemera::ast {
 		std::string file;
 		uint32_t line = 0;
 		uint16_t column = 0;
+		// The #insert's token's offset and length in bytes in file; Token::NO_SPAN when it was made while compiling
+		uint32_t offset = Token::NO_SPAN;
+		uint32_t length = 0;
 	};
 
 	/// <summary>

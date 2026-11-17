@@ -351,6 +351,8 @@ namespace hemera {
 		/// For code #insert put there, where it was inserted, to follow what's reported (inserted_note).
 		/// </summary>
 		std::string note = {};
+		// For code #insert put there, where it comes from, whose sites what's reported is in; null otherwise
+		std::shared_ptr<const ast::Origin> origin = nullptr;
 	};
 
 	/// <summary>

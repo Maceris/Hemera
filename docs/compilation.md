@@ -177,9 +177,12 @@ read, in place of its text (`--diagnostics=text`, the default):
 * `line` counts from 1, and `column` counts bytes from the line's start, from 0, as the text's do. The line is 0, and
   the column with it, when the diagnostic is about no line in particular, like a file that can't be written.
 * `message` is the text after the code.
-* `target`, last, is the build package's target whose check found it, like `"target":"kernel"`. A diagnostic of the
+* `target` is the build package's target whose check found it, like `"target":"kernel"`. A diagnostic of the
   build's own code, or of a program that isn't a build package, has none. A file several targets read can have the
   same diagnostic once for each.
+* `inserted`, for one in code an `#insert` put in, is each `#insert` that put it there, the first first, as `file`,
+  `line` and `column`, like `"inserted":[{"file":"D:/project/main.hsc","line":12,"column":4}]`. Its own `file`, `line`
+  and `column` are where the code is written, and the message ends with the same sites as text.
 
 They come in the order the text would, a build package's targets in order, and the exit code is the same.
 
@@ -221,7 +224,12 @@ build package, it's the build's own code and every target's, merged.
   counting from 0. A use of a generic's instance is a use of the generic.
 * Uses are only in the program's own code: not in `base`, `std` or `vendor`, unless the package being built is in one
   of them. Every declaration a use names is there, wherever it is.
-* What compile-time code put in, like `#insert`'s code, isn't indexed, as it isn't where its tokens say it is.
+* What code an `#insert` puts in declares is there, at the first `#insert` that put it there in the program's own
+  code: its `name` is that `#insert`'s offset and length, and its span too, and its `text` is its name, as several can
+  be declared at one `#insert`. When its name is written in the quote, `written` is where: a file's number, an offset
+  and a length. A name made at compile time, like `compiler.name`'s, has none.
+* A use in a quote in the program's own code is where it's written in the quote, of what it names where it's inserted.
+  A quote inserted at several places can name a different declaration at each: the first is kept.
 * For a build package, `targets` names its targets, and `readers`, one entry for each of `files` in the same order,
   lists the numbers of the targets that read that file, so a tool can check only the targets a changed file is in
   (`--targets`).

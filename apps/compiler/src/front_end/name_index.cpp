@@ -78,7 +78,7 @@ namespace hemera {
 			}
 
 			IndexPlace place_of(const std::string& file, const ast::Node* node) const {
-				return IndexPlace{ file, node->value.offset, node->value.length };
+				return IndexPlace{ file, node->value.offset, node->value.length, std::string() };
 			}
 
 			// The first and last byte of node's tokens, and every token under it
@@ -117,14 +117,86 @@ namespace hemera {
 				return with_slashes(file_path_of(declaration->package_path, declaration->file_name));
 			}
 
-			// A top-level or nested declaration's name node, or null when it has none it was written with
-			const ast::Node* name_of(const Declaration* declaration) const {
+			/*
+			 * Where a use of a name in file is: where it's written, or, in inserted code, where its quote has it, when it
+			 * has a span there; empty for neither
+			 */
+			std::optional<IndexPlace> use_place(const std::string& file, const ast::Node* node) const {
+				if (placed(node)) {
+					return place_of(file, node);
+				}
+				const std::shared_ptr<const ast::Origin> origin = node != nullptr ? program.made_nodes.origin(node) : nullptr;
+				if (origin == nullptr || node->value.offset == Token::NO_SPAN) {
+					return std::nullopt;
+				}
+				return IndexPlace{ with_slashes(origin->file), node->value.offset, node->value.length, std::string() };
+			}
+
+			/*
+			 * A use at where of target, but at the target's own name. A use in inserted code doesn't replace one there, as
+			 * the same quote inserted at several places can name a different declaration at each, and the first is kept.
+			 */
+			void add_use(const IndexPlace& where, const IndexPlace& target, const ast::Node* node) {
+				if (target.file == where.file && target.offset == where.offset && target.text.empty()) {
+					return;
+				}
+				if (placed(node)) {
+					index.uses[where] = target;
+				}
+				else {
+					index.uses.emplace(where, target);
+				}
+			}
+
+			// A top-level or nested declaration's name node, or null when it has none
+			static const ast::Node* name_of(const Declaration* declaration) {
 				const ast::Node* node = declaration->node;
 				if (node == nullptr || ast::NodeType::DEFINITION != node->node_type || node->children.empty()
-					|| ast::NodeType::IDENTIFIER != node->children[0]->node_type || !placed(node->children[0])) {
+					|| ast::NodeType::IDENTIFIER != node->children[0]->node_type || node->children[0]->value.value == nullptr) {
 					return nullptr;
 				}
 				return node->children[0];
+			}
+
+			// Where a name in file is indexed, and, for one inserted code made, where it's written
+			struct NamePlace {
+				IndexPlace at;
+				std::optional<IndexPlace> written;
+				bool inserted = false;
+				// The file and token its doc comment is read at, or null for none
+				std::string documented_in;
+				const ast::Node* documented = nullptr;
+			};
+
+			/*
+			 * Where a name is indexed: where it's written, or, for one inserted code made, at the first #insert that put it
+			 * there that's in the program's own code, with the name as text; empty for neither
+			 */
+			std::optional<NamePlace> name_place(const std::string& file, const ast::Node* name) const {
+				if (name == nullptr || name->value.value == nullptr) {
+					return std::nullopt;
+				}
+				if (placed(name)) {
+					return NamePlace{ place_of(file, name), std::nullopt, false, file, name };
+				}
+				const std::shared_ptr<const ast::Origin> origin = program.made_nodes.origin(name);
+				if (origin == nullptr) {
+					return std::nullopt;
+				}
+				for (const ast::InsertionSite& site : origin->inserted) {
+					const std::string site_file = with_slashes(site.file);
+					if (site.offset == Token::NO_SPAN || !counts(site_file)) {
+						continue;
+					}
+					NamePlace found{ IndexPlace{ site_file, site.offset, site.length, std::string(*name->value.value) }, std::nullopt, true, std::string(), nullptr };
+					if (name->value.offset != Token::NO_SPAN) {
+						found.written = IndexPlace{ with_slashes(origin->file), name->value.offset, name->value.length, std::string() };
+						found.documented_in = with_slashes(origin->file);
+						found.documented = name;
+					}
+					return found;
+				}
+				return std::nullopt;
 			}
 
 			// Its kind, as the index names it
@@ -145,24 +217,30 @@ namespace hemera {
 			std::optional<IndexPlace> add_declaration(Declaration* declaration) {
 				declaration = original(declaration);
 				const ast::Node* name = declaration != nullptr ? name_of(declaration) : nullptr;
-				if (name == nullptr) {
+				const std::optional<NamePlace> place = name != nullptr ? name_place(file_of(declaration), name) : std::nullopt;
+				if (!place.has_value()) {
 					return std::nullopt;
 				}
-				const std::string file = file_of(declaration);
-				const IndexPlace at = place_of(file, name);
+				const IndexPlace at = place->at;
 				if (index.declarations.contains(at)) {
 					return at;
 				}
 				IndexDeclaration made;
 				made.name = at;
-				made.start = std::numeric_limits<uint32_t>::max();
-				made.end = 0;
-				widen(declaration->node, made.start, made.end);
+				made.written = place->written;
+				// One inserted code made spans the #insert, where it is in the file
+				made.start = place->inserted ? at.offset : std::numeric_limits<uint32_t>::max();
+				made.end = place->inserted ? at.offset + at.length : 0;
+				if (!place->inserted) {
+					widen(declaration->node, made.start, made.end);
+				}
 				made.kind = kind_of(declaration);
 				if ("type" != made.kind && declaration->value_type != nullptr) {
 					made.type = to_string(declaration->value_type);
 				}
-				document(made, file, name);
+				if (place->documented != nullptr) {
+					document(made, place->documented_in, place->documented);
+				}
 				// In the index before what it leads to, which may lead back to it
 				index.declarations.emplace(at, std::move(made));
 				if (declaration->generic == nullptr && "type" != index.declarations[at].kind) {
@@ -225,7 +303,7 @@ namespace hemera {
 				if (body == nullptr) {
 					return;
 				}
-				const std::string file = type_at.file;
+				const std::string file = file_of(declaration);
 				const TypeInfo* type = declaration->generic == nullptr && declaration->type_value != nullptr
 					? get_base_type(declaration->type_value) : nullptr;
 				for (size_t i = 0; i < body->children.size(); ++i) {
@@ -244,10 +322,11 @@ namespace hemera {
 						name = member;
 						kind = ast::NodeType::ENUM == body->node_type ? "member" : "variant";
 					}
-					if (name == nullptr || !placed(name)) {
+					const std::optional<NamePlace> place = name_place(file, name);
+					if (!place.has_value()) {
 						continue;
 					}
-					const IndexPlace at = place_of(file, name);
+					const IndexPlace at = place->at;
 					auto [entry, made_now] = index.declarations.try_emplace(at);
 					IndexDeclaration& made = entry->second;
 					made.in = type_at;
@@ -255,15 +334,20 @@ namespace hemera {
 						continue;
 					}
 					made.name = at;
-					made.start = std::numeric_limits<uint32_t>::max();
-					made.end = 0;
-					widen(member, made.start, made.end);
-					// A variant's payload is the node after its name
-					if ("variant" == kind && i + 1 < body->children.size() && ast::NodeType::PAREN_GROUP == body->children[i + 1]->node_type) {
-						widen(body->children[i + 1], made.start, made.end);
+					made.written = place->written;
+					made.start = place->inserted ? at.offset : std::numeric_limits<uint32_t>::max();
+					made.end = place->inserted ? at.offset + at.length : 0;
+					if (!place->inserted) {
+						widen(member, made.start, made.end);
+						// A variant's payload is the node after its name
+						if ("variant" == kind && i + 1 < body->children.size() && ast::NodeType::PAREN_GROUP == body->children[i + 1]->node_type) {
+							widen(body->children[i + 1], made.start, made.end);
+						}
 					}
 					made.kind = kind;
-					document(made, file, name);
+					if (place->documented != nullptr) {
+						document(made, place->documented_in, place->documented);
+					}
 					if ("member" == kind) {
 						made.type = std::string(*declaration->name);
 						index.declarations[at].of = type_at;
@@ -327,11 +411,15 @@ namespace hemera {
 				add_declaration(declaration);
 				const std::string file = file_of(declaration);
 				for (const ast::Node* field : body->children) {
-					if (ast::NodeType::DEFINITION != field->node_type || field->children.empty() || !placed(field->children[0])
+					if (ast::NodeType::DEFINITION != field->node_type || field->children.empty()
 						|| field->children[0]->value.value != member) {
 						continue;
 					}
-					const IndexPlace at = place_of(file, field->children[0]);
+					const std::optional<NamePlace> place = name_place(file, field->children[0]);
+					if (!place.has_value()) {
+						return std::nullopt;
+					}
+					const IndexPlace at = place->at;
 					if (!index.declarations.contains(at)) {
 						IndexDeclaration made;
 						made.name = at;
@@ -361,13 +449,18 @@ namespace hemera {
 					return;
 				}
 				const std::string file = file_of(original(declaration));
-				const bool uses_counted = counts(file);
 				// A name alone is in nodes, and one at the head of a chain, like a in a.b, in heads
 				for (const auto* table : { &checked->nodes, &checked->heads }) {
 					for (const auto& [node, value] : *table) {
-						if (!checked->is_node(node) || !placed(node)) {
+						if (!checked->is_node(node)) {
 							continue;
 						}
+						// Where it's written: here, or in the quote of inserted code
+						const std::optional<IndexPlace> where = use_place(file, node);
+						if (!where.has_value()) {
+							continue;
+						}
+						const bool uses_counted = counts(where->file);
 						/*
 						 * A declaration the checked body says a name is, however it was found, as one found the first
 						 * time may not have been looked up through a walk this time
@@ -376,9 +469,7 @@ namespace hemera {
 						if (value.local == nullptr && named != nullptr && uses_counted && ast::NodeType::IDENTIFIER == node->node_type
 							&& names(node, original(named)->name)) {
 							if (const std::optional<IndexPlace> target = add_declaration(named)) {
-								if (!(target->file == file && target->offset == node->value.offset)) {
-									index.uses[place_of(file, node)] = *target;
-								}
+								add_use(*where, *target, node);
 							}
 						}
 						if (value.local == nullptr) {
@@ -411,7 +502,7 @@ namespace hemera {
 						}
 						if (node != defined && uses_counted && ast::NodeType::IDENTIFIER == node->node_type
 							&& names(node, defined->value.value)) {
-							index.uses[place_of(file, node)] = at;
+							add_use(*where, at, node);
 						}
 					}
 				}
@@ -445,18 +536,18 @@ namespace hemera {
 				}
 				std::lock_guard<std::mutex> lock(program.name_uses->mutex);
 				for (const auto& [node, use] : program.name_uses->uses) {
-					if (!placed(node) || !names(node, use.declaration != nullptr ? use.declaration->name : use.member)) {
+					if (!names(node, use.declaration != nullptr ? use.declaration->name : use.member)) {
 						continue;
 					}
-					const std::string file = with_slashes(file_path_of(use.package_path, use.file_name));
-					if (!counts(file)) {
+					// Where it's written: in its file, or in the quote of inserted code
+					const std::optional<IndexPlace> where = use_place(with_slashes(file_path_of(use.package_path, use.file_name)), node);
+					if (!where.has_value() || !counts(where->file)) {
 						continue;
 					}
 					const std::optional<IndexPlace> target = use.declaration != nullptr ? add_declaration(use.declaration)
 						: add_field(use.structure, use.member);
-					// A name at its own declaration isn't a use of it
-					if (target.has_value() && !(target->file == file && target->offset == node->value.offset)) {
-						index.uses[place_of(file, node)] = *target;
+					if (target.has_value()) {
+						add_use(*where, *target, node);
 					}
 				}
 			}
@@ -518,6 +609,9 @@ namespace hemera {
 		std::map<std::string, size_t> files;
 		for (const auto& [place, declaration] : index.declarations) {
 			files.emplace(place.file, 0);
+			if (declaration.written.has_value()) {
+				files.emplace(declaration.written->file, 0);
+			}
 		}
 		for (const auto& [place, target] : index.uses) {
 			files.emplace(place.file, 0);
@@ -546,6 +640,13 @@ namespace hemera {
 			first_declaration = false;
 			out += std::format("{{\"file\":{},\"name\":[{},{}],\"span\":[{},{}],\"kind\":{}", files[place.file], place.offset,
 				place.length, declaration.start, declaration.end, json_text(declaration.kind));
+			if (!place.text.empty()) {
+				out += ",\"text\":" + json_text(place.text);
+			}
+			if (declaration.written.has_value()) {
+				out += std::format(",\"written\":[{},{},{}]", files[declaration.written->file], declaration.written->offset,
+					declaration.written->length);
+			}
 			if (!declaration.type.empty()) {
 				out += ",\"type\":" + json_text(declaration.type);
 			}

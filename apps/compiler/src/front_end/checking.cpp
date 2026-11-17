@@ -206,8 +206,17 @@ namespace hemera {
 			report_error(code, file_path, where->value.line_number, where->value.column_number, details);
 			return;
 		}
+		const InsertedAt sites(diagnostic_sites(*origin));
 		report_error(code, origin->file, where->value.line_number, where->value.column_number,
 			std::string(details) + inserted_note(*origin));
+	}
+
+	std::vector<DiagnosticSite> diagnostic_sites(const ast::Origin& origin) {
+		std::vector<DiagnosticSite> sites;
+		for (const ast::InsertionSite& site : origin.inserted) {
+			sites.push_back(DiagnosticSite{ site.file, site.line, site.column });
+		}
+		return sites;
 	}
 
 	std::string inserted_note(const ast::Origin& origin) {
@@ -5188,7 +5197,7 @@ namespace hemera {
 		ProgramInfo* program = checker.walk.executor.program_info;
 		const std::shared_ptr<const ast::Origin> origin = program->made_nodes.origin(insert);
 		ast::InsertionSite site{ origin != nullptr ? origin->file : checker.walk.file_path, insert->value.line_number,
-			insert->value.column_number };
+			insert->value.column_number, insert->value.offset, insert->value.length };
 		inserted = const_cast<ast::Node*>(copy_to_insert(program->made_nodes, program->quotes, tree, site, origin.get(),
 			is_text(insert->value.value, "#expand")));
 		if (inserted == nullptr) {

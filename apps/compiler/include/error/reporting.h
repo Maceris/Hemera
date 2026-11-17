@@ -169,6 +169,13 @@ namespace hemera {
 	 * Every error, warning and message that's printed makes one, in the order they're printed, whether printing is on
 	 * or not; a hidden warning (WarningRules) makes none, and a denied one is an error with the warning's own code.
 	 */
+	// Where an #insert put code a diagnostic is in: the #insert's file, line and column, as a diagnostic's are.
+	struct DiagnosticSite {
+		std::string file;
+		uint32_t line = 0;
+		uint16_t column = 0;
+	};
+
 	struct Diagnostic {
 		Severity severity = Severity::ERROR;
 		// Whose code it is, like hemera or fonts; empty for a message, which has no code
@@ -185,6 +192,23 @@ namespace hemera {
 		std::string message;
 		// The build package's target whose check found it (ReportScope::target); empty for none, as outside a build
 		std::string target;
+		// For code compile-time code inserted, each #insert that put it where it is, the first first; empty otherwise
+		std::vector<DiagnosticSite> inserted;
+	};
+
+	/*
+	 * While one is alive, what this thread reports is in code inserted at sites (Diagnostic::inserted): for reporting an
+	 * error in inserted code, around the report. Not nested.
+	 */
+	class InsertedAt {
+	public:
+		explicit InsertedAt(std::vector<DiagnosticSite> sites);
+		~InsertedAt();
+		InsertedAt(const InsertedAt&) = delete;
+		InsertedAt& operator=(const InsertedAt&) = delete;
+
+	private:
+		std::vector<DiagnosticSite> sites;
 	};
 
 	/// <summary>
