@@ -51,6 +51,16 @@ namespace hemera::lsp {
 			diagnostic.column = static_cast<uint32_t>(object->getInteger("column").value_or(0));
 			diagnostic.message = object->getString("message").value_or("").str();
 			diagnostic.target = object->getString("target").value_or("").str();
+			if (const llvm::json::Array* inserted = object->getArray("inserted")) {
+				for (const llvm::json::Value& site : *inserted) {
+					const llvm::json::Object* place = site.getAsObject();
+					if (place != nullptr && place->getString("file").has_value()) {
+						diagnostic.inserted.push_back(CompilerDiagnostic::Place{ place->getString("file")->str(),
+							static_cast<uint32_t>(place->getInteger("line").value_or(0)),
+							static_cast<uint32_t>(place->getInteger("column").value_or(0)), std::string() });
+					}
+				}
+			}
 			found.push_back(std::move(diagnostic));
 		}
 		return found;

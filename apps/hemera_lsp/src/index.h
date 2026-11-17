@@ -26,6 +26,17 @@ namespace hemera::lsp {
 		// For a field, member or variant, the type it's in; and the type whose members follow a . after it; by number
 		std::optional<size_t> in;
 		std::optional<size_t> of;
+		/*
+		 * For one inserted code made, its name, as where it's indexed is the #insert that put it there, and where its name
+		 * is written in the quote, when it's written at all; empty otherwise
+		 */
+		std::string text;
+		struct Written {
+			std::string file;
+			uint32_t offset = 0;
+			uint32_t length = 0;
+		};
+		std::optional<Written> written;
 		std::string brief;
 		std::string details;
 		struct Tag {

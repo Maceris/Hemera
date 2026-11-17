@@ -727,6 +727,94 @@ TEST(Server, CompletionOffersThePackagesDeclarations) {
 	EXPECT_EQ("Helps.", helper->getObject("documentation")->getString("value")->str());
 }
 
+/*
+ * A declaration inserted code made is at its #insert, with its name as text: its uses lead to the #insert and to where
+ * its name is written, hover shows its name and type, renaming it is refused, the outline lists it, and completion names it.
+ */
+TEST(Server, InsertedDeclarationsAreFoundAtTheirInsert) {
+	const std::string folder = fresh_folder("inserted");
+	const std::string main = folder + "/main.hsc";
+	const std::string text = "package main\n\n#insert made()\n\nmain :: fn() -> int {\n    return helper()\n}\n";
+	write_file(main, text);
+	Session session;
+	const size_t insert = text.find("#insert");
+	const size_t use = text.find("helper()");
+	session.index_json = std::format(
+		"{{\"version\":1,\"files\":[\"{}\"],\"declarations\":[\n"
+		"{{\"file\":0,\"name\":[{},7],\"span\":[{},{}],\"kind\":\"function\",\"text\":\"helper\",\"written\":[0,0,7],\"type\":\"fn() -> int\"}}],\n"
+		"\"uses\":[[0,{},6,0]]}}\n", main, insert, insert, insert + 7, use);
+	session.initialize({}, {}, Array{ Object{ { "uri", hemera::lsp::uri_from_path(folder) }, { "name", "inserted" } } });
+	const std::string uri = hemera::lsp::uri_from_path(main);
+	session.notify("textDocument/didOpen", document(uri, text, 1));
+	session.published();
+	const auto at = [&](int64_t id, const std::string& method, size_t offset, Object more = {}) {
+		const size_t line = static_cast<size_t>(std::count(text.begin(), text.begin() + static_cast<std::ptrdiff_t>(offset), '\n'));
+		more["textDocument"] = Object{ { "uri", uri } };
+		more["position"] = Object{ { "line", static_cast<int64_t>(line) }, { "character", static_cast<int64_t>(offset - text.rfind('\n', offset) - 1) } };
+		session.request(id, method, std::move(more));
+		return session.last();
+	};
+
+	const Object definition = at(50, "textDocument/definition", use + 1);
+	ASSERT_NE(nullptr, definition.getArray("result"));
+	ASSERT_EQ(2u, definition.getArray("result")->size());
+	EXPECT_EQ("2:0-2:7", range_text(*(*definition.getArray("result"))[0].getAsObject()->getObject("range")));
+	const Object hover = at(51, "textDocument/hover", use + 1);
+	EXPECT_NE(std::string::npos, hover.getObject("result")->getObject("contents")->getString("value")->str().find("helper :: fn() -> int"));
+	at(52, "textDocument/prepareRename", use + 1);
+	EXPECT_EQ(hemera::lsp::error_codes::REQUEST_FAILED, session.last_error());
+	// The #insert itself isn't helper's name
+	EXPECT_EQ(Value(nullptr), *at(53, "textDocument/definition", insert + 2).get("result"));
+
+	session.request(54, "textDocument/documentSymbol", Object{ { "textDocument", Object{ { "uri", uri } } } });
+	const Array* symbols = session.last().getArray("result");
+	ASSERT_NE(nullptr, symbols);
+	EXPECT_TRUE(std::any_of(symbols->begin(), symbols->end(), [](const Value& symbol) {
+		return symbol.getAsObject()->getString("name") == llvm::StringRef("helper");
+	}));
+	const Object completion = at(55, "textDocument/completion", use + 2);
+	const Array* items = completion.getArray("result");
+	ASSERT_NE(nullptr, items);
+	EXPECT_TRUE(std::any_of(items->begin(), items->end(), [](const Value& item) {
+		return item.getAsObject()->getString("label") == llvm::StringRef("helper");
+	}));
+}
+
+/*
+ * An error in inserted code, written in a quote outside the workspace, shows at the #insert in the workspace that put it
+ * there, saying so, linked to where the code is written; and where it's written, linked to the #insert.
+ */
+TEST(Server, AnErrorInInsertedCodeShowsAtItsInsert) {
+	Indexed indexed;
+	const std::string quote = "D:/elsewhere/std/quotes.hsc";
+	indexed.session.output = std::format(
+		R"json({{"severity":"error","code":"hemera:E4015","file":"{}","line":7,"column":8,"message":"Type mismatch; inserted at {}(4,4)","inserted":[{{"file":"{}","line":4,"column":4}}]}})json"
+		"\n", quote, indexed.main, indexed.main);
+	indexed.open_main();
+	const std::vector<Object> published = indexed.session.published();
+
+	const Object* at_insert = nullptr;
+	const Object* written = nullptr;
+	for (const Object& params : published) {
+		const std::string path = hemera::lsp::path_key(hemera::lsp::path_from_uri(*params.getString("uri")));
+		if (!params.getArray("diagnostics")->empty()) {
+			const Object* diagnostic = params.getArray("diagnostics")->front().getAsObject();
+			(path == hemera::lsp::path_key(indexed.main) ? at_insert : written) = diagnostic;
+		}
+	}
+	ASSERT_NE(nullptr, at_insert);
+	EXPECT_EQ("In code this #insert puts in: Type mismatch", at_insert->getString("message")->str());
+	EXPECT_EQ(3, at_insert->getObject("range")->getObject("start")->getInteger("line"));
+	const Array* related = at_insert->getArray("relatedInformation");
+	ASSERT_NE(nullptr, related);
+	ASSERT_EQ(1u, related->size());
+	EXPECT_EQ(hemera::lsp::path_key(quote),
+		hemera::lsp::path_key(hemera::lsp::path_from_uri(*(*related)[0].getAsObject()->getObject("location")->getString("uri"))));
+	ASSERT_NE(nullptr, written);
+	ASSERT_NE(nullptr, written->getArray("relatedInformation"));
+	EXPECT_EQ("Inserted here", (*written->getArray("relatedInformation"))[0].getAsObject()->getString("message")->str());
+}
+
 TEST(Server, HoverShowsTheSignatureAndDocumentation) {
 	Indexed indexed;
 	indexed.open_main();

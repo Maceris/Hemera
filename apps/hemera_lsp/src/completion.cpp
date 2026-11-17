@@ -558,6 +558,9 @@ namespace hemera::lsp {
 
 	std::string_view CompletionTables::name_of(size_t declaration) {
 		const IndexedDeclaration& named = loaded->declarations[declaration];
+		if (!named.text.empty()) {
+			return named.text;
+		}
 		const std::string_view text = text_of(named.file);
 		if (named.name_offset >= text.size()) {
 			return {};

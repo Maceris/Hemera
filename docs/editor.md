@@ -135,8 +135,13 @@ save:
   it's checked.
 
 What you've typed since the check moves with the text: a name before or after your changes is still found, and one in
-them is known once the file is checked again. Code that compile-time code inserts, like `#insert`'s, isn't indexed,
-so names in it lead nowhere yet.
+them is known once the file is checked again.
+
+What code an `#insert` puts in declares, like the functions a protocol's code makes, is found at that `#insert`: Go
+to Definition leads there, and to where the name is written in the quote, when it is; hover shows its name and type;
+references and completion find it. It can't be renamed, as compile-time code writes its name. The outline lists it,
+once the file's been checked. An error in the code it puts in is shown where the code is written, and at the
+`#insert` in the workspace that put it there, each linked to the other.
 
 ## Other Editors
 

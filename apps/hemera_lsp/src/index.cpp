@@ -30,7 +30,8 @@ namespace hemera::lsp {
 		if (auto found = declared.find(file); found != declared.end()) {
 			for (const size_t number : found->second) {
 				const IndexedDeclaration& declaration = declarations[number];
-				if (declaration.name_offset <= offset && offset <= static_cast<size_t>(declaration.name_offset) + declaration.name_length) {
+				if (declaration.text.empty() && declaration.name_offset <= offset
+					&& offset <= static_cast<size_t>(declaration.name_offset) + declaration.name_length) {
 					return NameAt{ number, declaration.name_offset, declaration.name_length };
 				}
 			}
@@ -108,6 +109,10 @@ namespace hemera::lsp {
 				declaration.type = text_of(*object, "type");
 				declaration.brief = text_of(*object, "brief");
 				declaration.details = text_of(*object, "details");
+				declaration.text = text_of(*object, "text");
+				if (const Array* written = object->getArray("written"); written != nullptr && number_at(*written, 0) < paths.size()) {
+					declaration.written = IndexedDeclaration::Written{ paths[number_at(*written, 0)], number_at(*written, 1), number_at(*written, 2) };
+				}
 				if (const std::optional<int64_t> in = object->getInteger("in"); in.has_value() && *in >= 0) {
 					declaration.in = static_cast<size_t>(*in);
 				}
@@ -219,9 +224,9 @@ namespace hemera::lsp {
 		}
 
 		// A declaration is the same one where its file, its name's place and its kind are
-		using Key = std::tuple<std::string, uint32_t, uint32_t, std::string>;
+		using Key = std::tuple<std::string, uint32_t, uint32_t, std::string, std::string>;
 		const auto key_of = [](const IndexedDeclaration& declaration) {
-			return Key{ path_key(declaration.file), declaration.name_offset, declaration.start, declaration.kind };
+			return Key{ path_key(declaration.file), declaration.name_offset, declaration.start, declaration.kind, declaration.text };
 		};
 		LoadedIndex merged;
 		merged.declarations = std::move(fresh.declarations);

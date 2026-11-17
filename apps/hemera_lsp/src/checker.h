@@ -34,6 +34,17 @@ namespace hemera::lsp {
 		std::string message;
 		// The build package's target whose check found it; empty for the build's own code, or a program
 		std::string target;
+		// A place in a file, as file, line and column are above, with what's there
+		struct Place {
+			std::string file;
+			uint32_t line = 0;
+			uint32_t column = 0;
+			std::string message;
+		};
+		// For one in inserted code, each #insert that put the code there, the first first; empty otherwise
+		std::vector<Place> inserted;
+		// What else it shows, as related information: the server's own, never the compiler's
+		std::vector<Place> related;
 	};
 
 	/*

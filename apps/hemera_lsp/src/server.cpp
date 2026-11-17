@@ -121,8 +121,9 @@ namespace hemera::lsp {
 			};
 			for (const IndexedDeclaration& declaration : index->declarations) {
 				if (!declaration.file.empty()) {
-					declarations.push_back(std::format("{}|{}|{}|{}|{}|{}|in {}|of {}", path_key(declaration.file), declaration.name_offset,
-						declaration.start, declaration.end, declaration.kind, declaration.type, key_of(declaration.in), key_of(declaration.of)));
+					declarations.push_back(std::format("{}|{}|{}|{}|{}|{}|in {}|of {}|{}", path_key(declaration.file), declaration.name_offset,
+						declaration.start, declaration.end, declaration.kind, declaration.type, key_of(declaration.in), key_of(declaration.of),
+						declaration.text));
 				}
 			}
 			for (const auto& [file, in_file] : index->imports) {
@@ -663,6 +664,57 @@ namespace hemera::lsp {
 					file_paths[key] = path;
 				}
 				/*
+				 * One in inserted code is shown at the first #insert in the workspace that put it there too, the one the
+				 * user wrote, saying so, with where the code is written as related information; and where it's written,
+				 * with the #inserts
+				 */
+				std::vector<CompilerDiagnostic> at_inserts;
+				size_t inserted_count = 0;
+				for (const auto& [key, diagnostics] : by_file) {
+					for (const CompilerDiagnostic* diagnostic : diagnostics) {
+						inserted_count += diagnostic->inserted.empty() ? 0 : 1;
+					}
+				}
+				at_inserts.reserve(inserted_count * 2);
+				const auto in_workspace = [&](const std::string& path) {
+					return std::any_of(workspace_folders.begin(), workspace_folders.end(), [&](const std::string& folder) { return within(path, folder); });
+				};
+				std::vector<std::pair<std::string, const CompilerDiagnostic*>> moved;
+				for (auto& [key, diagnostics] : by_file) {
+					for (const CompilerDiagnostic*& diagnostic : diagnostics) {
+						if (diagnostic->inserted.empty()) {
+							continue;
+						}
+						const CompilerDiagnostic* original = diagnostic;
+						const auto site = std::find_if(original->inserted.begin(), original->inserted.end(),
+							[&](const CompilerDiagnostic::Place& place) { return in_workspace(place.file); });
+						// Where it's written, with each #insert
+						CompilerDiagnostic written = *original;
+						for (const CompilerDiagnostic::Place& place : original->inserted) {
+							written.related.push_back(CompilerDiagnostic::Place{ place.file, place.line, place.column, "Inserted here" });
+						}
+						at_inserts.push_back(std::move(written));
+						diagnostic = &at_inserts.back();
+						if (site == original->inserted.end()) {
+							continue;
+						}
+						// At the #insert, and what's in its message after the first ; is the sites, given as related information
+						CompilerDiagnostic at_insert = *diagnostic;
+						at_insert.file = site->file;
+						at_insert.line = site->line;
+						at_insert.column = site->column;
+						at_insert.message = "In code this #insert puts in: " + diagnostic->message.substr(0, diagnostic->message.find("; inserted at"));
+						at_insert.related = { CompilerDiagnostic::Place{ diagnostic->file, diagnostic->line, diagnostic->column, "Where the code is written" } };
+						at_insert.inserted.clear();
+						at_inserts.push_back(std::move(at_insert));
+						moved.emplace_back(path_key(site->file), &at_inserts.back());
+					}
+				}
+				for (const auto& [key, diagnostic] : moved) {
+					by_file[key].push_back(diagnostic);
+					file_paths.emplace(key, diagnostic->file);
+				}
+				/*
 				 * An open file of this root's that none of its build's targets read, like one only another architecture's
 				 * targets import, isn't checked at all: it says so, where the package statement is, rather than nothing
 				 */
@@ -713,6 +765,14 @@ namespace hemera::lsp {
 							{ "message", diagnostic->message } };
 						if (!diagnostic->code.empty()) {
 							published_diagnostic["code"] = diagnostic->code;
+						}
+						if (!diagnostic->related.empty()) {
+							Array related;
+							for (const CompilerDiagnostic::Place& place : diagnostic->related) {
+								related.push_back(Object{ { "location", place_location(place.file, place.line, place.column) },
+									{ "message", place.message } });
+							}
+							published_diagnostic["relatedInformation"] = std::move(related);
 						}
 						published_diagnostics.push_back(std::move(published_diagnostic));
 					}
@@ -776,8 +836,10 @@ namespace hemera::lsp {
 		if (method == "textDocument/documentSymbol") {
 			// The last version that parsed, when this one doesn't (decision 4)
 			const Parses* parses_of = uri.has_value() ? parsed(*uri) : nullptr;
-			return parses_of != nullptr && parses_of->last_tree != nullptr ? document_symbols(*parses_of->last_tree, position_encoding)
-				: Value(Array{});
+			Array symbols = parses_of != nullptr && parses_of->last_tree != nullptr ? document_symbols(*parses_of->last_tree, position_encoding)
+				: Array{};
+			add_inserted_symbols(*uri, symbols);
+			return std::move(symbols);
 		}
 		return std::nullopt;
 	}
@@ -929,14 +991,78 @@ namespace hemera::lsp {
 		return completion_items(request, index != nullptr ? completion_tables.get() : nullptr);
 	}
 
+	Value Server::place_location(const std::string& file, uint32_t line_number, uint32_t column) {
+		std::string path = file;
+		if (path.starts_with("<base>/") && !base_folder.empty()) {
+			path = base_folder + path.substr(std::string_view("<base>").size());
+		}
+		const Document* open = open_documents.find_path(path);
+		const std::string text = open != nullptr ? open->text : read_file(path).value_or(std::string());
+		const LineIndex lines(text);
+		const uint32_t line = line_number > 0 ? line_number - 1 : 0;
+		const uint32_t end = token_end(lines.line(line), column);
+		return Object{ { "uri", open != nullptr ? open->uri : uri_from_path(path) },
+			{ "range", Object{ { "start", Object{ { "line", line }, { "character", lines.character(line, column, position_encoding) } } },
+				{ "end", Object{ { "line", line }, { "character", lines.character(line, end, position_encoding) } } } } } };
+	}
+
+	void Server::add_inserted_symbols(const std::string& uri, Array& symbols) {
+		const Document* document = open_documents.find_uri(uri);
+		if (document == nullptr || document->path.empty()) {
+			return;
+		}
+		const std::string key = path_key(document->path);
+		std::shared_ptr<const LoadedIndex> index;
+		if (auto found = indexes.find(path_key(root_for(document->path))); found != indexes.end()) {
+			index = found->second;
+		}
+		auto declared = index != nullptr ? index->declared.find(key) : decltype(index->declared.end()){};
+		if (index == nullptr || declared == index->declared.end()) {
+			return;
+		}
+		const std::optional<std::pair<std::string, std::string>> texts = texts_of(*index, document->path);
+		if (!texts.has_value()) {
+			return;
+		}
+		const LineIndex lines(document->text);
+		for (const size_t number : declared->second) {
+			const IndexedDeclaration& declaration = index->declarations[number];
+			if (declaration.text.empty() || declaration.in.has_value() || declaration.kind == "local") {
+				continue;
+			}
+			const std::optional<size_t> start = moved_forward(texts->first, texts->second, declaration.name_offset);
+			const std::optional<size_t> end = moved_forward(texts->first, texts->second,
+				static_cast<size_t>(declaration.name_offset) + declaration.name_length);
+			if (!start.has_value() || !end.has_value()) {
+				continue;
+			}
+			// SymbolKind: Function, Struct or Constant
+			const int64_t kind = declaration.kind == "function" ? 12 : declaration.kind == "type" ? 23 : 14;
+			const Value range = Object{ { "start", position_at(lines, *start, position_encoding) }, { "end", position_at(lines, *end, position_encoding) } };
+			symbols.push_back(Object{ { "name", declaration.text }, { "detail", "inserted" }, { "kind", kind }, { "range", range },
+				{ "selectionRange", range } });
+		}
+	}
+
 	Value Server::definition(const Object* params) {
 		const std::optional<Named> named = named_at(params);
 		if (!named.has_value()) {
 			return nullptr;
 		}
 		const IndexedDeclaration& declaration = named->index->declarations[named->declaration];
-		return location_of(*named->index, declaration.file, declaration.name_offset,
+		Value declared = location_of(*named->index, declaration.file, declaration.name_offset,
 			static_cast<size_t>(declaration.name_offset) + declaration.name_length);
+		// One inserted code made: its #insert, and where its name is written, in the quote, when it is
+		if (!declaration.written.has_value() || declared.getAsObject() == nullptr) {
+			return declared;
+		}
+		Array both{ std::move(declared) };
+		Value written = location_of(*named->index, declaration.written->file, declaration.written->offset,
+			static_cast<size_t>(declaration.written->offset) + declaration.written->length);
+		if (written.getAsObject() != nullptr) {
+			both.push_back(std::move(written));
+		}
+		return both;
 	}
 
 	// What a declaration's line says, from its name: its first line, without an opening brace or a comma at its end
@@ -968,7 +1094,16 @@ namespace hemera::lsp {
 		if (("local" == declaration.kind || "field" == declaration.kind) && !declaration.type.empty()) {
 			signature = name + " : " + declaration.type;
 		}
+		// One inserted code made: its line is the #insert's, so it's its name and type
+		if (!declaration.text.empty()) {
+			name = declaration.text;
+			signature = "type" == declaration.kind ? name + " :: " + declaration.kind
+				: name + ("function" == declaration.kind || "constant" == declaration.kind ? " :: " : " : ") + declaration.type;
+		}
 		std::string markdown = "```hemera\n" + signature + "\n```";
+		if (!declaration.text.empty()) {
+			markdown += "\n\nDeclared by code an `#insert` puts in.";
+		}
 		if ("constant" == declaration.kind && !declaration.type.empty()) {
 			markdown += "\n\nType: `" + declaration.type + "`";
 		}
@@ -1017,6 +1152,9 @@ namespace hemera::lsp {
 			return std::string("There's no name here that the last check knows. Save, and try again once it's checked.");
 		}
 		const IndexedDeclaration& declaration = named->index->declarations[named->declaration];
+		if (!declaration.text.empty()) {
+			return std::string("It's declared by code an #insert puts in, which writes its name; change it there.");
+		}
 		const bool in_workspace = std::any_of(workspace_folders.begin(), workspace_folders.end(),
 			[&](const std::string& folder) { return within(declaration.file, folder); });
 		if (!in_workspace) {

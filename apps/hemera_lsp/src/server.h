@@ -130,6 +130,12 @@ namespace hemera::lsp {
 		 */
 		std::optional<Named> named_at(const llvm::json::Object* params);
 
+		// A diagnostic's place, a file and a line and column as the compiler gives them, as a Location
+		llvm::json::Value place_location(const std::string& file, uint32_t line, uint32_t column);
+
+		// The declarations code an #insert in the document puts in, from the index, added to its outline's symbols
+		void add_inserted_symbols(const std::string& uri, llvm::json::Array& symbols);
+
 		// textDocument/completion's answer (completion_items), for params' textDocument and position. state must be held.
 		llvm::json::Value completion(const llvm::json::Object* params);
 
