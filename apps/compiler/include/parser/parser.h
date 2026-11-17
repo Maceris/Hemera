@@ -17,6 +17,9 @@ namespace hemera::parser {
 		ast::QuoteTable* quotes;
 		bool has_errors;
 		const char _padding[7] = { 0 };
+		// The errors reported, and the token the last one was at: a second error there isn't reported, as it follows from the first
+		size_t errors = 0;
+		size_t last_error_at = SIZE_MAX;
 
 		ParserState(std::string_view file_path, MyVector<Token>& tokens,
 			Allocator<ast::Node> node_alloc, ast::QuoteTable* quotes = nullptr);
@@ -46,9 +49,15 @@ namespace hemera::parser {
 	
 	bool skip(ParserState* state, TokenType token);
 
-	/// <summary>
-	/// A file's tree. The trees of #code quotes in it go in quotes, if it's given.
-	/// </summary>
+	/*
+	 * A file's tree. The trees of #code quotes in it go in quotes, if it's given.
+	 *
+	 * An error doesn't end it: the parser reports it, skips to where it can go on, and does. A statement with an error is
+	 * skipped to the next line at its own depth, and a top-level declaration or import with one to the next line that
+	 * starts one at the start of a line. A top-level item with an error anywhere in it, a statement's included, is an ERROR
+	 * node holding what was made of it, which the compiler doesn't check. A block still open at the file's end is closed
+	 * before the first declaration at the start of a line in it, as that's where a } went missing.
+	 */
 	ast::Node* file(std::string_view file_path, MyVector<Token>& tokens, Allocator<ast::Node> node_alloc,
 		ast::QuoteTable* quotes = nullptr);
 	bool package_statement(ParserState* state, ast::Node& parent);

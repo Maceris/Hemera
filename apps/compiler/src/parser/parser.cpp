@@ -1,4 +1,6 @@
+#include <algorithm>
 #include <format>
+#include <vector>
 
 #include "error/reporting.h"
 
@@ -45,20 +47,221 @@ namespace hemera::parser {
 		return state->tokens[index];
 	}
 
+	// Whether an error can be reported at the current token: not if one was, as a second follows from the first.
+	static inline bool first_error_here(ParserState* state) {
+		state->has_errors = true;
+		if (state->last_error_at == state->current) {
+			return false;
+		}
+		state->last_error_at = state->current;
+		state->errors += 1;
+		return true;
+	}
+
 	static inline void report_error_on_last_token(ParserState* state,
 		ErrorCode code) {
+		if (!first_error_here(state)) {
+			return;
+		}
 		Token token = current_token(state);
 		report_error(code, state->file_path, token.line_number,
 			token.column_number);
-		state->has_errors = true;
 	}
 
 	static inline void report_error_on_last_token(ParserState* state,
 		ErrorCode code, std::string_view additional_info) {
+		if (!first_error_here(state)) {
+			return;
+		}
 		Token token = current_token(state);
 		report_error(code, state->file_path, token.line_number, 
 			token.column_number, additional_info);
-		state->has_errors = true;
+	}
+
+	// Whether the token at index is the first on its line.
+	static bool starts_line(ParserState* state, size_t index) {
+		if (index >= state->tokens.size()) {
+			return false;
+		}
+		return index == 0 || state->tokens[index - 1].line_number < state->tokens[index].line_number;
+	}
+
+	/*
+	 * The brackets open while skipping what an error left, innermost last. A } closes what's open inside its {, as a
+	 * bracket left open there can't reach past it; a ) or ] closing nothing open is passed over.
+	 */
+	struct OpenBrackets {
+		std::vector<TokenType> open;
+
+		bool any_brace() const {
+			return std::find(open.begin(), open.end(), TokenType::SYM_LBRACE) != open.end();
+		}
+
+		// Takes a token in; false for a } that closes no { taken in, the end of a block around them all.
+		bool take(TokenType type) {
+			if (TokenType::SYM_LPAREN == type || TokenType::SYM_LBRACK == type || TokenType::SYM_LBRACE == type) {
+				open.push_back(type);
+			}
+			else if (TokenType::SYM_RBRACE == type) {
+				if (!any_brace()) {
+					return false;
+				}
+				while (open.back() != TokenType::SYM_LBRACE) {
+					open.pop_back();
+				}
+				open.pop_back();
+			}
+			else if (!open.empty() && ((TokenType::SYM_RPAREN == type && TokenType::SYM_LPAREN == open.back())
+				|| (TokenType::SYM_RBRACK == type && TokenType::SYM_LBRACK == open.back()))) {
+				open.pop_back();
+			}
+			return true;
+		}
+
+		// The brackets a statement or item opened, from the token it started at to the current one.
+		static OpenBrackets since(ParserState* state, size_t start) {
+			OpenBrackets brackets;
+			for (size_t i = start; i < state->current && i < state->tokens.size(); ++i) {
+				brackets.take(state->tokens[i].type);
+			}
+			return brackets;
+		}
+	};
+
+	static bool is_declaration_start(ParserState* state);
+
+	/*
+	 * After a statement's error, from the token it started at: on to the } closing its block, or a line that starts at or
+	 * left of where it started, outside any block it opened, or the end of the file. A statement that made nothing skips
+	 * at least its first token.
+	 */
+	static void skip_statement(ParserState* state, size_t start) {
+		const uint16_t column = state->tokens[std::min(start, state->tokens.size() - 1)].column_number;
+		OpenBrackets brackets = OpenBrackets::since(state, start);
+		while (!expect(state, TokenType::END_OF_FILE)) {
+			const Token& token = current_token(state);
+			if (state->current > start) {
+				if (TokenType::SYM_RBRACE == token.type && !brackets.any_brace()) {
+					return;
+				}
+				if (starts_line(state, state->current) && !brackets.any_brace() && token.column_number <= column) {
+					return;
+				}
+				// A declaration at a line's start, before which a block that's still open was closed (block)
+				if (starts_line(state, state->current) && token.column_number == 0 && is_declaration_start(state)) {
+					return;
+				}
+			}
+			brackets.take(token.type);
+			state->current += 1;
+		}
+	}
+
+	// Whether a top-level item, an import or a declaration, could start at the current token.
+	static bool starts_top_level_item(ParserState* state) {
+		const TokenType type = current_token(state).type;
+		return TokenType::IDENTIFIER == type || TokenType::DIRECTIVE == type || TokenType::ANNOTATION == type;
+	}
+
+	/*
+	 * After a top-level item's error, from the token it started at: on to the next line that starts with what could start
+	 * one. In a file, that's at the line's start, whatever's open; in an #if's block, at or left of where the item started,
+	 * outside any block it opened, or the } closing the #if's block. Or to the end of the file.
+	 */
+	static void skip_top_level_item(ParserState* state, size_t start, bool in_block) {
+		const uint16_t column = state->tokens[std::min(start, state->tokens.size() - 1)].column_number;
+		OpenBrackets brackets = OpenBrackets::since(state, start);
+		while (!expect(state, TokenType::END_OF_FILE)) {
+			const Token& token = current_token(state);
+			if (state->current > start && starts_line(state, state->current) && starts_top_level_item(state)) {
+				if (!in_block && token.column_number == 0) {
+					return;
+				}
+				if (in_block && !brackets.any_brace() && token.column_number <= column) {
+					return;
+				}
+			}
+			if (!brackets.take(token.type) && in_block) {
+				return;
+			}
+			state->current += 1;
+		}
+	}
+
+	// An ERROR node at the current token, where an expression's name or operand is missing, which was reported.
+	static ast::Node* missing(ParserState* state) {
+		return state->node_alloc.new_object<ast::Node>(ast::NodeType::ERROR, current_token(state));
+	}
+
+	// Whether a token is an operator with an operand after it: a binary one, an assignment or a range.
+	static bool takes_operand_after(TokenType type) {
+		constexpr TokenType OPERATORS[] = {
+			TokenType::OPERATOR_AND,
+			TokenType::OPERATOR_ASSIGN,
+			TokenType::OPERATOR_ASSIGN_ADD,
+			TokenType::OPERATOR_ASSIGN_AND,
+			TokenType::OPERATOR_ASSIGN_BITWISE_AND,
+			TokenType::OPERATOR_ASSIGN_BITWISE_OR,
+			TokenType::OPERATOR_ASSIGN_BITWISE_XOR,
+			TokenType::OPERATOR_ASSIGN_DIV,
+			TokenType::OPERATOR_ASSIGN_LEFT_SHIFT,
+			TokenType::OPERATOR_ASSIGN_MOD,
+			TokenType::OPERATOR_ASSIGN_MUL,
+			TokenType::OPERATOR_ASSIGN_OR,
+			TokenType::OPERATOR_ASSIGN_REMAINDER,
+			TokenType::OPERATOR_ASSIGN_RIGHT_SHIFT_ARITHMETIC,
+			TokenType::OPERATOR_ASSIGN_RIGHT_SHIFT_LOGICAL,
+			TokenType::OPERATOR_ASSIGN_SUB,
+			TokenType::OPERATOR_BITWISE_OR,
+			TokenType::OPERATOR_BITWISE_XOR,
+			TokenType::OPERATOR_DIVIDE,
+			TokenType::OPERATOR_EQUAL,
+			TokenType::OPERATOR_GREATER_THAN_OR_EQUAL,
+			TokenType::OPERATOR_LEFT_SHIFT,
+			TokenType::OPERATOR_LESS_THAN_OR_EQUAL,
+			TokenType::OPERATOR_MINUS,
+			TokenType::OPERATOR_MODULUS,
+			TokenType::OPERATOR_MULTIPLY,
+			TokenType::OPERATOR_NOT_EQUAL,
+			TokenType::OPERATOR_OR,
+			TokenType::OPERATOR_PLUS,
+			TokenType::OPERATOR_RANGE_EXCLUSIVE,
+			TokenType::OPERATOR_RANGE_INCLUSIVE,
+			TokenType::OPERATOR_REMAINDER,
+			TokenType::OPERATOR_RIGHT_SHIFT_ARITHMETIC,
+			TokenType::OPERATOR_RIGHT_SHIFT_LOGICAL,
+			TokenType::SYM_GT,
+			TokenType::SYM_LT,
+		};
+		return std::find(std::begin(OPERATORS), std::end(OPERATORS), type) != std::end(OPERATORS);
+	}
+
+	/*
+	 * Whether an operand is missing at the end of what's written, as while it's being typed: after an operator, with the
+	 * line, or a bracket, or the file, ending there.
+	 */
+	static bool operand_missing_at_end(ParserState* state) {
+		if (state->current == 0 || state->current >= state->tokens.size()
+			|| !takes_operand_after(state->tokens[state->current - 1].type)) {
+			return false;
+		}
+		const TokenType type = current_token(state).type;
+		return starts_line(state, state->current) || TokenType::SYM_RPAREN == type || TokenType::SYM_RBRACK == type
+			|| TokenType::SYM_RBRACE == type || TokenType::END_OF_FILE == type;
+	}
+
+	/*
+	 * A top-level item that reported errors, whose nodes are parent's from first on: they go in an ERROR node at the
+	 * token it started at, in their place.
+	 */
+	static void set_aside(ParserState* state, ast::Node& parent, size_t first, size_t start) {
+		const size_t at = std::min(start, state->tokens.size() - 1);
+		ast::Node* error = state->node_alloc.new_object<ast::Node>(ast::NodeType::ERROR, state->tokens[at]);
+		for (size_t i = first; i < parent.children.size(); ++i) {
+			error->children.push_back(parent.children[i]);
+		}
+		parent.children.resize(first);
+		parent.children.push_back(error);
 	}
 
 	static void delete_node(Allocator<ast::Node>& node_alloc, ast::Node* node) {
@@ -247,25 +450,22 @@ namespace hemera::parser {
 		Token current(TokenType::START_OF_FILE, 0, 0);
 		ast::Node* node = node_alloc.new_object<ast::Node>(ast::NodeType::FILE, current);
 
-		//TODO(ches) stop bailing early and attempt to recover from errors
-		const size_t errors_before = error_count();
-		if (!package_statement(&state, *node)
-			|| !imports(&state, *node)
-			|| !const_definitions(&state, *node)) {
-			/*
-			 * Some failures don't report an error themselves; without this the rest of the file
-			 * would be dropped silently. Another file's error can hide this, which only loses the
-			 * generic message.
-			 */
-			if (error_count() == errors_before) {
-				report_error_on_last_token(&state, ErrorCode::E3017);
+		// The package statement, set aside if it's wrong, and on from the line after, or what starts a line there
+		if (!package_statement(&state, *node)) {
+			set_aside(&state, *node, 0, 0);
+			if (!starts_line(&state, state.current) || !starts_top_level_item(&state) || current_token(&state).column_number != 0) {
+				skip_top_level_item(&state, state.current, false);
 			}
-			return node;
 		}
-		if (!expect(&state, TokenType::END_OF_FILE)) {
+		imports(&state, *node);
+		const_definitions(&state, *node);
+		// What can't be there, like an import after the definitions, then on to the next item
+		while (!expect(&state, TokenType::END_OF_FILE)) {
+			const size_t start = state.current;
 			report_error_on_last_token(&state, ErrorCode::E3007);
+			skip_top_level_item(&state, start, false);
+			const_definitions(&state, *node);
 		}
-
 		return node;
 	}
 
@@ -326,64 +526,96 @@ namespace hemera::parser {
 		return true;
 	}
 
+	// One import, or a directive among the imports, like #if; false after an error.
+	static bool import_item(ParserState* state, ast::Node& parent) {
+		const TokenType current_type = current_token(state).type;
+		if (current_type == TokenType::DIRECTIVE) {
+			ast::Node& directive = next_as_node(state, ast::NodeType::DIRECTIVE, &parent);
+			
+			bool is_an_if = false;
+
+			if (directive.value.value->compare("#if") == 0
+				|| directive.value.value->compare("#else_if") == 0) {
+				is_an_if = true;
+
+				ExprResult conditional = expression_with_result(state, true);
+				if (!conditional.success) {
+					return false;
+				}
+				directive.children.push_back(conditional.result);
+			}
+	
+			if (is_an_if || directive.value.value->compare("#else") == 0) {
+				if (!expect(state, TokenType::SYM_LBRACE)) {
+					report_error_on_last_token(state, ErrorCode::E3018);
+					return false;
+				}
+				const Token& lbrace = current_token(state);
+				skip(state, TokenType::SYM_LBRACE);
+				if (!top_level_block(state, directive)) {
+					return false;
+				}
+				if (!skip(state, TokenType::SYM_RBRACE)) {
+					report_error_on_last_token(state, ErrorCode::E3019,
+						std::format("Opening brace was at ({},{})",
+							lbrace.line_number,
+							lbrace.column_number));
+					return false;
+				}
+			}
+
+			// #run and #assert take an expression, #insert an operand (insert_operand)
+			if (directive.value.value->compare("#run") == 0
+				|| directive.value.value->compare("#assert") == 0
+				|| directive.value.value->compare("#insert") == 0) {
+				ExprResult expr = directive.value.value->compare("#insert") == 0 ? insert_operand(state)
+					: expression_with_result(state, true);
+				if (!expr.success) {
+					return false;
+				}
+				directive.children.push_back(expr.result);
+			}
+
+		}
+		else if (!import(state, parent)) {
+			return false;
+		}
+		return true;
+	}
+
+	/*
+	 * Parses one top-level item with parse, and if it reported errors, sets what it made aside, as an ERROR node, and skips
+	 * to where the next item can start (skip_top_level_item). It's still an error that it made nothing of what it was given.
+	 */
+	template<typename Parse>
+	static void top_level_item(ParserState* state, ast::Node& parent, Parse parse) {
+		const size_t start = state->current;
+		const size_t first = parent.children.size();
+		const size_t errors = state->errors;
+		const bool parsed = parse();
+		if (!parsed && state->errors == errors) {
+			// Some failures don't report an error themselves
+			report_error_on_last_token(state, ErrorCode::E3017);
+		}
+		if (parsed && state->errors == errors) {
+			return;
+		}
+		set_aside(state, parent, first, start);
+		const bool in_block = ast::NodeType::FILE != parent.node_type;
+		if (!parsed) {
+			skip_top_level_item(state, start, in_block);
+		}
+		// What it left, like the } of a block it closed early as a { was missing, goes with it
+		else if (!expect(state, TokenType::END_OF_FILE) && !(in_block && expect(state, TokenType::SYM_RBRACE))
+			&& !(starts_line(state, state->current) && starts_top_level_item(state)
+				&& (in_block || current_token(state).column_number == 0))) {
+			skip_top_level_item(state, state->current, in_block);
+		}
+	}
+
 	bool imports(ParserState* state, ast::Node& parent) {
-
-		TokenType current_type = current_token(state).type;
-		while (is_import(state)
-			|| current_type == TokenType::DIRECTIVE
-		) {
-			if (current_type == TokenType::DIRECTIVE) {
-				ast::Node& directive = next_as_node(state, ast::NodeType::DIRECTIVE, &parent);
-				
-				bool is_an_if = false;
-
-				if (directive.value.value->compare("#if") == 0
-					|| directive.value.value->compare("#else_if") == 0) {
-					is_an_if = true;
-
-					ExprResult conditional = expression_with_result(state, true);
-					if (!conditional.success) {
-						return false;
-					}
-					directive.children.push_back(conditional.result);
-				}
-		
-				if (is_an_if || directive.value.value->compare("#else") == 0) {
-					if (!expect(state, TokenType::SYM_LBRACE)) {
-						report_error_on_last_token(state, ErrorCode::E3018);
-						return false;
-					}
-					const Token& lbrace = current_token(state);
-					skip(state, TokenType::SYM_LBRACE);
-					if (!top_level_block(state, directive)) {
-						return false;
-					}
-					if (!skip(state, TokenType::SYM_RBRACE)) {
-						report_error_on_last_token(state, ErrorCode::E3019,
-							std::format("Opening brace was at ({},{})",
-								lbrace.line_number,
-								lbrace.column_number));
-						return false;
-					}
-				}
-
-				// #run and #assert take an expression, #insert an operand (insert_operand)
-				if (directive.value.value->compare("#run") == 0
-					|| directive.value.value->compare("#assert") == 0
-					|| directive.value.value->compare("#insert") == 0) {
-					ExprResult expr = directive.value.value->compare("#insert") == 0 ? insert_operand(state)
-						: expression_with_result(state, true);
-					if (!expr.success) {
-						return false;
-					}
-					directive.children.push_back(expr.result);
-				}
-
-			}
-			else if (!import(state, parent)) {
-				return false;
-			}
-			current_type = current_token(state).type;
+		while (is_import(state) || expect(state, TokenType::DIRECTIVE)) {
+			top_level_item(state, parent, [&] { return import_item(state, parent); });
 		}
 		return true;
 	}
@@ -395,16 +627,12 @@ namespace hemera::parser {
 	bool top_level_block(ParserState* state, ast::Node& parent) {
 		while (true) {
 			if (is_import(state)) {
-				if (!import(state, parent)) {
-					return false;
-				}
+				top_level_item(state, parent, [&] { return import(state, parent); });
 			}
 			else if (expect(state, TokenType::IDENTIFIER)
 				|| expect(state, TokenType::DIRECTIVE)
 				|| expect(state, TokenType::ANNOTATION)) {
-				if (!const_definitions(state, parent)) {
-					return false;
-				}
+				const_definitions(state, parent);
 			}
 			else {
 				return true;
@@ -481,87 +709,92 @@ namespace hemera::parser {
 		}
 	}
 
+	// One top-level definition, or a directive among them, like #if or #run; false after an error.
+	static bool const_definition_item(ParserState* state, ast::Node& parent) {
+		if (expect(state, TokenType::DIRECTIVE)) {
+			ast::Node& directive = next_as_node(state, ast::NodeType::DIRECTIVE, &parent);
+
+			bool is_an_if = false;
+
+			if (directive.value.value->compare("#if") == 0
+				|| directive.value.value->compare("#else_if") == 0) {
+				is_an_if = true;
+
+				ExprResult conditional = expression_with_result(state, true);
+				if (!conditional.success) {
+					return false;
+				}
+				directive.children.push_back(conditional.result);
+			}
+
+			if (is_an_if || directive.value.value->compare("#else") == 0) {
+				if (!expect(state, TokenType::SYM_LBRACE)) {
+					report_error_on_last_token(state, ErrorCode::E3018);
+					return false;
+				}
+				const Token& lbrace = current_token(state);
+				skip(state, TokenType::SYM_LBRACE);
+				if (!top_level_block(state, directive)) {
+					return false;
+				}
+				if (!skip(state, TokenType::SYM_RBRACE)) {
+					report_error_on_last_token(state, ErrorCode::E3019,
+						std::format("Opening brace was at ({},{})",
+							lbrace.line_number,
+							lbrace.column_number));
+					return false;
+				}
+			}
+
+			// #run and #assert take an expression, #insert an operand (insert_operand)
+			if (directive.value.value->compare("#run") == 0
+				|| directive.value.value->compare("#assert") == 0
+				|| directive.value.value->compare("#insert") == 0) {
+				ExprResult expr = directive.value.value->compare("#insert") == 0 ? insert_operand(state)
+					: expression_with_result(state, true);
+				if (!expr.success) {
+					return false;
+				}
+				directive.children.push_back(expr.result);
+				if (directive.value.value->compare("#insert") == 0 && expect(state, TokenType::SYM_COLON)) {
+					parent.children.pop_back();
+					if (!inserted_name_definition(state, parent, directive)) {
+						return false;
+					}
+				}
+			}
+			return true;
+		}
+
+		MyVector<ast::Node*> annotations{};
+		while (expect(state, TokenType::ANNOTATION)) {
+			annotations.push_back(&next_as_node(state, ast::NodeType::ANNOTATION));
+		}
+
+		ExprResult decl = declaration(state, parent);
+
+		if (!decl.success) {
+			for (ast::Node* annotation : annotations) {
+				delete_node(state->node_alloc, annotation);
+			}
+			return false;
+		}
+		for (ast::Node* annotation : annotations) {
+			decl.result->children.push_back(annotation);
+		}
+
+		if (!const_definition_rhs(state, *decl.result)) {
+			return false;
+		}
+		split_definition(state, parent);
+		return true;
+	}
+
 	bool const_definitions(ParserState* state, ast::Node& parent) {
 		while ((expect(state, TokenType::IDENTIFIER) && !is_import(state))
 			|| expect(state, TokenType::DIRECTIVE)
 			|| expect(state, TokenType::ANNOTATION)) {
-
-			if (expect(state, TokenType::DIRECTIVE)) {
-				ast::Node& directive = next_as_node(state, ast::NodeType::DIRECTIVE, &parent);
-
-				bool is_an_if = false;
-
-				if (directive.value.value->compare("#if") == 0
-					|| directive.value.value->compare("#else_if") == 0) {
-					is_an_if = true;
-
-					ExprResult conditional = expression_with_result(state, true);
-					if (!conditional.success) {
-						return false;
-					}
-					directive.children.push_back(conditional.result);
-				}
-
-				if (is_an_if || directive.value.value->compare("#else") == 0) {
-					if (!expect(state, TokenType::SYM_LBRACE)) {
-						report_error_on_last_token(state, ErrorCode::E3018);
-						return false;
-					}
-					const Token& lbrace = current_token(state);
-					skip(state, TokenType::SYM_LBRACE);
-					if (!top_level_block(state, directive)) {
-						return false;
-					}
-					if (!skip(state, TokenType::SYM_RBRACE)) {
-						report_error_on_last_token(state, ErrorCode::E3019,
-							std::format("Opening brace was at ({},{})",
-								lbrace.line_number,
-								lbrace.column_number));
-						return false;
-					}
-				}
-
-				// #run and #assert take an expression, #insert an operand (insert_operand)
-				if (directive.value.value->compare("#run") == 0
-					|| directive.value.value->compare("#assert") == 0
-					|| directive.value.value->compare("#insert") == 0) {
-					ExprResult expr = directive.value.value->compare("#insert") == 0 ? insert_operand(state)
-						: expression_with_result(state, true);
-					if (!expr.success) {
-						return false;
-					}
-					directive.children.push_back(expr.result);
-					if (directive.value.value->compare("#insert") == 0 && expect(state, TokenType::SYM_COLON)) {
-						parent.children.pop_back();
-						if (!inserted_name_definition(state, parent, directive)) {
-							return false;
-						}
-					}
-				}
-				continue;
-			}
-
-			MyVector<ast::Node*> annotations{};
-			while (expect(state, TokenType::ANNOTATION)) {
-				annotations.push_back(&next_as_node(state, ast::NodeType::ANNOTATION));
-			}
-
-			ExprResult decl = declaration(state, parent);
-
-			if (!decl.success) {
-				for (ast::Node* annotation : annotations) {
-					delete_node(state->node_alloc, annotation);
-				}
-				return false;
-			}
-			for (ast::Node* annotation : annotations) {
-				decl.result->children.push_back(annotation);
-			}
-
-			if (!const_definition_rhs(state, *decl.result)) {
-				return false;
-			}
-			split_definition(state, parent);
+			top_level_item(state, parent, [&] { return const_definition_item(state, parent); });
 		}
 		return true;
 	}
@@ -1842,17 +2075,30 @@ namespace hemera::parser {
 
 		ast::Node& block_node = next_as_node(state, ast::NodeType::BLOCK);
 
+		// Its first declaration at a line's start, and how many statements it had then: where a missing } most likely was
+		size_t first_at_start = SIZE_MAX;
+		size_t statements_then = 0;
 		while (!expect(state, TokenType::SYM_RBRACE)) {
 			if (expect(state, TokenType::END_OF_FILE)
 				|| expect(state, TokenType::KEYWORD_WHILE)) {
+				if (expect(state, TokenType::END_OF_FILE) && first_at_start != SIZE_MAX) {
+					state->current = first_at_start;
+					block_node.children.resize(statements_then);
+				}
 				report_error_on_last_token(state, ErrorCode::E3019,
 					std::format("Opening brace was at ({},{})",
 						block_node.value.line_number,
 						block_node.value.column_number));
 				return ExprResult{ false };
 			}
+			if (first_at_start == SIZE_MAX && starts_line(state, state->current) && current_token(state).column_number == 0
+				&& is_declaration_start(state)) {
+				first_at_start = state->current;
+				statements_then = block_node.children.size();
+			}
+			const size_t start = state->current;
 			if (!statement(state, block_node)) {
-				return ExprResult{ false };
+				skip_statement(state, start);
 			}
 		}
 
@@ -2703,6 +2949,20 @@ namespace hemera::parser {
 	ExprResult expr_lvl_11(ParserState* state) {
 		const TokenType current = current_token(state).type;
 
+		/*
+		 * An operand on the next line that starts at or left of where the operator's line does is the next statement,
+		 * and this one's operand is missing, as while it's typed: a continuation is indented further
+		 */
+		if (operand_missing_at_end(state) && starts_line(state, state->current)) {
+			size_t line_start = state->current - 1;
+			while (line_start > 0 && !starts_line(state, line_start)) {
+				--line_start;
+			}
+			if (current_token(state).column_number <= state->tokens[line_start].column_number) {
+				report_error_on_last_token(state, ErrorCode::E3017);
+				return ExprResult{ true, missing(state) };
+			}
+		}
 
 		if (current == TokenType::KEYWORD_CAST
 			|| current == TokenType::KEYWORD_BIT_CAST
@@ -2803,6 +3063,10 @@ namespace hemera::parser {
 		}
 
 		report_error_on_last_token(state, ErrorCode::E3017);
+		// As while it's being typed, like a + at a line's end: the operand is an ERROR node, and the expression goes on
+		if (operand_missing_at_end(state)) {
+			return ExprResult{ true, missing(state) };
+		}
 		return ExprResult{ false };
 	}
 
@@ -3103,9 +3367,11 @@ namespace hemera::parser {
 					directive.children.push_back(operand.result);
 					continue;
 				}
-				if (!accept_name(state, target)) {
+				if (starts_line(state, state->current) || !accept_name(state, target)) {
+					// As while it's being typed, like p. at a line's end: the name is an ERROR node, and the expression goes on
 					report_error_on_last_token(state, ErrorCode::E3009);
-					return false;
+					target.children.push_back(missing(state));
+					break;
 				}
 				continue;
 			}

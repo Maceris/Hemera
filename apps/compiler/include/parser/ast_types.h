@@ -86,6 +86,11 @@ namespace hemera::ast {
 		WHERE_CLAUSE,
 		WHILE_CLAUSE,
 		WITH_CLAUSE,
+		/*
+		 * What the parser skipped to go on after an error (parser.h), with what it had made of it as its children; its
+		 * token is where it starts. Only a tree with errors has one, which the compiler doesn't check.
+		 */
+		ERROR,
 	};
 
 	using offset = int64_t;

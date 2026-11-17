@@ -91,6 +91,7 @@ namespace hemera::ast {
 		if (NodeType::USING == type) { return "USING"; }
 		if (NodeType::VOID == type) { return "VOID"; }
 		if (NodeType::WHERE_CLAUSE == type) { return "WHERE_CLAUSE"; }
+		if (NodeType::ERROR == type) { return "ERROR"; }
 		if (NodeType::WHILE_CLAUSE == type) { return "WHILE_CLAUSE"; }
 		if (NodeType::WITH_CLAUSE == type) { return "WITH_CLAUSE"; }
 		return "?";

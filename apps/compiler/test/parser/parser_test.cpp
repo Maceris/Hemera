@@ -608,6 +608,136 @@ TEST(ParserSmoke, KeepsCommentsAndDocumentation)
 	EXPECT_GT(documented, 3000u);
 }
 
+namespace {
+	// A file's tree from its text, with what was reported kept in reporting's storage
+	hemera::ast::Node* parse_text(const std::string& text, Allocator<>& alloc, MyVector<Token>& tokens) {
+		std::istringstream stream(text);
+		hemera::lexer::lex(stream, tokens, alloc, "recovering.hsc");
+		return hemera::parser::file("recovering.hsc", tokens, alloc);
+	}
+
+	// The kinds of a node's children, like DEFINITION or ERROR
+	std::vector<std::string> kinds_of(const hemera::ast::Node* node) {
+		std::vector<std::string> kinds;
+		for (const hemera::ast::Node* child : node->children) {
+			kinds.emplace_back(hemera::ast::name_of(child->node_type));
+		}
+		return kinds;
+	}
+}
+
+/*
+ * An error doesn't end the file: each top-level declaration with one is reported and set aside as an ERROR node, and
+ * those after it are parsed. A statement's error skips to the next statement, and a block left open at the file's end
+ * closes before the first declaration at a line's start in it.
+ */
+TEST(ParserSmoke, RecoversToReportEachError)
+{
+	hemera::disable_reporting_printing();
+	hemera::reset_reporting_storage();
+	StringCacheGuard string_cache;
+	Allocator<> alloc;
+	MyVector<Token> tokens;
+	const hemera::ast::Node* tree = parse_text(
+		"package recovering\n"
+		"\n"
+		"first :: fn() {\n"
+		"    x := (1 +\n"
+		"    y := 2\n"
+		"}\n"
+		"\n"
+		"Point :: struct {\n"
+		"    x : int\n"
+		"    y : int\n"
+		"}\n"
+		"\n"
+		"second :: fn() {\n"
+		"    if true {\n"
+		"        broken(\n"
+		"    }\n"
+		"    z := 3\n"
+		"}\n"
+		"\n"
+		"unclosed :: fn() {\n"
+		"    if true {\n"
+		"        w := 1\n"
+		"\n"
+		"last :: fn() -> int {\n"
+		"    return 1\n"
+		"}\n", alloc, tokens);
+
+	std::vector<std::pair<uint32_t, uint16_t>> places;
+	std::string reported;
+	for (const hemera::Diagnostic& diagnostic : hemera::diagnostics()) {
+		places.emplace_back(diagnostic.line, diagnostic.column);
+		reported += std::format("\n  {}:{}:{} {}",diagnostic.code, diagnostic.line, diagnostic.column, diagnostic.message);
+	}
+	EXPECT_EQ(places.size(), 3u) << reported;
+	ASSERT_GE(places.size(), 3u);
+	EXPECT_EQ(places[0].first, 5u) << "first's, where its expression went wrong";
+	EXPECT_EQ(places[1].first, 16u) << "second's, at the } its call didn't close";
+	EXPECT_EQ(places[2], std::make_pair(24u, uint16_t{ 0 })) << "unclosed's, at last, where its } went missing";
+	EXPECT_EQ(kinds_of(tree), (std::vector<std::string>{ "PACKAGE", "ERROR", "DEFINITION", "ERROR", "ERROR", "DEFINITION" }));
+	// What was made of a declaration with an error is kept in its ERROR node
+	ASSERT_EQ(tree->children[3]->children.size(), 1u);
+	EXPECT_EQ(hemera::ast::name_of(tree->children[3]->children[0]->node_type), "DEFINITION");
+}
+
+namespace {
+	// The first node of a type under node, depth first, or null
+	const hemera::ast::Node* first_of(const hemera::ast::Node* node, hemera::ast::NodeType type) {
+		if (node->node_type == type) {
+			return node;
+		}
+		for (const hemera::ast::Node* child : node->children) {
+			if (const hemera::ast::Node* found = first_of(child, type)) {
+				return found;
+			}
+		}
+		return nullptr;
+	}
+}
+
+/*
+ * Lines left unfinished, as while they're typed: a name missing after a . and an operand missing at a line's end, or
+ * before a closing bracket, are each reported and stand as an ERROR node, and their statements stay in the block.
+ */
+TEST(ParserSmoke, RecoversInsideUnfinishedLines)
+{
+	hemera::disable_reporting_printing();
+	hemera::reset_reporting_storage();
+	StringCacheGuard string_cache;
+	Allocator<> alloc;
+	MyVector<Token> tokens;
+	const hemera::ast::Node* tree = parse_text(
+		"package recovering\n"
+		"\n"
+		"main :: fn() -> int {\n"
+		"    p := Point.{}\n"
+		"    q := p.\n"
+		"    r := 1 +\n"
+		"    s := (2 *\n"
+		"    )\n"
+		"    return 0\n"
+		"}\n", alloc, tokens);
+
+	std::string reported;
+	for (const hemera::Diagnostic& diagnostic : hemera::diagnostics()) {
+		reported += std::format("\n  {}:{}:{} {}", diagnostic.code, diagnostic.line, diagnostic.column, diagnostic.message);
+	}
+	EXPECT_EQ(hemera::diagnostics().size(), 3u) << reported;
+	const hemera::ast::Node* block = first_of(tree, hemera::ast::NodeType::BLOCK);
+	ASSERT_NE(block, nullptr);
+	EXPECT_EQ(block->children.size(), 5u) << "p, q, r, s and the return";
+	ASSERT_GE(block->children.size(), 2u);
+	// q's value: p, the ., and an ERROR where the name goes
+	const hemera::ast::Node* access = first_of(block->children[1], hemera::ast::NodeType::DOT_ACCESS);
+	ASSERT_NE(access, nullptr);
+	EXPECT_NE(first_of(block->children[1], hemera::ast::NodeType::ERROR), nullptr);
+	// The declaration is still set aside, as it has errors
+	EXPECT_EQ(kinds_of(tree), (std::vector<std::string>{ "PACKAGE", "ERROR" }));
+}
+
 TEST(ParserSmoke, ErrorScenarios)
 {
 	hemera::disable_reporting_printing();
@@ -649,8 +779,14 @@ TEST(ParserSmoke, ErrorScenarios)
 
 		EXPECT_NE(ast, nullptr);
 
-		EXPECT_EQ(hemera::error_count(), 1) 
-			<< std::format("Incorrect number of errors for {}", file_name);
+		std::string reported;
+		for (const hemera::Diagnostic& diagnostic : hemera::diagnostics()) {
+			reported += std::format("\n  {}:{}:{} {}", diagnostic.code, diagnostic.line, diagnostic.column, diagnostic.message);
+		}
+		// Each has one error, but E3019_06, whose loop's block and function's are both left open
+		const size_t expected_errors = file_name == "E3019_06.hsc" ? 2 : 1;
+		EXPECT_EQ(hemera::error_count(), expected_errors)
+			<< std::format("Incorrect number of errors for {}:{}", file_name, reported);
 		if (hemera::error_count() == 0) {
 			continue;
 		}

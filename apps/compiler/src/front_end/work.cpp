@@ -749,6 +749,10 @@ namespace hemera {
 				continue;
 			}
 
+			// What the parser set aside after an error, already reported, isn't checked
+			if (ast::NodeType::ERROR == child->node_type) {
+				continue;
+			}
 			std::string details = std::format("Did not expect {}",
 				*child->value.value);
 
