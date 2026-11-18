@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <atomic>
+#include <chrono>
 #include <filesystem>
 #include <format>
 #include <memory>
@@ -39,6 +40,14 @@ namespace hemera {
 		const std::string object_file_name = std::format("{}.o", options->output_name);
 		const std::string program = std::filesystem::path(options->output_name).filename().string();
 		auto timer = [&](const char* phase) { return std::make_unique<PhaseTimer>(options->time_phases, std::format("{} {}", phase, program)); };
+		/*
+		 * A check reaches what generating would and runs what it would at compile time, without generating it; a
+		 * typed library, whose interface takes its types' hashes, and --generate-all, are generated as for a build
+		 */
+		if (BuildExtent::CHECK == options->build_extent && !options->typed_library && !options->generate_all) {
+			auto reaching = timer("reach");
+			return reach_program(program_info, *options, mlir_module);
+		}
 		// Generate the program's MLIR, from main and everything it uses
 		auto generating = timer("generate");
 		if (!generate_program(program_info, *options, mlir_module)) {
@@ -84,11 +93,58 @@ namespace hemera {
 	}
 
 	/*
-	 * How many targets are built at once without --jobs: a quarter of the logical processors, since each
-	 * target's checking and code generation spread across threads of their own too.
+	 * --time-phases' timeline of one target, in milliseconds since the build's targets began, printed when it's done,
+	 * like "timeline kernel.elf: started 0 ms, checked 3120 ms, waited 410 ms for the build's lock, through the build's
+	 * checks 3870 ms, done 6950 ms". What it didn't reach, like the checks after an error, is left out.
+	 */
+	struct Timeline {
+		std::string target;
+		bool enabled;
+		std::chrono::steady_clock::time_point began;
+		double started;
+		double checked = -1;
+		double waited = 0;
+		double through_checks = -1;
+
+		Timeline(std::string target_, bool enabled_, std::chrono::steady_clock::time_point began_)
+			: target{ std::move(target_) }
+			, enabled{ enabled_ }
+			, began{ began_ }
+			, started{ now() }
+		{}
+
+		Timeline(const Timeline&) = delete;
+		Timeline& operator=(const Timeline&) = delete;
+
+		// Milliseconds since the build's targets began.
+		double now() const {
+			return std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - began).count();
+		}
+
+		~Timeline() {
+			if (!enabled) {
+				return;
+			}
+			std::string line = std::format("timeline {}: started {:.0f} ms", target, started);
+			if (checked >= 0) {
+				line += std::format(", checked {:.0f} ms", checked);
+			}
+			if (through_checks >= 0) {
+				line += std::format(", waited {:.0f} ms for the build's lock, through the build's checks {:.0f} ms", waited, through_checks);
+			}
+			line += std::format(", done {:.0f} ms", now());
+			report_to_standard_error(line);
+		}
+	};
+
+	/*
+	 * How many targets are built at once without --jobs: half the logical processors. Each target's checking spreads
+	 * across threads of its own too, but waits on itself enough that more targets at once keep the processors busier:
+	 * a check of a large build took a sixth less time than with a quarter, and no more memory, as every target's
+	 * program is kept until the end either way.
 	 */
 	static size_t default_jobs() {
-		return std::max<size_t>(1, std::thread::hardware_concurrency() / 4);
+		return std::max<size_t>(1, std::thread::hardware_concurrency() / 2);
 	}
 
 	/*
@@ -129,6 +185,7 @@ namespace hemera {
 			target.output.clear();
 		}
 		size_t printed = 0;
+		const auto began = std::chrono::steady_clock::now();
 
 		auto build_one = [&](size_t i, BuildTarget& target) -> bool {
 			Options* options = nullptr;
@@ -154,6 +211,8 @@ namespace hemera {
 			programs[i] = program;
 			programs_options[i] = options;
 			made[i] = Made{ mlir_context, mlir_builder, mlir_module };
+			// --time-phases' timeline: when the target started, was checked, through the build's checks, and done
+			Timeline timeline(std::filesystem::path(options->output_name).filename().string(), options->time_phases, began);
 			{
 				PhaseTimer timer(options->time_phases, std::format("check {}", std::filesystem::path(options->output_name).filename().string()));
 				if (index != nullptr) {
@@ -161,11 +220,14 @@ namespace hemera {
 				}
 				kick_off_processing(program, options);
 			}
+			timeline.checked = timeline.now();
 			if (error_count() != 0) {
 				return false;
 			}
 			// It takes the lock on the build's memory itself, for all but working out the target's constants
-			if (!run_build_checks(build, build_options, program, *options, checking)) {
+			const bool passed = run_build_checks(build, build_options, program, *options, checking, &timeline.waited);
+			timeline.through_checks = timeline.now();
+			if (!passed) {
 				return false;
 			}
 			if (target.output_type == "Nothing") {
@@ -252,22 +314,46 @@ namespace hemera {
 			 * for them, kept by their addresses, which later programs may reuse.
 			 */
 			if (build_options.free_targets) {
+				PhaseTimer freeing(build_options.time_phases, "free the targets");
 				CompileTimeData& data = compile_time_data(build);
 				{
 					std::scoped_lock<std::mutex> lock(data.constant_values_mutex);
 					data.constant_values.clear();
 				}
 				data.release(build_memory_mark);
-				for (size_t i = 0; i < count; ++i) {
-					if (programs[i] == nullptr) {
-						continue;
+				/*
+				 * Each program on its own memory and MLIR context, so they're torn down on every processor, as nothing
+				 * else runs now, only giving the memory back to alloc taking turns: one after another, this was seconds
+				 */
+				const size_t freeing_jobs = std::clamp<size_t>(std::thread::hardware_concurrency(), 1, std::max<size_t>(count, 1));
+				std::atomic<size_t> next_freed{ 0 };
+				auto free_some = [&]() {
+					for (;;) {
+						const size_t i = next_freed.fetch_add(1);
+						if (i >= count) {
+							return;
+						}
+						if (programs[i] == nullptr) {
+							continue;
+						}
+						std::destroy_at(programs[i]);
+						std::destroy_at(programs_options[i]);
+						made[i].module->erase();
+						delete made[i].module;
+						delete made[i].builder;
+						delete made[i].context;
+						std::scoped_lock<std::mutex> lock(allocating);
+						alloc.deallocate_object(programs[i]);
+						alloc.deallocate_object(programs_options[i]);
 					}
-					alloc.delete_object(programs[i]);
-					alloc.delete_object(programs_options[i]);
-					made[i].module->erase();
-					delete made[i].module;
-					delete made[i].builder;
-					delete made[i].context;
+				};
+				std::vector<std::thread> freeing_workers;
+				for (size_t i = 1; i < freeing_jobs; ++i) {
+					freeing_workers.emplace_back(free_some);
+				}
+				free_some();
+				for (std::thread& worker : freeing_workers) {
+					worker.join();
 				}
 			}
 			return built;

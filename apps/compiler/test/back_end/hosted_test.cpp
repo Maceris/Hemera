@@ -1383,7 +1383,59 @@ TEST(Build, ChecksOnlyTheTargetsNamed)
 	}
 }
 
-// hemera --check on a program: generated, so a #run statement in a function runs, but nothing written.
+// The warnings a program reports through generating it (extent COMPILE), or through what a check reaches (CHECK), sorted.
+static std::vector<std::string> reached_warnings(std::string_view name, hemera::BuildExtent extent, size_t& functions) {
+	hemera::reset_reporting_storage();
+	mlir::MLIRContext context;
+	context.loadDialect<mlir::BuiltinDialect>();
+	context.loadDialect<hmir::HemeraDialect>();
+	mlir::OpBuilder builder(&context);
+	mlir::ModuleOp module = mlir::ModuleOp::create(builder, builder.getUnknownLoc(), "reached");
+	auto program_info = std::make_unique<hemera::ProgramInfo>(&context, &builder, &module);
+	const std::filesystem::path output_folder = std::filesystem::path(HEMERA_TEST_OUTPUT_DIR) / "check_reaches";
+	std::filesystem::create_directories(output_folder);
+	hemera::Options options;
+	options.input = std::filesystem::canonical(scenario(name));
+	options.output_name = (output_folder / "reached").string();
+	options.build_extent = extent;
+	hemera::kick_off_processing(program_info.get(), &options);
+	EXPECT_EQ(hemera::error_count(), 0);
+	EXPECT_TRUE(hemera::finish_program(&options, program_info.get(), module));
+	EXPECT_EQ(hemera::error_count(), 0);
+	std::vector<std::string> warnings;
+	for (const hemera::Diagnostic& diagnostic : hemera::diagnostics()) {
+		warnings.push_back(diagnostic.message.substr(diagnostic.message.find(". ") + 2));
+	}
+	std::sort(warnings.begin(), warnings.end());
+	functions = static_cast<size_t>(std::distance(module.getBody()->begin(), module.getBody()->end()));
+	module.erase();
+	return warnings;
+}
+
+/*
+ * hemera --check on a program: what generating would run at compile time, it runs, constants and #run in functions,
+ * through what it reaches, and nothing generating wouldn't; but it generates nothing.
+ */
+TEST(Build, ChecksReachWhatGeneratingWould)
+{
+	StringCacheGuard string_cache;
+	size_t generated = 0;
+	size_t checked = 0;
+	const std::vector<std::string> generating = reached_warnings("check_reaches", hemera::BuildExtent::COMPILE, generated);
+	const std::vector<std::string> checking = reached_warnings("check_reaches", hemera::BuildExtent::CHECK, checked);
+	const std::vector<std::string> expected{
+		"LIMIT was worked out",
+		"a #run expression ran",
+		"handled was reached through HANDLER",
+		"helper was reached",
+	};
+	EXPECT_EQ(generating, expected);
+	EXPECT_EQ(checking, generating);
+	EXPECT_GT(generated, 0u);
+	EXPECT_EQ(checked, 0u) << "a check generates nothing";
+}
+
+// hemera --check on a program: reached as generating would, so a #run statement in a function runs, but nothing written.
 TEST(Build, ChecksProgramsThroughGeneration)
 {
 	hemera::reset_reporting_storage();

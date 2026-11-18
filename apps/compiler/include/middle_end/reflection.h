@@ -1,5 +1,6 @@
 #pragma once
 
+#include <atomic>
 #include <cstdint>
 #include <map>
 #include <memory>
@@ -128,6 +129,11 @@ namespace hemera {
 		void describe(const TypeInfo* type, uint8_t* record, const TypeInfoStruct* layout);
 
 		std::recursive_mutex mutex;
+		/*
+		 * Changed by mark and release, so a thread's chunk of a block (allocate) from before isn't used after: what's
+		 * made after a mark is in blocks made after it, which release frees
+		 */
+		std::atomic<uint64_t> age;
 		std::vector<std::unique_ptr<uint8_t[]>> blocks;
 		uint8_t* free_start = nullptr;
 		size_t free_size = 0;

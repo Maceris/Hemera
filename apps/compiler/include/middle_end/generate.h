@@ -21,6 +21,16 @@ namespace hemera {
 	bool generate_program(ProgramInfo* program_info, const Options& options, mlir::ModuleOp module);
 
 	/// <summary>
+	/// What a check (--check) does in generate_program's place: reaches what generating would, from the entry and the
+	/// #export declarations on, through what each checked body calls and names, and runs at compile time what generating
+	/// would run as it reached it, constants worked out by running them and #run in functions, reporting what those
+	/// report. It emits no MLIR into module, so it doesn't report what only generating finds: what code generation
+	/// can't do yet (E5002), or MLIR that isn't valid (E5003). A program's missing entry is reported (E5004).
+	/// </summary>
+	/// <returns>Whether it worked, having reported anything that didn't.</returns>
+	bool reach_program(ProgramInfo* program_info, const Options& options, mlir::ModuleOp module);
+
+	/// <summary>
 	/// The target's CPU features, as LLVM takes them: the options', and on x86-64 the carrier register
 	/// kept for itself. A #target_features function adds its own to these.
 	/// </summary>

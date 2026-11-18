@@ -3778,7 +3778,13 @@ namespace hemera {
 		return iter->second->value;
 	}
 
-	static mlir::Value executed_constant(Generator& generator, Declaration* declaration, TypeInfo* type, const ast::Node* where) {
+	/*
+	 * A constant whose value calls a function, worked out by running it the first time it's asked for, kept in
+	 * compile_time_values: what checking ran already, or what it runs now. Null if it couldn't be run, or waits for
+	 * what checking hasn't got to yet, which is added to unchecked. Generating a program and reaching it under
+	 * --check (reach_program) both run it this way, so a check reports what generating would.
+	 */
+	static const CompileTimeValue* executed_value(Generator& generator, Declaration* declaration) {
 		auto iter = generator.compile_time_values.find(declaration);
 		if (iter == generator.compile_time_values.end()) {
 			if (std::optional<CompileTimeValue> ran = already_run(generator, declaration)) {
@@ -3805,16 +3811,74 @@ namespace hemera {
 					declaration->value_type, declaration->checked.get(), declaration, result, generator.collecting ? &waiting : nullptr);
 				if (!waiting.empty()) {
 					generator.unchecked.insert(generator.unchecked.end(), waiting.begin(), waiting.end());
-					return zero_of(generator, llvm_type(generator, type));
+					return nullptr;
 				}
 				if (!ran_now) {
-					return zero_of(generator, llvm_type(generator, type));
+					return nullptr;
 				}
 			}
 			iter = generator.compile_time_values.emplace(declaration, std::move(result)).first;
 		}
+		return &iter->second;
+	}
+
+	/*
+	 * A #run in an expression of the function generator.state is in, giving result_type: run once, the first time
+	 * it's reached, and kept in compile_time_values by its node, as executed_value keeps a constant's. Null if it
+	 * couldn't be run, or waits for what checking hasn't got to yet: inside compile-time code still collecting what
+	 * it reaches, a function another thread hasn't finished checking is waited for, and the outer code run again.
+	 */
+	static const CompileTimeValue* executed_run(Generator& generator, ast::Node* node, TypeInfo* result_type) {
+		auto iter = generator.compile_time_values.find(node);
+		if (iter == generator.compile_time_values.end()) {
+			if (std::optional<CompileTimeValue> checked = already_run(generator, node)) {
+				iter = generator.compile_time_values.emplace(node, std::move(*checked)).first;
+			}
+		}
+		if (iter == generator.compile_time_values.end()) {
+			CompileTimeValue ran;
+			std::vector<Declaration*> waiting;
+			const bool ran_now = run_at_compile_time(generator, node->children[0], result_type, generator.state->checked,
+				generator.state->declaration, ran, generator.collecting ? &waiting : nullptr);
+			if (!waiting.empty()) {
+				generator.unchecked.insert(generator.unchecked.end(), waiting.begin(), waiting.end());
+				return nullptr;
+			}
+			if (!ran_now) {
+				return nullptr;
+			}
+			iter = generator.compile_time_values.emplace(node, std::move(ran)).first;
+		}
+		return &iter->second;
+	}
+
+	/*
+	 * A #run statement of the function generator.state is in, run once, when it's first reached, for what it does;
+	 * kept in compile_time_values by its node.
+	 */
+	static void executed_run_statement(Generator& generator, ast::Node* statement) {
+		if (generator.compile_time_values.contains(statement)) {
+			return;
+		}
+		// Waiting, inside compile-time code still collecting, for what it reaches, as a #run expression does
+		CompileTimeValue ran;
+		std::vector<Declaration*> waiting;
+		run_at_compile_time(generator, statement->children[0], nullptr, generator.state->checked,
+			generator.state->declaration, ran, generator.collecting ? &waiting : nullptr);
+		if (!waiting.empty()) {
+			generator.unchecked.insert(generator.unchecked.end(), waiting.begin(), waiting.end());
+			return;
+		}
+		generator.compile_time_values.emplace(statement, std::move(ran));
+	}
+
+	static mlir::Value executed_constant(Generator& generator, Declaration* declaration, TypeInfo* type, const ast::Node* where) {
 		(void)where;
-		return convert(generator, constant_from(generator, declaration->value_type, iter->second, 0), declaration->value_type, type);
+		const CompileTimeValue* value = executed_value(generator, declaration);
+		if (value == nullptr) {
+			return zero_of(generator, llvm_type(generator, type));
+		}
+		return convert(generator, constant_from(generator, declaration->value_type, *value, 0), declaration->value_type, type);
 	}
 
 	static mlir::Value emit_constant_value(Generator& generator, Declaration* declaration, TypeInfo* type, const ast::Node* where) {
@@ -9183,32 +9247,11 @@ namespace hemera {
 		}
 		// #run in an expression: a constant, run once
 		if (ast::NodeType::DIRECTIVE == type && is_text(node->value.value, "#run") && !node->children.empty() && result_type != nullptr) {
-			auto iter = generator.compile_time_values.find(node);
-			if (iter == generator.compile_time_values.end()) {
-				if (std::optional<CompileTimeValue> checked = already_run(generator, node)) {
-					iter = generator.compile_time_values.emplace(node, std::move(*checked)).first;
-				}
+			const CompileTimeValue* ran = executed_run(generator, node, result_type);
+			if (ran == nullptr) {
+				return value(zero_of(generator, llvm_type(generator, result_type)), result_type);
 			}
-			if (iter == generator.compile_time_values.end()) {
-				/*
-				 * Inside compile-time code still collecting what it reaches, this waits for what it reaches too, as a
-				 * constant's value does (executed_constant): a function another thread hasn't finished checking is
-				 * waited for, and the outer code run again, not an error
-				 */
-				CompileTimeValue ran;
-				std::vector<Declaration*> waiting;
-				const bool ran_now = run_at_compile_time(generator, node->children[0], result_type, generator.state->checked,
-					generator.state->declaration, ran, generator.collecting ? &waiting : nullptr);
-				if (!waiting.empty()) {
-					generator.unchecked.insert(generator.unchecked.end(), waiting.begin(), waiting.end());
-					return value(zero_of(generator, llvm_type(generator, result_type)), result_type);
-				}
-				if (!ran_now) {
-					return value(zero_of(generator, llvm_type(generator, result_type)), result_type);
-				}
-				iter = generator.compile_time_values.emplace(node, std::move(ran)).first;
-			}
-			return value(constant_from(generator, result_type, iter->second, 0), result_type);
+			return value(constant_from(generator, result_type, *ran, 0), result_type);
 		}
 		unsupported(generator, node, std::format("{} can't be generated yet", ast::name_of(type)));
 		TypeInfo* placeholder = result_type != nullptr ? result_type : BUILTIN_int;
@@ -10420,18 +10463,8 @@ namespace hemera {
 		}
 		if (ast::NodeType::DIRECTIVE == type) {
 			// #run as a statement runs when its function is generated
-			if (is_text(statement->value.value, "#run") && !statement->children.empty()
-				&& !generator.compile_time_values.contains(statement)) {
-				// Waiting, inside compile-time code still collecting, for what it reaches, as a #run expression does
-				CompileTimeValue ran;
-				std::vector<Declaration*> waiting;
-				run_at_compile_time(generator, statement->children[0], nullptr, generator.state->checked,
-					generator.state->declaration, ran, generator.collecting ? &waiting : nullptr);
-				if (!waiting.empty()) {
-					generator.unchecked.insert(generator.unchecked.end(), waiting.begin(), waiting.end());
-					return false;
-				}
-				generator.compile_time_values.emplace(statement, std::move(ran));
+			if (is_text(statement->value.value, "#run") && !statement->children.empty()) {
+				executed_run_statement(generator, statement);
 			}
 			return false;
 		}
@@ -13369,11 +13402,9 @@ namespace hemera {
 	}
 
 	bool run_build_checks(ProgramInfo* build, const Options& build_options, ProgramInfo* target, const Options& options,
-		std::mutex& build_memory) {
+		std::mutex& build_memory, double* waited) {
 
 		BuildRegistry& registry = build_registry();
-		// The build's memory has one writer at a time: held throughout, but for working out constants (below)
-		std::unique_lock<std::mutex> holding(build_memory);
 		if (registry.checks.empty()) {
 			return true;
 		}
@@ -13384,9 +13415,14 @@ namespace hemera {
 		if (build_layout == nullptr || program_layout == nullptr || package_layout == nullptr) {
 			return true;
 		}
-		// The target as a check sees it: its options, and every package in its program, written in the build's
-		// memory with the build's layouts, about the target's declarations and types
+		/*
+		 * The target as a check sees it: its options, and every package in its program, written in the build's
+		 * memory with the build's layouts, about the target's declarations and types. Written beside other targets':
+		 * the build's memory takes allocations and type descriptors from several threads, and only a value worked out
+		 * here is copied in under the lock (worked_out), as the checks run under it
+		 */
 		Call call{ "", nullptr, nullptr, 0, nullptr, std::string(), nullptr, target, &options, data };
+		call.build_memory = &build_memory;
 		auto describing = std::make_unique<PhaseTimer>(options.time_phases, "describe the program for the build's checks");
 		uint8_t* target_record = data.new_records(build_layout);
 		write_build_options(call, target_record, build_layout, true);
@@ -13410,15 +13446,8 @@ namespace hemera {
 				const std::vector<Declaration*> found = constants_of(target, text_of(package->full_path));
 				constants.insert(constants.end(), found.begin(), found.end());
 			}
-			/*
-			 * Worked out in the target's own program, beside other targets', the lock taken only to copy each value
-			 * into the build's memory: this is most of describing a target, when it's done
-			 */
-			holding.unlock();
-			call.build_memory = &build_memory;
+			// Worked out in the target's own program, beside other targets': this is most of describing a target, when it's done
 			values = constant_values(call, constants);
-			call.build_memory = nullptr;
-			holding.lock();
 		}
 		// And their functions' constant defaults
 		std::vector<Declaration*> functions;
@@ -13447,6 +13476,13 @@ namespace hemera {
 		data.write_pointer(program_record, program_layout, "root", root);
 		data.write_view(program_record, program_layout, "packages", package_records, packages.size());
 		describing.reset();
+		call.build_memory = nullptr;
+		// The checks take turns, as they run the build's own code in its memory
+		const auto asked = std::chrono::steady_clock::now();
+		std::scoped_lock<std::mutex> holding(build_memory);
+		if (waited != nullptr) {
+			*waited += std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - asked).count();
+		}
 		bool passed = true;
 		for (const BuildCallback& check : registry.checks) {
 			PhaseTimer timer(options.time_phases, "a build check");
@@ -13601,6 +13637,165 @@ namespace hemera {
 		return features;
 	}
 
+	/*
+	 * The program's entry function, options.entry in its root package; null after reporting E5004 if there's none, or
+	 * it takes parameters where only a SlopOS program's entry may (docs/compilation.md, Entry Parameters).
+	 */
+	static Declaration* program_entry(Generator& generator, const Options& options) {
+		Declaration* entry = nullptr;
+		{
+			std::scoped_lock<std::mutex> lock(generator.names.mutex);
+			auto iter = generator.names.declarations.find(std::make_pair(generator.input_package, intern(options.entry)));
+			if (iter != generator.names.declarations.end()) {
+				entry = iter->second;
+			}
+		}
+		const bool takes_parameters = entry != nullptr && entry->value_type != nullptr
+			&& TypeInfoVariant::FUNCTION == entry->value_type->variant
+			&& !static_cast<TypeInfoFunction const*>(entry->value_type)->input.empty();
+		if (entry == nullptr || DeclarationKind::FUNCTION != entry->kind || entry->value_type == nullptr
+			|| (options.startup_code && takes_parameters && OSType::SlopOS != options.os)) {
+			report_error(ErrorCode::E5004, options.input.string(), 0, 0, options.startup_code
+				? std::format("a hosted program needs {} :: fn() or fn() -> int", options.entry)
+				: std::format("the entry function {} isn't declared", options.entry));
+			return nullptr;
+		}
+		return entry;
+	}
+
+	/*
+	 * Under --check, what generating a program would reach, without generating it (reach_program): each function from
+	 * the entry and the exports on, through what its checked body calls and names, and the top-level constants and
+	 * globals those name. What generating would run at compile time as it went, it runs the same way: constants
+	 * worked out by running them (executed_value), and #run expressions and statements (executed_run,
+	 * executed_run_statement).
+	 */
+	struct Reacher {
+		Generator& generator;
+		std::set<Declaration*> reached;
+		std::vector<Declaration*> functions;
+
+		// A function generating would make: one with a checked body of its own, not a macro or an intrinsic.
+		void function(Declaration* declaration) {
+			if (declaration == nullptr || DeclarationKind::FUNCTION != declaration->kind || declaration->checked == nullptr
+				|| is_macro_function(declaration) || is_intrinsic(declaration) || !reached.insert(declaration).second) {
+				return;
+			}
+			functions.push_back(declaration);
+		}
+
+		/*
+		 * A top-level constant or global: one whose value calls a function is worked out by running it, as generating
+		 * does the first time it's used; another's value is walked for what it names, as generating it would.
+		 */
+		void value(Declaration* declaration) {
+			if (declaration == nullptr || DeclarationKind::VALUE != declaration->kind || declaration->package_path == nullptr
+				|| declaration->checked == nullptr || declaration->externally_initialized || !reached.insert(declaration).second) {
+				return;
+			}
+			if (needs_execution(declaration)) {
+				executed_value(generator, declaration);
+				return;
+			}
+			FunctionState state;
+			state.declaration = declaration;
+			state.checked = declaration->checked.get();
+			walk_with(state, definition_value(declaration->node));
+		}
+
+		void walk_with(FunctionState& state, ast::Node* node) {
+			FunctionState* outer = generator.state;
+			generator.state = &state;
+			walk(node, nullptr);
+			generator.state = outer;
+		}
+
+		// What node, under parent, names or runs, as generating it would come to it.
+		void walk(ast::Node* node, const ast::Node* parent) {
+			if (node == nullptr) {
+				return;
+			}
+			if (ast::NodeType::DIRECTIVE == node->node_type) {
+				// A quote is a value, and what a #run runs is compile-time code, not the program's
+				if (is_text(node->value.value, "#code")) {
+					return;
+				}
+				if (is_text(node->value.value, "#run") && !node->children.empty()) {
+					if (parent != nullptr && ast::NodeType::BLOCK == parent->node_type) {
+						executed_run_statement(generator, node);
+					}
+					else if (TypeInfo* result_type = type_at(generator, node, nullptr)) {
+						executed_run(generator, node, result_type);
+					}
+					return;
+				}
+			}
+			// What it names, and the head of a name like HANDLER.handle, which checking keeps apart
+			for (const CheckedNode* found : { checked(generator, node), head_of(generator, node) }) {
+				if (found == nullptr) {
+					continue;
+				}
+				function(found->called_declaration);
+				if (found->declaration != nullptr) {
+					function(found->declaration);
+					value(found->declaration);
+				}
+			}
+			for (ast::Node* child : node->children) {
+				walk(child, node);
+			}
+		}
+	};
+
+	bool reach_program(ProgramInfo* program_info, const Options& options, mlir::ModuleOp module) {
+		module.getContext()->loadDialect<LLVM::LLVMDialect>();
+		module.getContext()->loadDialect<::hmir::HemeraDialect>();
+		Generator generator(program_info, module);
+		generator.options = &options;
+		generator.input_package = intern(options.input.string());
+		Reacher reacher{ generator, {}, {} };
+		std::vector<Declaration*> declarations;
+		{
+			std::scoped_lock<std::mutex> lock(generator.names.mutex);
+			for (const auto& [key, declaration] : generator.names.declarations) {
+				declarations.push_back(declaration);
+			}
+		}
+		// In the order generate_kept takes them, by name, so what's run runs in the same order every time
+		sort_by_name(declarations);
+		Declaration* entry = program_entry(generator, options);
+		if (entry == nullptr) {
+			return false;
+		}
+		reacher.function(entry);
+		for (Declaration* declaration : declarations) {
+			if (declaration->generic != nullptr || declaration->value_type == nullptr || declaration->failed
+				|| !has_name_directive(declaration, "#export")) {
+				continue;
+			}
+			reacher.function(declaration);
+			reacher.value(declaration);
+		}
+		// Each function's body, in the order they're reached, which reaches more
+		for (size_t i = 0; i < reacher.functions.size(); ++i) {
+			Declaration* declaration = reacher.functions[i];
+			FunctionState state;
+			state.declaration = declaration;
+			state.checked = declaration->checked.get();
+			state.type = static_cast<TypeInfoFunction const*>(declaration->value_type);
+			reacher.walk_with(state, function_body(declaration));
+			// Its parameters' defaults checked with its body, which generating a call that leaves them out emits
+			if (state.type != nullptr && TypeInfoVariant::FUNCTION == state.type->variant) {
+				for (const FunctionInput& input : state.type->input) {
+					if (input.default_value != nullptr && input.default_in_body) {
+						reacher.walk_with(state, input.default_value);
+					}
+				}
+			}
+		}
+		return !generator.failed;
+	}
+
 	bool generate_program(ProgramInfo* program_info, const Options& options, mlir::ModuleOp module) {
 		module.getContext()->loadDialect<LLVM::LLVMDialect>();
 		module.getContext()->loadDialect<::hmir::HemeraDialect>();
@@ -13617,26 +13812,11 @@ namespace hemera {
 			}
 		}
 		Declaration* entry = nullptr;
-		{
-			std::scoped_lock<std::mutex> lock(generator.names.mutex);
-			auto iter = generator.names.declarations.find(std::make_pair(generator.input_package, intern(options.entry)));
-			if (iter != generator.names.declarations.end()) {
-				entry = iter->second;
-			}
-		}
-		// Only a SlopOS program's entry takes parameters, its grants (docs/compilation.md, Entry Parameters)
-		const bool takes_parameters = entry != nullptr && entry->value_type != nullptr
-			&& TypeInfoVariant::FUNCTION == entry->value_type->variant
-			&& !static_cast<TypeInfoFunction const*>(entry->value_type)->input.empty();
 		if (options.typed_library) {
 			// A library has no entry: its #export functions are what it's for
 			generate_interface(generator);
 		}
-		else if (entry == nullptr || DeclarationKind::FUNCTION != entry->kind || entry->value_type == nullptr
-			|| (options.startup_code && takes_parameters && OSType::SlopOS != options.os)) {
-			report_error(ErrorCode::E5004, options.input.string(), 0, 0, options.startup_code
-				? std::format("a hosted program needs {} :: fn() or fn() -> int", options.entry)
-				: std::format("the entry function {} isn't declared", options.entry));
+		else if ((entry = program_entry(generator, options)) == nullptr) {
 			return false;
 		}
 		if (!options.typed_library && options.startup_code) {

@@ -54,13 +54,17 @@ declares are unknown to the rest of the program until it's fixed.
 
 ## Checking Without Building
 
-`hemera --check` runs a program through MLIR generation and stops there, writing nothing: no MLIR, object file or
-program. Generation is part of it because some compile-time code only runs then, like a `#run` statement in a function,
-which runs as its function is generated. It reports what a full build would up to that point, and exits as one would.
+`hemera --check` checks a program and stops before generating it, writing nothing: no MLIR, object file or program.
+Some compile-time code only runs as a program is generated, like a `#run` statement in a function, which runs as its
+function is generated, or a constant whose value calls a function, worked out when code using it is generated. So a
+check goes through what generating would reach, from the entry function and every `#export` on, through what each
+function calls and names, and runs that code as generating would, without generating anything. It reports what a full
+build would up to generating, and exits as one would, but for what only generating finds: code generation that can't
+handle something yet (E5002), and MLIR that isn't valid, which is a compiler bug (E5003). A typed library, whose
+interface needs its types' hashes, and `--generate-all` are generated as for a build.
 
-For a build package, the build's own code runs as usual and adds its targets. Each target is then checked, run through
-the build's checks (`add_check`) and generated, and the build's steps don't run, since they'd use what the targets
-built. The compiler writes nothing, but the build's code and checks run as they always do, so whatever they write
+For a build package, the build's own code runs as usual and adds its targets. Each target is then checked and run
+through the build's checks (`add_check`), and the build's steps don't run, since they'd use what the targets built. The compiler writes nothing, but the build's code and checks run as they always do, so whatever they write
 themselves is still written. `--check` takes the place of `-s`, `-S` and `-c`, and can't be given with any of them.
 
 `--overlay=path=file` reads `file` wherever the compiler would read `path`, and reports what it finds as `path`'s, so an
@@ -559,9 +563,9 @@ when the build's code names `PackageInfo.constants` (see Compile-Time Execution)
 Targets are built several at once, each a program of its own: its files are read, parsed and checked for it, even
 ones another target already used, since its `#if` choices, settings and package paths can make them mean something
 else, and the work within a target is spread across threads like any program's. `--jobs=N` says how many are built
-at once: 1 for one at a time, in the order they were registered, and by default a quarter of the machine's logical
-processors. The checks take turns, since they run the build package's own code, though what describing a target for
-them takes, like working out its constants when the build names them, is done beside other targets'. Either way, each target's outputs
+at once: 1 for one at a time, in the order they were registered, and by default half the machine's logical
+processors. The checks take turns, since they run the build package's own code, though describing a target for them,
+its packages' records and any constants the build names, is done beside other targets'. Either way, each target's outputs
 are the same (see Deterministic Output), and what it reports, its errors and warnings and `--time-phases`'s lines, is
 printed in one piece and in the order the targets were registered, once it and every target before it are done.
 A target's errors stop only it: the others are still built, and the build fails. Steps run once every target is done.
@@ -872,6 +876,19 @@ optimizing and assembling is LLVM's passes and machine code: for a program gener
 simplified first, then the parts at once (see [Generating in Parallel](#generating-in-parallel)). A build package's
 targets each have their own phases, and the time its checks take, and what describing the program to them takes, is
 shown too. The linker is run directly, found on the PATH: `lld-link` for PE/COFF and `ld.lld` for ELF.
+
+A check has `reach` where a build has `generate` (see [Checking Without Building](#checking-without-building)). Since a
+build package's targets are built several at once, each target also gets a line saying when, in milliseconds since its
+targets began, it started, was checked, got through the build's checks, having waited so long for its turn at them,
+and was done, which shows what a build waits on:
+
+```
+timeline kernel.elf: started 0 ms, checked 3120 ms, waited 12 ms for the build's lock, through the build's checks 3870 ms, done 6950 ms
+```
+
+What a target doesn't get to, like the build's checks after an error in it, is left out. A check through `hemera
+--serve` also times seeing whether the build package is as it was, freeing the targets' programs, and recording what
+the build read.
 
 ## Debug Info
 

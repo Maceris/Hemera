@@ -81,8 +81,33 @@ namespace hemera {
 		}
 	}
 
+	namespace {
+		/*
+		 * Numbers no two of a CompileTimeData's ages share, across every CompileTimeData there has been, so a thread's
+		 * chunk (below) left from one that's gone, or from before a mark or release, is never taken for a current one's
+		 */
+		std::atomic<uint64_t> next_age{ 1 };
+
+		/*
+		 * The part of a block this thread carves small allocations from, without taking the data's lock: which data
+		 * it's from, in which age, and what's left of it
+		 */
+		struct Chunk {
+			const CompileTimeData* owner = nullptr;
+			uint64_t age = 0;
+			uint8_t* start = nullptr;
+			size_t size = 0;
+		};
+		thread_local Chunk chunk;
+
+		// Allocations at most this big come from a thread's chunk; a chunk is this many bytes of a block of its own
+		constexpr size_t CHUNKED = 1024;
+		constexpr size_t CHUNK_SIZE = 64 * 1024;
+	}
+
 	CompileTimeData::CompileTimeData(ProgramInfo* program_)
 		: program{ program_ }
+		, age{ next_age.fetch_add(1) }
 	{}
 
 	CompileTimeData& compile_time_data(ProgramInfo* program) {
@@ -96,6 +121,8 @@ namespace hemera {
 	CompileTimeData::Mark CompileTimeData::mark() {
 		std::scoped_lock<std::recursive_mutex> lock(mutex);
 		marked = true;
+		// What's made from here on is in blocks made from here on, which release frees
+		age = next_age.fetch_add(1);
 		return Mark{ blocks.size(), free_start, free_size, made.size() };
 	}
 
@@ -112,14 +139,37 @@ namespace hemera {
 		}
 		made.resize(at.made);
 		marked = false;
+		// No thread's chunk is in a block freed here
+		age = next_age.fetch_add(1);
 		blocks.resize(at.blocks);
 		free_start = at.free_start;
 		free_size = at.free_size;
 	}
 
 	uint8_t* CompileTimeData::allocate(size_t size, size_t alignment) {
-		std::scoped_lock<std::recursive_mutex> lock(mutex);
 		alignment = std::max<size_t>(alignment, 1);
+		/*
+		 * A small one from this thread's chunk, so threads describing targets at once don't take turns for each
+		 * record and string; the lock is taken only for a new chunk
+		 */
+		if (size <= CHUNKED && alignment <= 16) {
+			if (chunk.owner != this || chunk.age != age.load()) {
+				chunk = Chunk{};
+			}
+			size_t padding = chunk.start != nullptr ? (alignment - reinterpret_cast<uintptr_t>(chunk.start) % alignment) % alignment : 0;
+			if (chunk.start == nullptr || padding + size > chunk.size) {
+				std::scoped_lock<std::recursive_mutex> lock(mutex);
+				blocks.push_back(std::make_unique<uint8_t[]>(CHUNK_SIZE));
+				chunk = Chunk{ this, age.load(), blocks.back().get(), CHUNK_SIZE };
+				padding = (alignment - reinterpret_cast<uintptr_t>(chunk.start) % alignment) % alignment;
+			}
+			uint8_t* result = chunk.start + padding;
+			std::memset(result, 0, size);
+			chunk.start = result + size;
+			chunk.size -= padding + size;
+			return result;
+		}
+		std::scoped_lock<std::recursive_mutex> lock(mutex);
 		size_t padding = free_start != nullptr ? (alignment - reinterpret_cast<uintptr_t>(free_start) % alignment) % alignment : 0;
 		if (free_start == nullptr || padding + size > free_size) {
 			const size_t block = std::max<size_t>(size + alignment, 64 * 1024);

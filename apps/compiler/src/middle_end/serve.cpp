@@ -272,6 +272,7 @@ namespace hemera {
 				exit = FAILED;
 			}
 			// What it loaded since is part of it now
+			PhaseTimer remembering(options.time_phases, "remember what the build read");
 			kept.remember(given, options);
 			return exit;
 		}
@@ -366,7 +367,9 @@ namespace hemera {
 					continue;
 				}
 				std::vector<Diagnostic> reported;
+				auto refreshing = std::make_unique<PhaseTimer>(options->time_phases, "see whether the build is as it was");
 				const Freshness freshness = kept.refresh(*given, *options, reported);
+				refreshing.reset();
 				if (Freshness::CHANGED == freshness) {
 					write_protocol_line("{\"done\":false,\"restart\":true}");
 					return 3;
