@@ -106,6 +106,9 @@ namespace hemera::lsp {
 				declaration.start = number_at(*span, 0);
 				declaration.end = number_at(*span, 1);
 				declaration.kind = text_of(*object, "kind");
+				declaration.readonly = object->getBoolean("readonly").value_or(false);
+				declaration.is = text_of(*object, "is");
+				declaration.macro = object->getBoolean("macro").value_or(false);
 				declaration.type = text_of(*object, "type");
 				declaration.brief = text_of(*object, "brief");
 				declaration.details = text_of(*object, "details");

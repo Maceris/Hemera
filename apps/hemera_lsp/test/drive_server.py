@@ -139,6 +139,17 @@ def drive(server, compiler, folder):
     assert hover and "helper :: fn() -> int" in hover["contents"]["value"], hover
     references = client.request("textDocument/references", dict(at_call, context={"includeDeclaration": True}))["result"]
     assert sorted(location["uri"].lower() for location in references) == sorted([uri_of(main).lower(), uri_of(helper).lower()]), references
+    # Semantic tokens from the same index: main declared, and helper called, both functions
+    legend = result["result"]["capabilities"]["semanticTokensProvider"]["legend"]
+    data = client.request("textDocument/semanticTokens/full", {"textDocument": {"uri": uri_of(main)}})["result"]["data"]
+    tokens = []
+    line = start = 0
+    for at in range(0, len(data), 5):
+        line += data[at]
+        start = start + data[at + 1] if data[at] == 0 else data[at + 1]
+        modifiers = [name for bit, name in enumerate(legend["tokenModifiers"]) if data[at + 4] >> bit & 1]
+        tokens.append((line, start, data[at + 2], legend["tokenTypes"][data[at + 3]], modifiers))
+    assert tokens == [(2, 0, 4, "function", ["declaration"]), (3, 11, 6, "function", [])], tokens
     renamed = client.request("textDocument/rename", dict(at_call, newName="assist"))
     assert "error" not in renamed, renamed
     assert sum(len(edits) for edits in renamed["result"]["changes"].values()) == 2, renamed

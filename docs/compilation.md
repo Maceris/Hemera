@@ -223,8 +223,11 @@ build package, it's the build's own code and every target's, merged.
 * `files` are the files it mentions, by their paths on disk with `/` throughout, or `<base>/...` for `base`'s.
 * Each declaration has its file's number, its name's offset and length, and the first and last byte of its tokens,
   all in bytes from the file's start. Its `kind` is `function`, `type`, `constant`, `field`, `member` (an enum's),
-  `variant` (a union's) or `local`. It has its `type` as errors write it, except a type's, and its doc comment's
-  `brief`, `details` and `tags`, each tag its kind, name and text, when it has one.
+  `variant` (a union's), `parameter` or `local`. It has its `type` as errors write it, except a type's, and its doc
+  comment's `brief`, `details` and `tags`, each tag its kind, name and text, when it has one.
+* A local or a parameter that can't be assigned to, like `c :: 3` or any parameter, unlike `x := 0`, has
+  `"readonly":true`. A type has `is`, its shape: `struct`, `enum`, `union`, `alias`, `distinct` or `other`. A macro
+  has `"macro":true`.
 * Every struct's fields, enum's members and union's variants are there, used or not, each with `in`, the number of
   the type's declaration.
 * A value, a field, a member or a function has `of`, the number of the declaration of the type whose members a `.`

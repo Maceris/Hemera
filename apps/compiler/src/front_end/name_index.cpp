@@ -213,6 +213,29 @@ namespace hemera {
 				return "constant";
 			}
 
+			// A type's shape, as the index names it: struct, enum, union, alias, distinct or other
+			static std::string shape_of(const Declaration* declaration) {
+				// A generic's has no type until an instance does: its tree says
+				if (declaration->node != nullptr) {
+					for (const ast::Node* child : declaration->node->children) {
+						if (ast::NodeType::STRUCT == child->node_type) {
+							return "struct";
+						}
+						if (ast::NodeType::ENUM == child->node_type) {
+							return "enum";
+						}
+						if (ast::NodeType::UNION == child->node_type) {
+							return "union";
+						}
+					}
+				}
+				const TypeInfo* type = declaration->type_value;
+				if (type != nullptr && TypeInfoVariant::ALIAS == type->variant) {
+					return static_cast<const TypeInfoAlias*>(type)->distinct ? "distinct" : "alias";
+				}
+				return "other";
+			}
+
 			// A declaration in the index, made the first time it's met; its place, or empty if it has none
 			std::optional<IndexPlace> add_declaration(Declaration* declaration) {
 				declaration = original(declaration);
@@ -235,6 +258,10 @@ namespace hemera {
 					widen(declaration->node, made.start, made.end);
 				}
 				made.kind = kind_of(declaration);
+				if ("type" == made.kind) {
+					made.is = shape_of(declaration);
+				}
+				made.macro = "function" == made.kind && is_macro_function(declaration);
 				if ("type" != made.kind && declaration->value_type != nullptr) {
 					made.type = to_string(declaration->value_type);
 				}
@@ -489,7 +516,10 @@ namespace hemera {
 							made.name = at;
 							made.start = at.offset;
 							made.end = at.offset + at.length;
-							made.kind = "local";
+							const bool parameter = std::find(checked->parameters.begin(), checked->parameters.end(), value.local)
+								!= checked->parameters.end();
+							made.kind = parameter ? "parameter" : "local";
+							made.readonly = !checked->mutable_locals.contains(value.local);
 							// An instance's is its own, so a generic's local is typed by the generic's body alone
 							if (value.type != nullptr && declaration->generic == nullptr) {
 								made.type = to_string(value.type);
@@ -640,6 +670,15 @@ namespace hemera {
 			first_declaration = false;
 			out += std::format("{{\"file\":{},\"name\":[{},{}],\"span\":[{},{}],\"kind\":{}", files[place.file], place.offset,
 				place.length, declaration.start, declaration.end, json_text(declaration.kind));
+			if (declaration.readonly) {
+				out += ",\"readonly\":true";
+			}
+			if (!declaration.is.empty()) {
+				out += ",\"is\":" + json_text(declaration.is);
+			}
+			if (declaration.macro) {
+				out += ",\"macro\":true";
+			}
 			if (!place.text.empty()) {
 				out += ",\"text\":" + json_text(place.text);
 			}

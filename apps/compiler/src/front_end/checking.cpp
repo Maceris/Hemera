@@ -286,6 +286,10 @@ namespace hemera {
 		if (checker.record != nullptr) {
 			store_checked(checker.record->nodes[static_cast<const ast::Node*>(at)], value);
 			checker.record->local_depths[at] = checker.scopes.size();
+			// Whether it can change, for the name index (hemera --index)
+			if (value.is_mutable && checker.walk.executor.program_info->name_uses != nullptr) {
+				checker.record->mutable_locals.insert(at);
+			}
 		}
 		const uint32_t mark = checker.walk.executor.program_info->made_nodes.mark_of(static_cast<const ast::Node*>(at));
 		checker.scopes.back().locals.push_back({ name, std::move(value), mark });

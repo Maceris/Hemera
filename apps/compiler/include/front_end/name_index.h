@@ -73,8 +73,14 @@ namespace hemera {
 		// From its first byte to its last, in the same file: a declaration's own tokens, not its doc comment
 		uint32_t start = 0;
 		uint32_t end = 0;
-		// function, type, constant, field, member (an enum's), variant (a union's) or local
+		// function, type, constant, field, member (an enum's), variant (a union's), parameter or local
 		std::string kind;
+		// For a local or parameter, whether it can't be assigned to, like c :: 3 or a parameter, unlike x := 0
+		bool readonly = false;
+		// For a type, its shape: struct, enum, union, alias, distinct or other
+		std::string is;
+		// For a function, whether it's a macro (docs/compilation.md, Macros)
+		bool macro = false;
 		// Its type as the compiler writes it, for a value, a function or a field; empty for a type
 		std::string type;
 		// For a field, member or variant, the type it's in, by where that's declared

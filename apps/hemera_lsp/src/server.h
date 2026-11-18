@@ -94,6 +94,9 @@ namespace hemera::lsp {
 		// Where base's files are, for diagnostics in <base>/...; empty when it isn't found
 		std::string base_folder;
 		Encoding position_encoding = Encoding::UTF16;
+		// Whether the client takes workspace/semanticTokens/refresh, sent after each check; and how many requests were sent
+		bool semantic_refresh = false;
+		uint64_t requests_sent = 0;
 		bool initialized = false;
 		bool shut_down = false;
 		bool exited = false;
@@ -138,6 +141,12 @@ namespace hemera::lsp {
 
 		// textDocument/completion's answer (completion_items), for params' textDocument and position. state must be held.
 		llvm::json::Value completion(const llvm::json::Object* params);
+
+		/*
+		 * textDocument/semanticTokens/full's answer (semantic_tokens), for params' textDocument, or with range,
+		 * semanticTokens/range's, for its range too. state must be held.
+		 */
+		llvm::json::Value tokens(const llvm::json::Object* params, bool range);
 
 		// The tables completion looks up in, for the last index it was asked of, made again when that index isn't the same
 		std::shared_ptr<CompletionTables> completion_tables;

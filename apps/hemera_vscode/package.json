@@ -35,6 +35,11 @@
         "configuration": "./language-configuration.json"
       }
     ],
+    "configurationDefaults": {
+      "[hemera]": {
+        "editor.semanticHighlighting.enabled": true
+      }
+    },
     "grammars": [
       {
         "language": "hemera",

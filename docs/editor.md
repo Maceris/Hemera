@@ -3,7 +3,7 @@
 `hemera-lsp` is Hemera's language server. An editor starts it and speaks the
 [Language Server Protocol](https://microsoft.github.io/language-server-protocol/) to it over standard input and output,
 and it shows the compiler's errors and warnings where they are, each time a file is opened or saved, formats,
-outlines and folds files, and finds what names refer to. The VS Code extension is built with it; another editor with a
+outlines and folds files, finds what names refer to, and colors each by what it is. The VS Code extension is built with it; another editor with a
 language server client can start `hemera-lsp` the same way.
 
 ## Building
@@ -143,14 +143,44 @@ references and completion find it. It can't be renamed, as compile-time code wri
 once the file's been checked. An error in the code it puts in is shown where the code is written, and at the
 `#insert` in the workspace that put it there, each linked to the other.
 
+## Semantic Highlighting
+
+The extension's grammar colors code by how it looks: comments, strings, numbers, keywords, built-in types like `int`.
+Over that, the server colors each name by what the last check found it to be, from the same index:
+
+| A name of | Token type | Modifiers |
+|---|---|---|
+| a function, or a macro | `function`, `macro` | |
+| a struct, an enum | `struct`, `enum` | |
+| a union, an alias or a distinct alias | `type` | |
+| a constant | `variable` | `readonly` |
+| a field | `property` | |
+| an enum's member, a union's variant | `enumMember` | |
+| a local | `variable` | `readonly` unless it can change, like `x := 0` |
+| a parameter | `parameter` | `readonly` |
+| an imported package | `namespace` | |
+
+Each declaration's own name is also `declaration`; one in `base` or `std`, `defaultLibrary`; and one whose doc comment
+has an `@deprecated` tag, `deprecated`. A package name before a `.`, like `compiler` in `compiler.report`, is a
+`namespace` too, found from the file's imports.
+
+The colors follow what you type, as the other answers do: a name you've changed since the check keeps the grammar's
+color until the file is checked again, which the server then tells the editor, so it asks again. A file no target
+reads gets its own declarations colored from its parse, with their fields, members and variants. In `base` and `std`,
+whose uses the index leaves out, only declarations are colored. The extension turns
+`editor.semanticHighlighting.enabled` on for Hemera files, which a theme may leave off; a theme decides the colors.
+
 ## Other Editors
 
 `hemera-lsp` takes no arguments. It answers `initialize` with whole-document sync, open, close and save
 notifications, UTF-8 positions when the client offers them, else UTF-16, and `textDocument/formatting`,
 `textDocument/documentSymbol`, `textDocument/foldingRange`, `textDocument/definition`, `textDocument/hover`,
-`textDocument/references`, `textDocument/prepareRename`, `textDocument/rename` and `textDocument/completion`, with
-`.`, `"`, `/` and `:` as trigger characters, and `workspace/executeCommand` for
+`textDocument/references`, `textDocument/prepareRename`, `textDocument/rename`, `textDocument/completion`, with
+`.`, `"`, `/` and `:` as trigger characters, `textDocument/semanticTokens/full` and `textDocument/semanticTokens/range`,
+with the legend above, and `workspace/executeCommand` for
 `hemera.checkEverything`, Check Everything, with no arguments. Its settings come in initialize's
 `initializationOptions`, and later in `workspace/didChangeConfiguration`'s `settings.hemera`, as an object with
-`compilerPath`, `root`, `arguments` and `checkerMemory`, named as above without `hemera.`. It exits 0 after
-`shutdown` and `exit`, and 1 when `exit`, or the end of its standard input, comes without `shutdown` before it.
+`compilerPath`, `root`, `arguments` and `checkerMemory`, named as above without `hemera.`. When the client's
+capabilities say `workspace.semanticTokens.refreshSupport`, it sends `workspace/semanticTokens/refresh` after each
+check, and takes the answer without a word. It exits 0 after `shutdown` and `exit`, and 1 when `exit`, or the end of
+its standard input, comes without `shutdown` before it.

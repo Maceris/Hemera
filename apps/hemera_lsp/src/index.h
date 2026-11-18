@@ -20,8 +20,19 @@ namespace hemera::lsp {
 		uint32_t name_length = 0;
 		uint32_t start = 0;
 		uint32_t end = 0;
-		// function, type, constant, field, member (an enum's), variant (a union's) or local
+		// function, type, constant, field, member (an enum's), variant (a union's), parameter or local
 		std::string kind;
+		// For a local or parameter, whether it can't be assigned to
+		bool readonly = false;
+		// For a type, its shape: struct, enum, union, alias, distinct or other; empty in an index from before it was written
+		std::string is;
+		// For a function, whether it's a macro
+		bool macro = false;
+
+		// Whether it's a function's own: a local or a parameter, which the features treat alike
+		bool is_local() const {
+			return kind == "local" || kind == "parameter";
+		}
 		std::string type;
 		// For a field, member or variant, the type it's in; and the type whose members follow a . after it; by number
 		std::optional<size_t> in;

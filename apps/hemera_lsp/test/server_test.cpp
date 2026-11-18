@@ -829,6 +829,54 @@ TEST(Server, HoverShowsTheSignatureAndDocumentation) {
 	EXPECT_EQ("3:11-3:17", range_text(*found->getAsObject()->getObject("range")));
 }
 
+/*
+ * Semantic tokens: the legend in the capabilities, a document's tokens from the check's index, and, for a client that
+ * takes it, a refresh after each check.
+ */
+TEST(Server, SemanticTokensComeFromTheIndex) {
+	Indexed indexed;
+	const Object* provider = indexed.session.sent.front().getAsObject()->getObject("result")->getObject("capabilities")
+		->getObject("semanticTokensProvider");
+	ASSERT_NE(nullptr, provider);
+	EXPECT_NE(nullptr, provider->getObject("legend")->getArray("tokenTypes"));
+	indexed.open_main();
+
+	indexed.session.request(25, "textDocument/semanticTokens/full",
+		Object{ { "textDocument", Object{ { "uri", hemera::lsp::uri_from_path(indexed.main) } } } });
+	const Value* found = indexed.session.last().get("result");
+	ASSERT_NE(nullptr, found);
+	// helper, used on line 3 at 11, a function (8), with no modifiers
+	EXPECT_EQ(Value(Array{ 3, 11, 6, 8, 0 }), *found->getAsObject()->get("data"));
+	// The client said nothing of refreshing, so it isn't sent
+	for (const Value& message : indexed.session.sent) {
+		EXPECT_NE(llvm::StringRef("workspace/semanticTokens/refresh"), message.getAsObject()->getString("method").value_or(""));
+	}
+
+	const std::string folder = fresh_folder("refreshed");
+	write_file(folder + "/main.hsc", CALLER);
+	Session session;
+	session.index_json = "{\"version\":1,\"files\":[],\"declarations\":[],\"uses\":[]}";
+	session.request(1, "initialize", Object{ { "capabilities", Object{ { "workspace", Object{
+		{ "semanticTokens", Object{ { "refreshSupport", true } } } } } } },
+		{ "workspaceFolders", Array{ Object{ { "uri", hemera::lsp::uri_from_path(folder) }, { "name", "refreshed" } } } } });
+	session.notify("initialized");
+	session.notify("textDocument/didOpen", document(hemera::lsp::uri_from_path(folder + "/main.hsc"), CALLER, 1));
+	session.published();
+	size_t refreshes = 0;
+	for (const Value& message : session.sent) {
+		const Object* object = message.getAsObject();
+		if (object->getString("method") == llvm::StringRef("workspace/semanticTokens/refresh")) {
+			EXPECT_NE(nullptr, object->get("id")) << "a request, which the client answers";
+			++refreshes;
+		}
+	}
+	EXPECT_EQ(1u, refreshes);
+	// The client's answer is taken without a word
+	const size_t sent = session.sent.size();
+	session.server.handle(Object{ { "jsonrpc", "2.0" }, { "id", "refresh-1" }, { "result", nullptr } });
+	EXPECT_EQ(sent, session.sent.size());
+}
+
 TEST(Server, AnswersMoveWithEditsSinceTheCheck) {
 	Indexed indexed;
 	indexed.open_main();

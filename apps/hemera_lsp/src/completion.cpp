@@ -61,7 +61,7 @@ namespace hemera::lsp {
 			if (declaration.kind == "member" || declaration.kind == "variant") {
 				return item_kinds::ENUM_MEMBER;
 			}
-			if (declaration.kind == "local") {
+			if (declaration.is_local()) {
 				return item_kinds::VARIABLE;
 			}
 			return item_kinds::CONSTANT;
@@ -234,39 +234,6 @@ namespace hemera::lsp {
 				[&](const Token& token) { return TokenType::LITERAL_STRING == token.type && inside(token); });
 		}
 
-		/*
-		 * Offsets between the text the check read and the text now, through the one change between them, worked out
-		 * once (moved_forward and moved_back, for many offsets)
-		 */
-		class Moved {
-		public:
-			Moved(std::string_view then_text, std::string_view now_text) : change(changed_span(then_text, now_text)) {}
-
-			// Where an offset in the text the check read is now; empty if it's in what changed
-			std::optional<size_t> forward(size_t offset) const {
-				if (!change.has_value() || offset < change->start) {
-					return offset;
-				}
-				if (offset >= change->end) {
-					return offset - change->end + change->start + change->text.size();
-				}
-				return std::nullopt;
-			}
-
-			// Where an offset now was in the text the check read; empty if it's in what changed
-			std::optional<size_t> back(size_t offset) const {
-				if (!change.has_value() || offset < change->start) {
-					return offset;
-				}
-				if (offset >= change->start + change->text.size()) {
-					return offset - change->start - change->text.size() + change->end;
-				}
-				return std::nullopt;
-			}
-
-		private:
-			std::optional<TextChange> change;
-		};
 
 		// A name in a chain before a ., like a and b in a.b().c: where it starts now, and whether a call's () follows it
 		struct Link {
@@ -368,7 +335,7 @@ namespace hemera::lsp {
 			if (auto declared = index.declared.find(key); declared != index.declared.end()) {
 				for (const size_t number : declared->second) {
 					const IndexedDeclaration& declaration = index.declarations[number];
-					if (declaration.kind != "local") {
+					if (!declaration.is_local()) {
 						continue;
 					}
 					const std::optional<size_t> now = moved.forward(declaration.name_offset);
@@ -465,7 +432,7 @@ namespace hemera::lsp {
 				if (auto declared = index.declared.find(key); declared != index.declared.end()) {
 					for (auto number = declared->second.rbegin(); number != declared->second.rend(); ++number) {
 						const IndexedDeclaration& declaration = index.declarations[*number];
-						if (declaration.kind != "local") {
+						if (!declaration.is_local()) {
 							continue;
 						}
 						const std::optional<size_t> now = moved.forward(declaration.name_offset);

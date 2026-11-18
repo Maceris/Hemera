@@ -19,6 +19,8 @@ ADD_LIBRARY(HemeraLspLib STATIC
   src/serve_client.h
   src/server.cpp
   src/server.h
+  src/tokens.cpp
+  src/tokens.h
   src/uri.cpp
   src/uri.h
 )
@@ -50,6 +52,7 @@ ADD_EXECUTABLE(HemeraLspTest
   test/parsing_test.cpp
   test/protocol_test.cpp
   test/server_test.cpp
+  test/tokens_test.cpp
   test/uri_test.cpp
 )
 TARGET_LINK_LIBRARIES(HemeraLspTest HemeraLspLib GTest::gtest_main GTest::gtest)

@@ -5,6 +5,7 @@
 #include <string>
 #include <string_view>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 #include "front_end/walk.h"
@@ -240,6 +241,11 @@ namespace hemera {
 		/// to, by its call's node; a call without it gives a variadic the rest (docs/functions.md, Variable Arguments).
 		/// </summary>
 		std::unordered_map<const ast::Node*, std::vector<uint32_t>> argument_parameters;
+		/// <summary>
+		/// The locals that can be assigned to, like x := 0, by their keys (where each is defined), for the name index,
+		/// which says whether each can change; only kept while the program is indexed, and empty otherwise.
+		/// </summary>
+		std::unordered_set<const void*> mutable_locals;
 		/// <summary>
 		/// The program's nodes made while compiling, which say where code #insert put in the body came from,
 		/// for reporting errors in it there (report_at).

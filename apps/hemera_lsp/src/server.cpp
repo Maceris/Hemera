@@ -8,6 +8,7 @@
 #include <utility>
 
 #include "features.h"
+#include "tokens.h"
 #include "uri.h"
 #include "error/reporting.h"
 #include "parser/formatting.h"
@@ -95,7 +96,7 @@ namespace hemera::lsp {
 				notification(*method, params);
 			}
 		}
-		// A response to a request of the server's; it sends none, so there's nothing to match it to
+		// A response to a request of the server's, like workspace/semanticTokens/refresh, which needs nothing back
 		else if (object->get("id") == nullptr) {
 			respond_error(nullptr, error_codes::INVALID_REQUEST, "a message has a method, or is a response");
 		}
@@ -434,6 +435,10 @@ namespace hemera::lsp {
 				workspace_folders.push_back(path_from_uri(*root));
 			}
 		}
+		// Whether it can be told to ask for semantic tokens again, as after each check
+		const Object* workspace = capabilities != nullptr ? capabilities->getObject("workspace") : nullptr;
+		const Object* tokens = workspace != nullptr ? workspace->getObject("semanticTokens") : nullptr;
+		semantic_refresh = tokens != nullptr && tokens->getBoolean("refreshSupport").value_or(false);
 		read_settings(params != nullptr ? params->getObject("initializationOptions") : nullptr);
 		if (base_folder.empty()) {
 			base_folder = find_base_folder(settings.compiler_path);
@@ -455,6 +460,7 @@ namespace hemera::lsp {
 				{ "hoverProvider", true },
 				{ "referencesProvider", true },
 				{ "renameProvider", Object{ { "prepareProvider", true } } },
+				{ "semanticTokensProvider", Object{ { "legend", semantic_tokens_legend() }, { "full", true }, { "range", true } } },
 				{ "executeCommandProvider", Object{ { "commands", Array{ "hemera.checkEverything" } } } },
 			} },
 			{ "serverInfo", Object{ { "name", "hemera-lsp" }, { "version", VERSION_STR } } },
@@ -624,6 +630,11 @@ namespace hemera::lsp {
 						indexes[path_key(job.root)] = !job.targets.empty() && kept != nullptr
 							? std::make_shared<const LoadedIndex>(merged_index(*kept, std::move(*index), checked_targets))
 							: std::make_shared<const LoadedIndex>(std::move(*index));
+						// Open documents' tokens asked for again, from the new index, by a client that can be told to
+						if (semantic_refresh) {
+							messages.push_back(Object{ { "jsonrpc", "2.0" }, { "id", std::format("refresh-{}", ++requests_sent) },
+								{ "method", "workspace/semanticTokens/refresh" } });
+						}
 					}
 				}
 				/*
@@ -819,6 +830,9 @@ namespace hemera::lsp {
 		if (method == "textDocument/hover") {
 			return hover(params);
 		}
+		if (method == "textDocument/semanticTokens/full" || method == "textDocument/semanticTokens/range") {
+			return tokens(params, method.ends_with("/range"));
+		}
 		if (method == "textDocument/references") {
 			return references(params);
 		}
@@ -991,6 +1005,59 @@ namespace hemera::lsp {
 		return completion_items(request, index != nullptr ? completion_tables.get() : nullptr);
 	}
 
+	Value Server::tokens(const Object* params, bool range) {
+		const std::optional<std::string> uri = document_uri(params);
+		const Document* document = uri.has_value() ? open_documents.find_uri(*uri) : nullptr;
+		if (document == nullptr) {
+			return Object{ { "data", Array{} } };
+		}
+		const Parses* parses_of = parsed(*uri);
+		TokensRequest request;
+		request.file = document->path.empty() ? *uri : document->path;
+		request.text = document->text;
+		request.checked_text = document->text;
+		request.parsed = parses_of != nullptr ? parses_of->current.get() : nullptr;
+		request.encoding = position_encoding;
+		// std is beside base, as both ship next to the compiler
+		request.base_folder = base_folder;
+		if (const size_t slash = base_folder.rfind('/'); slash != std::string::npos) {
+			request.std_folder = base_folder.substr(0, slash) + "/std";
+		}
+		const Object* asked = range && params != nullptr ? params->getObject("range") : nullptr;
+		if (asked != nullptr) {
+			const LineIndex lines(document->text);
+			for (auto [field, offset] : { std::pair{ "start", &request.start }, std::pair{ "end", &request.end } }) {
+				if (const Object* position = asked->getObject(field)) {
+					*offset = lines.offset_of(static_cast<uint32_t>(position->getInteger("line").value_or(0)),
+						static_cast<uint32_t>(position->getInteger("character").value_or(0)), position_encoding);
+				}
+			}
+		}
+		// The index of the document's root, or else any that knows the file, as for a name's declaration
+		std::shared_ptr<const LoadedIndex> index;
+		const std::string key = path_key(request.file);
+		if (auto found = indexes.find(path_key(root_for(request.file))); found != indexes.end()) {
+			index = found->second;
+		}
+		for (auto it = indexes.begin(); index == nullptr && it != indexes.end(); ++it) {
+			if (it->second->uses.contains(key) || it->second->declared.contains(key)) {
+				index = it->second;
+			}
+		}
+		// The text the check read, which the index's offsets are in
+		std::optional<std::pair<std::string, std::string>> texts;
+		if (index != nullptr && !document->path.empty()) {
+			texts = texts_of(*index, document->path);
+		}
+		if (texts.has_value()) {
+			request.checked_text = texts->first;
+		}
+		else {
+			index = nullptr;
+		}
+		return semantic_tokens(request, index.get());
+	}
+
 	Value Server::place_location(const std::string& file, uint32_t line_number, uint32_t column) {
 		std::string path = file;
 		if (path.starts_with("<base>/") && !base_folder.empty()) {
@@ -1027,7 +1094,7 @@ namespace hemera::lsp {
 		const LineIndex lines(document->text);
 		for (const size_t number : declared->second) {
 			const IndexedDeclaration& declaration = index->declarations[number];
-			if (declaration.text.empty() || declaration.in.has_value() || declaration.kind == "local") {
+			if (declaration.text.empty() || declaration.in.has_value() || declaration.is_local()) {
 				continue;
 			}
 			const std::optional<size_t> start = moved_forward(texts->first, texts->second, declaration.name_offset);
@@ -1091,7 +1158,7 @@ namespace hemera::lsp {
 			signature = signature_in(texts->first, declaration);
 		}
 		// A local's or a field's line holds more than it, or less, so it's its name and type
-		if (("local" == declaration.kind || "field" == declaration.kind) && !declaration.type.empty()) {
+		if ((declaration.is_local() || "field" == declaration.kind) && !declaration.type.empty()) {
 			signature = name + " : " + declaration.type;
 		}
 		// One inserted code made: its line is the #insert's, so it's its name and type

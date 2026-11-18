@@ -27,6 +27,40 @@ namespace hemera::lsp {
 	 */
 	std::optional<TextChange> changed_span(std::string_view old_text, std::string_view new_text);
 
+	/*
+	 * Offsets between the text a check read and the text now, through the one change between them (changed_span),
+	 * worked out once, for many offsets
+	 */
+	class Moved {
+	public:
+		Moved(std::string_view then_text, std::string_view now_text) : change(changed_span(then_text, now_text)) {}
+
+		// Where an offset in the text the check read is now; empty if it's in what changed
+		std::optional<size_t> forward(size_t offset) const {
+			if (!change.has_value() || offset < change->start) {
+				return offset;
+			}
+			if (offset >= change->end) {
+				return offset - change->end + change->start + change->text.size();
+			}
+			return std::nullopt;
+		}
+
+		// Where an offset now was in the text the check read; empty if it's in what changed
+		std::optional<size_t> back(size_t offset) const {
+			if (!change.has_value() || offset < change->start) {
+				return offset;
+			}
+			if (offset >= change->start + change->text.size()) {
+				return offset - change->start - change->text.size() + change->end;
+			}
+			return std::nullopt;
+		}
+
+	private:
+		std::optional<TextChange> change;
+	};
+
 	// A Language Server Protocol position, {line, character}, for byte offset in index's text, in encoding's units.
 	llvm::json::Value position_at(const LineIndex& index, size_t offset, Encoding encoding);
 

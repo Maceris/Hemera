@@ -1754,15 +1754,43 @@ TEST(FrontEnd, IndexesWhatNamesReferTo)
 	// A local of a struct, one a function gave, one through a pointer, and an enum's
 	EXPECT_EQ("local in - of shapes.hsc:4:1", in_of("main.hsc:12:5"));
 	EXPECT_EQ("local in - of shapes.hsc:4:1", in_of("main.hsc:13:5"));
-	EXPECT_EQ("local in - of shapes.hsc:4:1", in_of("main.hsc:19:15"));
+	EXPECT_EQ("parameter in - of shapes.hsc:4:1", in_of("main.hsc:19:15"));
 	EXPECT_EQ("local in - of shapes.hsc:22:1", in_of("main.hsc:20:5"));
 	// A function, by its result
 	EXPECT_EQ("function in - of shapes.hsc:4:1", in_of("shapes.hsc:17:1"));
-	// A generic's local isn't typed, as its instances decide
-	EXPECT_EQ("local in - of -", in_of("main.hsc:7:16"));
+	// A generic's parameter isn't typed, as its instances decide
+	EXPECT_EQ("parameter in - of -", in_of("main.hsc:7:16"));
+
+	// What a local can be: a parameter, a constant and a variable; only the variable can change
+	const auto local_at = [&](const std::string& at) {
+		const hemera::IndexDeclaration* declaration = declarations.contains(at) ? declarations[at] : nullptr;
+		return declaration == nullptr ? std::string("missing")
+			: std::format("{}{}", declaration->kind, declaration->readonly ? " readonly" : "");
+	};
+	EXPECT_EQ("parameter readonly", local_at("extras.hsc:12:15"));
+	EXPECT_EQ("local readonly", local_at("extras.hsc:13:5"));
+	EXPECT_EQ("local", local_at("extras.hsc:14:5"));
+	// A type's shape, and a macro
+	const auto shape_at = [&](const std::string& at) {
+		return declarations.contains(at) ? declarations[at]->is : std::string("missing");
+	};
+	EXPECT_EQ("struct", shape_at("shapes.hsc:4:1"));
+	EXPECT_EQ("enum", shape_at("shapes.hsc:22:1"));
+	EXPECT_EQ("union", shape_at("shapes.hsc:27:1"));
+	EXPECT_EQ("alias", shape_at("extras.hsc:19:1"));
+	EXPECT_EQ("distinct", shape_at("extras.hsc:20:1"));
+	ASSERT_TRUE(declarations.contains("extras.hsc:6:1"));
+	EXPECT_TRUE(declarations["extras.hsc:6:1"]->macro);
+	ASSERT_TRUE(declarations.contains("extras.hsc:12:1"));
+	EXPECT_FALSE(declarations["extras.hsc:12:1"]->macro);
 
 	// Each import, by the name it's used by: the folder of the package it names
-	ASSERT_EQ(1u, index.imports.size());
-	EXPECT_EQ("main.hsc:3:8", where(index.imports.begin()->first));
-	EXPECT_TRUE(index.imports.begin()->second.ends_with("/name_index/shapes")) << index.imports.begin()->second;
+	std::map<std::string, std::string> imports;
+	for (const auto& [place, folder] : index.imports) {
+		imports[where(place)] = folder;
+	}
+	ASSERT_EQ(2u, imports.size());
+	ASSERT_TRUE(imports.contains("main.hsc:3:8"));
+	EXPECT_TRUE(imports["main.hsc:3:8"].ends_with("/name_index/shapes")) << imports["main.hsc:3:8"];
+	EXPECT_TRUE(imports.contains("extras.hsc:3:8"));
 }
