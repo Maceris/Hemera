@@ -268,6 +268,25 @@ namespace hemera {
 	/// </summary>
 	std::string inserted_note(const ast::Origin& origin);
 
+	// A function's parameter, as its FUNCTION node writes it.
+	struct SignatureParameter {
+		// Its name, or null for one written as a type alone
+		InternedString name = nullptr;
+		/// <summary>
+		/// Its name's node, which keys it as a local.
+		/// </summary>
+		ast::Node* node = nullptr;
+		// Its type as written, or null when it has none written, like factor := 3
+		ast::Node* type = nullptr;
+		bool has_default = false;
+		bool is_varargs = false;
+		// Its default's expression, when it has one
+		ast::Node* default_value = nullptr;
+	};
+
+	// A FUNCTION node's parameters, in order, each name of several written with one type its own.
+	std::vector<SignatureParameter> parameters_of(ast::Node* function);
+
 	/// <summary>
 	/// Checks a function's body, once its signature is resolved, with its generic parameters bound
 	/// for an instance.

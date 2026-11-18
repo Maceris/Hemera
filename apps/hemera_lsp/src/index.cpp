@@ -109,6 +109,20 @@ namespace hemera::lsp {
 				declaration.readonly = object->getBoolean("readonly").value_or(false);
 				declaration.is = text_of(*object, "is");
 				declaration.macro = object->getBoolean("macro").value_or(false);
+				if (const Array* parameters = object->getArray("parameters")) {
+					for (const Value& listed : *parameters) {
+						const Object* written = listed.getAsObject();
+						if (written == nullptr) {
+							continue;
+						}
+						IndexedDeclaration::Parameter parameter{ text_of(*written, "name"), text_of(*written, "type"), std::nullopt,
+							written->getBoolean("variadic").value_or(false) };
+						if (const Array* default_span = written->getArray("default"); default_span != nullptr && default_span->size() == 2) {
+							parameter.default_span = std::make_pair(number_at(*default_span, 0), number_at(*default_span, 1));
+						}
+						declaration.parameters.push_back(std::move(parameter));
+					}
+				}
 				declaration.type = text_of(*object, "type");
 				declaration.brief = text_of(*object, "brief");
 				declaration.details = text_of(*object, "details");

@@ -461,6 +461,10 @@ namespace hemera::lsp {
 				{ "referencesProvider", true },
 				{ "renameProvider", Object{ { "prepareProvider", true } } },
 				{ "semanticTokensProvider", Object{ { "legend", semantic_tokens_legend() }, { "full", true }, { "range", true } } },
+				{ "signatureHelpProvider", Object{ { "triggerCharacters", Array{ "(", "," } }, { "retriggerCharacters", Array{ "," } } } },
+				{ "documentHighlightProvider", true },
+				{ "workspaceSymbolProvider", true },
+				{ "inlayHintProvider", true },
 				{ "executeCommandProvider", Object{ { "commands", Array{ "hemera.checkEverything" } } } },
 			} },
 			{ "serverInfo", Object{ { "name", "hemera-lsp" }, { "version", VERSION_STR } } },
@@ -833,6 +837,18 @@ namespace hemera::lsp {
 		if (method == "textDocument/semanticTokens/full" || method == "textDocument/semanticTokens/range") {
 			return tokens(params, method.ends_with("/range"));
 		}
+		if (method == "textDocument/signatureHelp") {
+			return signature(params);
+		}
+		if (method == "textDocument/documentHighlight") {
+			return highlights(params);
+		}
+		if (method == "textDocument/inlayHint") {
+			return hints(params);
+		}
+		if (method == "workspace/symbol") {
+			return symbols(params);
+		}
 		if (method == "textDocument/references") {
 			return references(params);
 		}
@@ -975,17 +991,7 @@ namespace hemera::lsp {
 		const LineIndex lines(document->text);
 		request.offset = lines.offset_of(static_cast<uint32_t>(position->getInteger("line").value_or(0)),
 			static_cast<uint32_t>(position->getInteger("character").value_or(0)), position_encoding);
-		// The index of the document's root, or else any that knows the file, as for a name's declaration
-		std::shared_ptr<const LoadedIndex> index;
-		const std::string key = path_key(request.file);
-		if (auto found = indexes.find(path_key(root_for(request.file))); found != indexes.end()) {
-			index = found->second;
-		}
-		for (auto it = indexes.begin(); index == nullptr && it != indexes.end(); ++it) {
-			if (it->second->uses.contains(key) || it->second->declared.contains(key)) {
-				index = it->second;
-			}
-		}
+		const std::shared_ptr<const LoadedIndex> index = index_for(request.file);
 		std::optional<std::pair<std::string, std::string>> texts;
 		if (index != nullptr && !document->path.empty()) {
 			texts = texts_of(*index, document->path);
@@ -993,16 +999,100 @@ namespace hemera::lsp {
 				request.checked_text = texts->first;
 			}
 		}
-		if (index != nullptr && (completion_tables == nullptr || completion_tables->shared() != index)) {
+		return completion_items(request, tables_for(index));
+	}
+
+	std::shared_ptr<const LoadedIndex> Server::index_for(const std::string& file) const {
+		const std::string key = path_key(file);
+		if (auto found = indexes.find(path_key(root_for(file))); found != indexes.end()) {
+			return found->second;
+		}
+		for (const auto& [root, index] : indexes) {
+			if (index->uses.contains(key) || index->declared.contains(key)) {
+				return index;
+			}
+		}
+		return nullptr;
+	}
+
+	CompletionTables* Server::tables_for(const std::shared_ptr<const LoadedIndex>& index) {
+		if (index == nullptr) {
+			return nullptr;
+		}
+		// Those of indexes that have been replaced since go
+		std::erase_if(tables, [&](const auto& entry) {
+			return std::none_of(indexes.begin(), indexes.end(), [&](const auto& kept) { return kept.second.get() == entry.first; });
+		});
+		std::shared_ptr<CompletionTables>& made = tables[index.get()];
+		if (made == nullptr) {
 			// A file's text as the check read it: an open one's from the index, another's from disk
-			completion_tables = std::make_shared<CompletionTables>(index, [index](const std::string& file) {
+			made = std::make_shared<CompletionTables>(index, [index](const std::string& file) {
 				if (auto then = index->texts.find(path_key(file)); then != index->texts.end()) {
 					return then->second;
 				}
 				return read_file(file).value_or(std::string());
 			});
 		}
-		return completion_items(request, index != nullptr ? completion_tables.get() : nullptr);
+		return made.get();
+	}
+
+	AssistRequest Server::assist_request(const Document& document, const std::shared_ptr<const LoadedIndex>& index) {
+		AssistRequest request;
+		request.file = document.path;
+		request.text = document.text;
+		request.checked_text = document.text;
+		const Parses* parses_of = parsed(document.uri);
+		request.parsed = parses_of != nullptr ? parses_of->current.get() : nullptr;
+		request.encoding = position_encoding;
+		if (index != nullptr) {
+			if (std::optional<std::pair<std::string, std::string>> texts = texts_of(*index, document.path)) {
+				assist_texts = std::move(texts->first);
+				request.checked_text = assist_texts;
+			}
+		}
+		return request;
+	}
+
+	Value Server::signature(const Object* params) {
+		const std::optional<std::string> uri = document_uri(params);
+		const Document* document = uri.has_value() ? open_documents.find_uri(*uri) : nullptr;
+		const Object* position = params != nullptr ? params->getObject("position") : nullptr;
+		if (document == nullptr || document->path.empty() || position == nullptr) {
+			return nullptr;
+		}
+		const std::shared_ptr<const LoadedIndex> index = index_for(document->path);
+		AssistRequest request = assist_request(*document, index);
+		const LineIndex lines(document->text);
+		request.offset = lines.offset_of(static_cast<uint32_t>(position->getInteger("line").value_or(0)),
+			static_cast<uint32_t>(position->getInteger("character").value_or(0)), position_encoding);
+		return signature_help(request, tables_for(index));
+	}
+
+	Value Server::hints(const Object* params) {
+		const std::optional<std::string> uri = document_uri(params);
+		const Document* document = uri.has_value() ? open_documents.find_uri(*uri) : nullptr;
+		const Object* range = params != nullptr ? params->getObject("range") : nullptr;
+		const std::shared_ptr<const LoadedIndex> index = document != nullptr && !document->path.empty() ? index_for(document->path) : nullptr;
+		if (index == nullptr || range == nullptr) {
+			return Array{};
+		}
+		AssistRequest request = assist_request(*document, index);
+		const LineIndex lines(document->text);
+		for (auto [field, offset] : { std::pair{ "start", &request.offset }, std::pair{ "end", &request.end } }) {
+			const Object* at = range->getObject(field);
+			*offset = at == nullptr ? 0 : lines.offset_of(static_cast<uint32_t>(at->getInteger("line").value_or(0)),
+				static_cast<uint32_t>(at->getInteger("character").value_or(0)), position_encoding);
+		}
+		return inlay_hints(request, *index);
+	}
+
+	Value Server::symbols(const Object* params) {
+		const std::optional<llvm::StringRef> query = params != nullptr ? params->getString("query") : std::nullopt;
+		std::vector<CompletionTables*> of_each;
+		for (const auto& [root, index] : indexes) {
+			of_each.push_back(tables_for(index));
+		}
+		return workspace_symbols(query.value_or("").str(), of_each, workspace_folders, position_encoding);
 	}
 
 	Value Server::tokens(const Object* params, bool range) {
@@ -1209,6 +1299,49 @@ namespace hemera::lsp {
 			if (location.getAsObject() != nullptr) {
 				found.push_back(std::move(location));
 			}
+		}
+		return found;
+	}
+
+	Value Server::highlights(const Object* params) {
+		const std::optional<Named> named = named_at(params);
+		const std::optional<std::string> uri = document_uri(params);
+		const Document* document = uri.has_value() ? open_documents.find_uri(*uri) : nullptr;
+		if (!named.has_value() || document == nullptr) {
+			return nullptr;
+		}
+		const LoadedIndex& index = *named->index;
+		const IndexedDeclaration& declaration = index.declarations[named->declaration];
+		const std::string key = path_key(document->path);
+		const std::optional<std::pair<std::string, std::string>> texts = texts_of(index, document->path);
+		if (!texts.has_value()) {
+			return nullptr;
+		}
+		// This file's uses alone, not every file's, as references looks through
+		std::vector<std::pair<uint32_t, uint32_t>> places;
+		if (path_key(declaration.file) == key && declaration.text.empty()) {
+			places.emplace_back(declaration.name_offset, declaration.name_length);
+		}
+		if (auto uses = index.uses.find(key); uses != index.uses.end()) {
+			for (const IndexedUse& use : uses->second) {
+				if (use.declaration == named->declaration) {
+					places.emplace_back(use.offset, use.length);
+				}
+			}
+		}
+		const Moved moved(texts->first, texts->second);
+		const LineIndex lines(texts->second);
+		Array found;
+		for (const auto& [offset, length] : places) {
+			const std::optional<size_t> start = moved.forward(offset);
+			const std::optional<size_t> end = moved.forward(static_cast<size_t>(offset) + length);
+			if (!start.has_value() || !end.has_value()) {
+				continue;
+			}
+			// DocumentHighlightKind: its declaration Write (3), each use Read (2)
+			const bool declared_here = path_key(declaration.file) == key && offset == declaration.name_offset;
+			found.push_back(Object{ { "range", Object{ { "start", position_at(lines, *start, position_encoding) },
+				{ "end", position_at(lines, *end, position_encoding) } } }, { "kind", declared_here ? 3 : 2 } });
 		}
 		return found;
 	}

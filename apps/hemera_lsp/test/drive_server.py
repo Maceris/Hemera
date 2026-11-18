@@ -150,6 +150,18 @@ def drive(server, compiler, folder):
         modifiers = [name for bit, name in enumerate(legend["tokenModifiers"]) if data[at + 4] >> bit & 1]
         tokens.append((line, start, data[at + 2], legend["tokenTypes"][data[at + 3]], modifiers))
     assert tokens == [(2, 0, 4, "function", ["declaration"]), (3, 11, 6, "function", [])], tokens
+    # Highlights, signature help, workspace symbols and inlay hints, from the same index
+    highlights = client.request("textDocument/documentHighlight", at_call)["result"]
+    assert [(h["range"]["start"]["line"], h["kind"]) for h in highlights] == [(3, 2)], highlights
+    in_call = {"textDocument": {"uri": uri_of(main)}, "position": {"line": 3, "character": 18}}
+    help_ = client.request("textDocument/signatureHelp", in_call)["result"]
+    assert help_ and help_["signatures"][0]["label"] == "helper() -> int", help_
+    symbols = client.request("workspace/symbol", {"query": "help"})["result"]
+    # helper starts with the query, so it's first; base's names with its letters in order follow
+    assert symbols and symbols[0]["name"] == "helper", symbols
+    hints = client.request("textDocument/inlayHint", {"textDocument": {"uri": uri_of(main)},
+                                                      "range": {"start": {"line": 0, "character": 0}, "end": {"line": 9, "character": 0}}})
+    assert hints.get("result") == [], hints
     renamed = client.request("textDocument/rename", dict(at_call, newName="assist"))
     assert "error" not in renamed, renamed
     assert sum(len(edits) for edits in renamed["result"]["changes"].values()) == 2, renamed

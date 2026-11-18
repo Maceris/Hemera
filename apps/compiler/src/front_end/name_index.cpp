@@ -17,6 +17,7 @@
 #include "front_end/names.h"
 #include "front_end/type.h"
 #include "front_end/walk.h"
+#include "middle_end/code_values.h"
 #include "parser/ast_types.h"
 
 namespace hemera {
@@ -262,6 +263,52 @@ namespace hemera {
 					made.is = shape_of(declaration);
 				}
 				made.macro = "function" == made.kind && is_macro_function(declaration);
+				if ("function" == made.kind && declaration->value_type != nullptr && TypeInfoVariant::FUNCTION == declaration->value_type->variant) {
+					for (const FunctionInput& input : static_cast<const TypeInfoFunction*>(declaration->value_type)->input) {
+						IndexDeclaration::Parameter parameter;
+						parameter.name = input.name != nullptr ? std::string(*input.name) : std::string();
+						parameter.type = input.type != nullptr ? to_string(input.type) : std::string();
+						parameter.variadic = input.is_varargs;
+						// Its default as written in the function's own signature, in its file
+						if (input.default_value != nullptr && input.default_in_body && !place->inserted) {
+							uint32_t start = std::numeric_limits<uint32_t>::max();
+							uint32_t end = 0;
+							widen(input.default_value, start, end);
+							if (start < end) {
+								parameter.default_span = std::make_pair(start, end);
+							}
+						}
+						made.parameters.push_back(std::move(parameter));
+					}
+				}
+				// A generic's, which has no type until an instance does: as its signature writes them
+				else if ("function" == made.kind && declaration->node != nullptr && !place->inserted) {
+					for (ast::Node* child : declaration->node->children) {
+						if (ast::NodeType::FUNCTION != child->node_type) {
+							continue;
+						}
+						for (const SignatureParameter& written : parameters_of(child)) {
+							IndexDeclaration::Parameter parameter;
+							const bool named = written.name != nullptr || (written.node != nullptr && ast::NodeType::IDENTIFIER == written.node->node_type
+								&& written.type == written.node);
+							parameter.name = written.name != nullptr ? std::string(*written.name)
+								: named && written.node->value.value != nullptr ? std::string(*written.node->value.value) : std::string();
+							parameter.type = written.type != nullptr && written.type != written.node ? code_source(written.type, program.quotes)
+								: std::string();
+							parameter.variadic = written.is_varargs;
+							if (written.default_value != nullptr) {
+								uint32_t start = std::numeric_limits<uint32_t>::max();
+								uint32_t end = 0;
+								widen(written.default_value, start, end);
+								if (start < end) {
+									parameter.default_span = std::make_pair(start, end);
+								}
+							}
+							made.parameters.push_back(std::move(parameter));
+						}
+						break;
+					}
+				}
 				if ("type" != made.kind && declaration->value_type != nullptr) {
 					made.type = to_string(declaration->value_type);
 				}
@@ -678,6 +725,22 @@ namespace hemera {
 			}
 			if (declaration.macro) {
 				out += ",\"macro\":true";
+			}
+			if (!declaration.parameters.empty()) {
+				out += ",\"parameters\":[";
+				for (size_t i = 0; i < declaration.parameters.size(); ++i) {
+					const IndexDeclaration::Parameter& parameter = declaration.parameters[i];
+					out += std::format("{}{{\"name\":{},\"type\":{}", i == 0 ? "" : ",", json_text(parameter.name), json_text(parameter.type));
+					if (parameter.default_span.has_value()) {
+						out += std::format(",\"default\":[{},{}]", parameter.default_span->first,
+							parameter.default_span->second - parameter.default_span->first);
+					}
+					if (parameter.variadic) {
+						out += ",\"variadic\":true";
+					}
+					out += "}";
+				}
+				out += "]";
 			}
 			if (!place.text.empty()) {
 				out += ",\"text\":" + json_text(place.text);

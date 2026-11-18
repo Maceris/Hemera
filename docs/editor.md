@@ -3,7 +3,8 @@
 `hemera-lsp` is Hemera's language server. An editor starts it and speaks the
 [Language Server Protocol](https://microsoft.github.io/language-server-protocol/) to it over standard input and output,
 and it shows the compiler's errors and warnings where they are, each time a file is opened or saved, formats,
-outlines and folds files, finds what names refer to, and colors each by what it is. The VS Code extension is built with it; another editor with a
+outlines and folds files, finds what names refer to, and colors each by what it is, with signature help and inlay
+hints. The VS Code extension is built with it; another editor with a
 language server client can start `hemera-lsp` the same way.
 
 ## Building
@@ -143,6 +144,22 @@ references and completion find it. It can't be renamed, as compile-time code wri
 once the file's been checked. An error in the code it puts in is shown where the code is written, and at the
 `#insert` in the workspace that put it there, each linked to the other.
 
+## Signatures, Highlights, Symbols and Hints
+
+From the same index:
+
+* **Signature help** shows the signature of the call you're typing an argument of, once you type its `(` or a `,`,
+  like `scale(value : int, factor : int = 3) -> int`, with its doc comment's summary and each parameter's `@param`
+  text. The parameter your argument goes to is marked: by the commas before it, or by its name in a named argument
+  like `factor = 2`. A call through a value of function type, like a field, shows its type's parameters, which have no
+  names. A call typed since the check is found by its name in the package, or after an imported package's name.
+* **Highlighting** a name marks each place it's named in the file: its declaration, and each use.
+* **Go to Symbol in Workspace** finds functions, types and constants by name, and fields, enum members and union
+  variants, with the type they're in: those whose names have what you type in order, ignoring case. Names starting
+  with it come first, then the workspace's, at most 500. `base` and `std` declarations the program uses are there too.
+* **Inlay hints** show the type of each local whose type isn't written, like `x := 0`, a loop's variables and a
+  match's bindings, after its name. A type longer than 40 characters is cut short; hovering over it shows the whole.
+
 ## Semantic Highlighting
 
 The extension's grammar colors code by how it looks: comments, strings, numbers, keywords, built-in types like `int`.
@@ -177,7 +194,8 @@ notifications, UTF-8 positions when the client offers them, else UTF-16, and `te
 `textDocument/documentSymbol`, `textDocument/foldingRange`, `textDocument/definition`, `textDocument/hover`,
 `textDocument/references`, `textDocument/prepareRename`, `textDocument/rename`, `textDocument/completion`, with
 `.`, `"`, `/` and `:` as trigger characters, `textDocument/semanticTokens/full` and `textDocument/semanticTokens/range`,
-with the legend above, and `workspace/executeCommand` for
+with the legend above, `textDocument/signatureHelp`, with `(` and `,` as trigger characters, `textDocument/documentHighlight`,
+`textDocument/inlayHint`, `workspace/symbol`, and `workspace/executeCommand` for
 `hemera.checkEverything`, Check Everything, with no arguments. Its settings come in initialize's
 `initializationOptions`, and later in `workspace/didChangeConfiguration`'s `settings.hemera`, as an object with
 `compilerPath`, `root`, `arguments` and `checkerMemory`, named as above without `hemera.`. When the client's

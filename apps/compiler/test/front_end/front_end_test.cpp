@@ -1783,6 +1783,24 @@ TEST(FrontEnd, IndexesWhatNamesReferTo)
 	EXPECT_TRUE(declarations["extras.hsc:6:1"]->macro);
 	ASSERT_TRUE(declarations.contains("extras.hsc:12:1"));
 	EXPECT_FALSE(declarations["extras.hsc:12:1"]->macro);
+	// A function's parameters: names, types, a default where it's written, and a variadic one
+	const auto parameters_at = [&](const std::string& at) {
+		std::string found;
+		if (!declarations.contains(at)) {
+			return std::string("missing");
+		}
+		for (const hemera::IndexDeclaration::Parameter& parameter : declarations[at]->parameters) {
+			found += std::format("{}{} : {}{}{}", found.empty() ? "" : ", ", parameter.name, parameter.type,
+				parameter.default_span.has_value() ? std::format(" = [{}]", parameter.default_span->second - parameter.default_span->first) : "",
+				parameter.variadic ? " ..." : "");
+		}
+		return found;
+	};
+	EXPECT_EQ("value : int, factor : int = [1], rest : int ...", parameters_at("extras.hsc:22:1"));
+	// A generic's, as it's declared
+	EXPECT_EQ("a : T, b : T", parameters_at("main.hsc:7:1"));
+	EXPECT_EQ("by : int", parameters_at("extras.hsc:12:1"));
+	EXPECT_EQ("", parameters_at("main.hsc:11:1"));
 
 	// Each import, by the name it's used by: the folder of the package it names
 	std::map<std::string, std::string> imports;

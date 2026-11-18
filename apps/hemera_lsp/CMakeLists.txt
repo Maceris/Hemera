@@ -2,6 +2,8 @@
 # standard input and output (docs/editor.md). hemera-lsp-debug for Debug, so both builds can be on PATH and be run by
 # name. What it does is in HemeraLspLib, so the tests drive it without a client.
 ADD_LIBRARY(HemeraLspLib STATIC
+  src/assist.cpp
+  src/assist.h
   src/checker.cpp
   src/completion.cpp
   src/checker.h
@@ -44,6 +46,7 @@ IF(MSVC)
 ENDIF()
 
 ADD_EXECUTABLE(HemeraLspTest
+  test/assist_test.cpp
   test/checker_test.cpp
   test/completion_test.cpp
   test/documents_test.cpp

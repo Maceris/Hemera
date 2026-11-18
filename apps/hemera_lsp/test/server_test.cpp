@@ -170,7 +170,7 @@ TEST(Server, RequestsBeforeInitializeAreRefused) {
 TEST(Server, UnknownRequestsAreNotFound) {
 	Session session;
 	session.initialize();
-	session.request(2, "textDocument/signatureHelp");
+	session.request(2, "textDocument/codeLens");
 
 	EXPECT_EQ(hemera::lsp::error_codes::METHOD_NOT_FOUND, session.last_error());
 	EXPECT_EQ(Value(2), *session.last().get("id"));
@@ -875,6 +875,41 @@ TEST(Server, SemanticTokensComeFromTheIndex) {
 	const size_t sent = session.sent.size();
 	session.server.handle(Object{ { "jsonrpc", "2.0" }, { "id", "refresh-1" }, { "result", nullptr } });
 	EXPECT_EQ(sent, session.sent.size());
+}
+
+/*
+ * Highlights, signature help, workspace symbols and inlay hints are offered, and answered from the check's index:
+ * a name's places in the file, a call's signature, and a search for a declaration.
+ */
+TEST(Server, AnswersEditorFeaturesFromTheIndex) {
+	Indexed indexed;
+	const Object& capabilities = *indexed.session.sent.front().getAsObject()->getObject("result")->getObject("capabilities");
+	for (const char* provider : { "documentHighlightProvider", "workspaceSymbolProvider", "inlayHintProvider" }) {
+		EXPECT_EQ(Value(true), *capabilities.get(provider)) << provider;
+	}
+	EXPECT_NE(nullptr, capabilities.getObject("signatureHelpProvider"));
+	indexed.open_main();
+
+	// helper's one use in main.hsc, which reads it
+	const Value* found = indexed.ask(26, "textDocument/documentHighlight", 3, 13);
+	ASSERT_NE(nullptr, found);
+	ASSERT_NE(nullptr, found->getAsArray());
+	ASSERT_EQ(1u, found->getAsArray()->size());
+	const Object& highlight = *(*found->getAsArray())[0].getAsObject();
+	EXPECT_EQ("3:11-3:17", range_text(*highlight.getObject("range")));
+	EXPECT_EQ(2, highlight.getInteger("kind"));
+
+	// Inside helper's ( ), its signature
+	const Value* help = indexed.ask(27, "textDocument/signatureHelp", 3, 18);
+	ASSERT_NE(nullptr, help);
+	ASSERT_NE(nullptr, help->getAsObject());
+	EXPECT_EQ("helper() -> int", (*help->getAsObject()->getArray("signatures"))[0].getAsObject()->getString("label")->str());
+
+	indexed.session.request(28, "workspace/symbol", Object{ { "query", "hel" } });
+	const Value* symbols = indexed.session.last().get("result");
+	ASSERT_NE(nullptr, symbols);
+	ASSERT_EQ(1u, symbols->getAsArray()->size());
+	EXPECT_EQ("helper", (*symbols->getAsArray())[0].getAsObject()->getString("name")->str());
 }
 
 TEST(Server, AnswersMoveWithEditsSinceTheCheck) {

@@ -10,6 +10,7 @@
 #include <string>
 #include <vector>
 
+#include "assist.h"
 #include "checker.h"
 #include "completion.h"
 #include "documents.h"
@@ -148,8 +149,30 @@ namespace hemera::lsp {
 		 */
 		llvm::json::Value tokens(const llvm::json::Object* params, bool range);
 
-		// The tables completion looks up in, for the last index it was asked of, made again when that index isn't the same
-		std::shared_ptr<CompletionTables> completion_tables;
+		/*
+		 * The tables completion, signature help and workspace symbols look up in, for each index, made the first time
+		 * they're asked of, and dropped once their index is replaced. state must be held.
+		 */
+		std::map<const LoadedIndex*, std::shared_ptr<CompletionTables>> tables;
+		CompletionTables* tables_for(const std::shared_ptr<const LoadedIndex>& index);
+
+		// The index of the root a file is checked in, or else any that knows the file; null when none does
+		std::shared_ptr<const LoadedIndex> index_for(const std::string& file) const;
+
+		/*
+		 * What signature help and inlay hints are asked with, for document, with the text index's check read of it, which
+		 * is kept in assist_texts while it's used. state must be held.
+		 */
+		AssistRequest assist_request(const Document& document, const std::shared_ptr<const LoadedIndex>& index);
+		std::string assist_texts;
+
+		// textDocument/signatureHelp's, textDocument/inlayHint's and workspace/symbol's answers. state must be held.
+		llvm::json::Value signature(const llvm::json::Object* params);
+		llvm::json::Value hints(const llvm::json::Object* params);
+		llvm::json::Value symbols(const llvm::json::Object* params);
+
+		// textDocument/documentHighlight's answer: each place in the document the name at params' position is named
+		llvm::json::Value highlights(const llvm::json::Object* params);
 
 		/*
 		 * A file's text as the index's offsets count it, and as it is now: an open document's, from when the check

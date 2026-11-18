@@ -535,6 +535,22 @@ namespace hemera::lsp {
 		return text.substr(named.name_offset, named.name_length);
 	}
 
+	const std::vector<std::pair<size_t, std::string_view>>& CompletionTables::symbols() {
+		if (!named_symbols.has_value()) {
+			named_symbols.emplace();
+			for (size_t number = 0; number < loaded->declarations.size(); ++number) {
+				const IndexedDeclaration& declaration = loaded->declarations[number];
+				if (declaration.file.empty() || declaration.is_local() || !declaration.text.empty()) {
+					continue;
+				}
+				if (const std::string_view name = name_of(number); !name.empty()) {
+					named_symbols->emplace_back(number, name);
+				}
+			}
+		}
+		return *named_symbols;
+	}
+
 	Array completion_items(const CompletionRequest& request, CompletionTables* tables) {
 		if (std::optional<Array> imports = import_items(request)) {
 			return std::move(*imports);

@@ -46,6 +46,12 @@ namespace hemera::lsp {
 		// A file's text as the index counts in it, by its path
 		std::string_view text_of(const std::string& file);
 
+		/*
+		 * Every declaration a workspace symbol can be, with its name: not a local, a parameter, or what inserted code
+		 * made, nor one whose file can't be read. Made the first time it's asked for.
+		 */
+		const std::vector<std::pair<size_t, std::string_view>>& symbols();
+
 	private:
 		std::shared_ptr<const LoadedIndex> loaded;
 		std::function<std::string(const std::string&)> read;
@@ -53,6 +59,7 @@ namespace hemera::lsp {
 		std::map<std::string, std::vector<size_t>> top_level;
 		std::map<std::string, std::string> texts;
 		std::vector<size_t> none;
+		std::optional<std::vector<std::pair<size_t, std::string_view>>> named_symbols;
 	};
 
 	// Where completion is asked for, and what it can answer from.

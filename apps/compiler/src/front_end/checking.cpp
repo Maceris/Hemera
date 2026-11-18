@@ -1474,20 +1474,8 @@ namespace hemera {
 		return read_place(checker, where, value);
 	}
 
-	// A function's parameters, from its FUNCTION node: their names, types and defaults.
-	struct Parameter {
-		InternedString name = nullptr;
-		/// <summary>
-		/// Its name's node, which keys it as a local.
-		/// </summary>
-		ast::Node* node = nullptr;
-		ast::Node* type = nullptr;
-		bool has_default = false;
-		bool is_varargs = false;
-	};
-
-	static std::vector<Parameter> parameters_of(ast::Node* function) {
-		std::vector<Parameter> result;
+	std::vector<SignatureParameter> parameters_of(ast::Node* function) {
+		std::vector<SignatureParameter> result;
 		for (ast::Node* child : function->children) {
 			if (ast::NodeType::LIST != child->node_type) {
 				continue;
@@ -1495,13 +1483,15 @@ namespace hemera {
 			for (ast::Node* parameter : child->children) {
 				ast::Node* names_and_type = parameter;
 				bool has_default = false;
+				ast::Node* default_value = nullptr;
 				if (ast::NodeType::BINARY_OPERATOR == parameter->node_type && is_assign(parameter)
 					&& !parameter->children.empty()) {
 					names_and_type = parameter->children[0];
 					has_default = true;
+					default_value = parameter->children.size() > 1 ? parameter->children[1] : nullptr;
 				}
 				if (ast::NodeType::COLON != names_and_type->node_type) {
-					result.push_back({ nullptr, names_and_type, names_and_type, has_default, false });
+					result.push_back({ nullptr, names_and_type, names_and_type, has_default, false, default_value });
 					continue;
 				}
 				std::vector<ast::Node*> names;
@@ -1524,7 +1514,7 @@ namespace hemera {
 					}
 				}
 				for (ast::Node* name : names) {
-					result.push_back({ name->value.value, name, type, has_default, is_varargs });
+					result.push_back({ name->value.value, name, type, has_default, is_varargs, default_value });
 				}
 			}
 			break;
@@ -1569,7 +1559,7 @@ namespace hemera {
 		if (!documentation.has_value()) {
 			return;
 		}
-		const std::vector<Parameter> parameters = parameters_of(function);
+		const std::vector<SignatureParameter> parameters = parameters_of(function);
 		const std::vector<std::string> generics = generic_names(function);
 		// The error type's variants, if it returns a Result whose error is an enum or a union
 		const std::vector<InternedString>* error_members = nullptr;
@@ -1640,7 +1630,7 @@ namespace hemera {
 			}
 			if (tag.tag == "param" && !after_body) {
 				bool found = false;
-				for (const Parameter& parameter : parameters) {
+				for (const SignatureParameter& parameter : parameters) {
 					found = found || (parameter.name != nullptr && std::string_view(*parameter.name) == tag.name);
 				}
 				if (!found) {
@@ -1687,7 +1677,7 @@ namespace hemera {
 		if (index >= names.size()) {
 			return false;
 		}
-		for (const Parameter& parameter : parameters_of(function)) {
+		for (const SignatureParameter& parameter : parameters_of(function)) {
 			if (text_of(parameter.name) == names[index]) {
 				return parameter.type == nullptr || !is_text(parameter.type->value.value, "type") || !parameter.type->children.empty();
 			}
@@ -2330,7 +2320,7 @@ namespace hemera {
 		Declaration* generic = callee.declaration;
 		ast::Node* function = function_node(generic);
 		const std::vector<std::string> generics = generic_names(function);
-		const std::vector<Parameter> parameters = parameters_of(function);
+		const std::vector<SignatureParameter> parameters = parameters_of(function);
 		const Arguments arguments = split_arguments(checker, argument_nodes, piped, where);
 		std::map<std::string, TypeInfo*> bound;
 		std::map<std::string, ConstantValue> bound_values;
@@ -2384,18 +2374,18 @@ namespace hemera {
 			}
 		}
 		// Each argument, matched to its parameter, binds what it can
-		auto parameter_for = [&](size_t position, InternedString name) -> const Parameter* {
+		auto parameter_for = [&](size_t position, InternedString name) -> const SignatureParameter* {
 			if (name == nullptr) {
 				return position < parameters.size() ? &parameters[position] : nullptr;
 			}
-			for (const Parameter& parameter : parameters) {
+			for (const SignatureParameter& parameter : parameters) {
 				if (parameter.name != nullptr && *parameter.name == *name) {
 					return &parameter;
 				}
 			}
 			return nullptr;
 		};
-		auto bind = [&](const Parameter* parameter, const Positional& positional) -> Progress {
+		auto bind = [&](const SignatureParameter* parameter, const Positional& positional) -> Progress {
 			if (parameter == nullptr) {
 				return Progress::DONE;
 			}
@@ -2554,7 +2544,7 @@ namespace hemera {
 			return Progress::DONE;
 		}
 		std::vector<InternedString> names;
-		for (const Parameter& parameter : parameters) {
+		for (const SignatureParameter& parameter : parameters) {
 			names.push_back(parameter.name);
 		}
 		progress = check_arguments(checker, where, signature, arguments, names, piped);
@@ -3049,7 +3039,7 @@ namespace hemera {
 		std::vector<InternedString> names;
 		if (callee.declaration != nullptr && DeclarationKind::FUNCTION == callee.declaration->kind) {
 			if (ast::Node* node = function_node(callee.declaration)) {
-				for (const Parameter& parameter : parameters_of(node)) {
+				for (const SignatureParameter& parameter : parameters_of(node)) {
 					names.push_back(parameter.name);
 				}
 			}
@@ -6985,9 +6975,9 @@ namespace hemera {
 
 	// Parameters as locals, which can't be assigned; varargs as a view of them; named results as variables.
 	static void declare_parameters(Checker& checker, ast::Node* function, TypeInfoFunction const* type) {
-		const std::vector<Parameter> parameters = parameters_of(function);
+		const std::vector<SignatureParameter> parameters = parameters_of(function);
 		if (checker.record != nullptr) {
-			for (const Parameter& parameter : parameters) {
+			for (const SignatureParameter& parameter : parameters) {
 				checker.record->parameters.push_back(parameter.node);
 			}
 		}

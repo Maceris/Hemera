@@ -81,6 +81,17 @@ namespace hemera {
 		std::string is;
 		// For a function, whether it's a macro (docs/compilation.md, Macros)
 		bool macro = false;
+		/*
+		 * For a function, each parameter in order: its name, its type as errors write it, the first and last byte of its
+		 * default in the function's file when it has one written there, and whether it's variadic
+		 */
+		struct Parameter {
+			std::string name;
+			std::string type;
+			std::optional<std::pair<uint32_t, uint32_t>> default_span;
+			bool variadic = false;
+		};
+		std::vector<Parameter> parameters;
 		// Its type as the compiler writes it, for a value, a function or a field; empty for a type
 		std::string type;
 		// For a field, member or variant, the type it's in, by where that's declared

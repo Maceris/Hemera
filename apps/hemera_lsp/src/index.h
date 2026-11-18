@@ -28,6 +28,17 @@ namespace hemera::lsp {
 		std::string is;
 		// For a function, whether it's a macro
 		bool macro = false;
+		/*
+		 * For a function, each parameter: its name, its type as errors write it, empty for a generic's without one
+		 * written, the offset and length of its default in the function's file, and whether it's variadic
+		 */
+		struct Parameter {
+			std::string name;
+			std::string type;
+			std::optional<std::pair<uint32_t, uint32_t>> default_span;
+			bool variadic = false;
+		};
+		std::vector<Parameter> parameters;
 
 		// Whether it's a function's own: a local or a parameter, which the features treat alike
 		bool is_local() const {

@@ -228,6 +228,10 @@ build package, it's the build's own code and every target's, merged.
 * A local or a parameter that can't be assigned to, like `c :: 3` or any parameter, unlike `x := 0`, has
   `"readonly":true`. A type has `is`, its shape: `struct`, `enum`, `union`, `alias`, `distinct` or `other`. A macro
   has `"macro":true`.
+* A function has `parameters`, in order, each with its `name` and its `type` as errors write it, a variadic one's its
+  elements' with `"variadic":true`. A default written in the function's own signature has `default`, its offset and
+  length in the function's file. A generic's are as its signature writes them, a parameter's type empty when none is
+  written.
 * Every struct's fields, enum's members and union's variants are there, used or not, each with `in`, the number of
   the type's declaration.
 * A value, a field, a member or a function has `of`, the number of the declaration of the type whose members a `.`

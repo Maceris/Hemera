@@ -18,3 +18,7 @@ counted :: fn(by : int) -> int {
 
 Length :: alias int
 Meters :: distinct alias int
+
+scaled :: fn(value : int, factor := 3, rest : int...) -> int {
+    return value * factor
+}
