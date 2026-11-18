@@ -45,6 +45,18 @@ namespace hemera::lsp {
 		std::vector<Place> inserted;
 		// What else it shows, as related information: the server's own, never the compiler's
 		std::vector<Place> related;
+		// Ways to fix it, each a title and its edits in the diagnostic's file: an offset and a length, in the text the
+		// check read, and what goes there
+		struct Edit {
+			uint32_t offset = 0;
+			uint32_t length = 0;
+			std::string text;
+		};
+		struct Fix {
+			std::string title;
+			std::vector<Edit> edits;
+		};
+		std::vector<Fix> fixes;
 	};
 
 	/*

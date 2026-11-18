@@ -123,6 +123,7 @@ SET(SOURCE_FILES
   ${SOURCE_DIR}/front_end/checking.cpp
   ${SOURCE_DIR}/front_end/declarations.cpp
   ${SOURCE_DIR}/front_end/documentation.cpp
+  ${SOURCE_DIR}/front_end/fixes.cpp
   ${SOURCE_DIR}/front_end/front_end.cpp
   ${SOURCE_DIR}/front_end/name_index.cpp
   ${SOURCE_DIR}/front_end/names.cpp

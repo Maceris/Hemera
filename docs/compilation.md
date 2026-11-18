@@ -196,6 +196,20 @@ read, in place of its text (`--diagnostics=text`, the default):
 * `inserted`, for one in code an `#insert` put in, is each `#insert` that put it there, the first first, as `file`,
   `line` and `column`, like `"inserted":[{"file":"D:/project/main.hsc","line":12,"column":4}]`. Its own `file`, `line`
   and `column` are where the code is written, and the message ends with the same sites as text.
+* `fixes`, when the compiler can tell how to fix it, is each way, the likeliest first, as a `title` and its `edits` in
+  the diagnostic's own file, each an offset and a length in bytes, in the text the compiler read, and the text that
+  goes there: `"fixes":[{"title":"Change to count","edits":[[310,5,"count"]]}]`. Edits don't overlap, and are in the
+  order they're in the file. There are fixes for:
+  * a match that leaves cases out (E4026): an arm for each enum member or union variant it leaves out, `case .Name =>
+    {}` or `case Name(_) => {}`, each on its own line before the match's `}`, or `case _ => {}`;
+  * a doc comment's `@param` naming no parameter (E4041): naming the one parameter without a `@param` instead, when
+    there's one, or removing the tag and the lines that go on with it;
+  * an undeclared name before a `.` (E4008) that's the name of a package in `base`, `std` or `vendor`, or one another
+    file of the package imports: importing it, the import put where the [style rules](formatting.md) sort it;
+  * an undeclared name (E4008) or a struct's unknown member (E4017) spelled almost as one in scope: up to three names,
+    within two edits and a third of the name's length, the nearest first.
+
+  Code an `#insert` put in has none, as a fix would change the quote.
 
 They come in the order the text would, a build package's targets in order, and the exit code is the same.
 

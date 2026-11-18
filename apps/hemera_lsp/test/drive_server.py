@@ -22,6 +22,7 @@ BROKEN = "package main\n\nmain :: fn() -> int {\n    return \"not a number\"\n}\
 FIXED = "package main\n\nmain :: fn() -> int {\n    return helper()\n}\n"
 HELPER = "package main\n\nhelper :: fn() -> int {\n    return 0\n}\n"
 UNFORMATTED = "package main\n\nmain :: fn( ) -> int {\n  return helper( )\n}\n"
+MISSPELLED = "package main\n\nmain :: fn() -> int {\n    return helpr()\n}\n"
 
 
 def uri_of(path):
@@ -181,6 +182,30 @@ def drive(server, compiler, folder):
 
     folds = client.request("textDocument/foldingRange", {"textDocument": {"uri": uri_of(main)}})["result"]
     assert [(fold["startLine"], fold["endLine"]) for fold in folds] == [(2, 3)], folds
+
+    # Formatting a selection: the unformatted main, its body selected
+    ranged = client.request("textDocument/rangeFormatting", {"textDocument": {"uri": uri_of(main)},
+                                                             "range": {"start": {"line": 3, "character": 0}, "end": {"line": 3, "character": 4}},
+                                                             "options": {"tabSize": 4, "insertSpaces": True}})["result"]
+    assert len(ranged) == 1 and applied(UNFORMATTED, ranged[0]) == FIXED, ranged
+
+    # A fix from the compiler: helper misspelled and saved, changed back by the quick fix
+    client.notify("textDocument/didChange", {"textDocument": {"uri": uri_of(main), "version": 4},
+                                             "contentChanges": [{"text": MISSPELLED}]})
+    main.write_text(MISSPELLED, encoding="utf-8", newline="\n")
+    client.notify("textDocument/didSave", {"textDocument": {"uri": uri_of(main)}})
+    diagnostics = client.diagnostics_for(uri_of(main))
+    while not diagnostics:
+        diagnostics = client.diagnostics_for(uri_of(main))
+    assert diagnostics[0]["code"] == "hemera:E4008", diagnostics
+    actions = client.request("textDocument/codeAction", {"textDocument": {"uri": uri_of(main)},
+                                                         "range": {"start": {"line": 3, "character": 0}, "end": {"line": 3, "character": 0}},
+                                                         "context": {"diagnostics": diagnostics}})["result"]
+    titles = [action["title"] for action in actions]
+    assert "Change to helper" in titles, actions
+    fix = actions[titles.index("Change to helper")]
+    edits = next(iter(fix["edit"]["changes"].values()))
+    assert len(edits) == 1 and applied(MISSPELLED, edits[0]) == FIXED, edits
 
     assert "error" not in client.request("shutdown", None)
     client.notify("exit", None)

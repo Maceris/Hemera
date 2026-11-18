@@ -8,6 +8,7 @@
 #include "error/reporting.h"
 #include "front_end/checking.h"
 #include "front_end/documentation.h"
+#include "front_end/fixes.h"
 #include "front_end/format_spec.h"
 #include "front_end/front_end.h"
 #include "front_end/name_index.h"
@@ -982,6 +983,18 @@ namespace hemera {
 			result.name = package;
 			return Progress::DONE;
 		}
+		// Fixed by importing a package of that name, or by a name spelled almost the same: the locals in scope too
+		std::vector<std::string> locals;
+		for (const Scope& scope : checker.scopes) {
+			for (const Local& local : scope.locals) {
+				if (local.name != nullptr) {
+					locals.push_back(text_of(local.name));
+				}
+			}
+		}
+		WithFixes fixes(undeclared_name_fixes(checker.walk.executor.global_data->options, *checker.walk.executor.program_info,
+			checker.walk.file, checker.walk.file_path, checker.walk.package_path != nullptr ? std::string_view(*checker.walk.package_path)
+			: std::string_view(), node, text_of(name), std::move(locals)));
 		result = error_at(checker, ErrorCode::E4008, node, text_of(name));
 		return Progress::DONE;
 	}
@@ -1310,6 +1323,25 @@ namespace hemera {
 				return Progress::DONE;
 			}
 		}
+		// Fixed by a member spelled almost the same: a struct's fields, an enum's members or a union's variants
+		std::vector<std::string> members;
+		if (TypeInfoVariant::STRUCT == type->variant) {
+			for (const StructMember& each : static_cast<TypeInfoStruct const*>(type)->members) {
+				if (each.name != nullptr) {
+					members.push_back(text_of(each.name));
+				}
+			}
+		}
+		// The member's own name, which where is, or is the last name under
+		const ast::Node* written = where;
+		if (written != nullptr && written->value.value != name) {
+			for (const ast::Node* child : where->children) {
+				if (ast::NodeType::IDENTIFIER == child->node_type && child->value.value == name) {
+					written = child;
+				}
+			}
+		}
+		WithFixes fixes(spelling_fixes(written, member, members));
 		value = error_at(checker, ErrorCode::E4017, where, std::format("{} has no member {}",
 			to_string(value.type), member));
 		return Progress::DONE;
@@ -1547,7 +1579,7 @@ namespace hemera {
 	}
 
 	void check_function_documentation(std::string_view file, const ast::Node* name, ast::Node* function, const TypeInfoFunction* type,
-		bool after_body) {
+		bool after_body, const Options* checker_options) {
 
 		// Its parameters and results when it's declared, and its errors once its body's checked, when its types are whole
 		const uint16_t pass = after_body ? 0x8000 : 0;
@@ -1634,6 +1666,16 @@ namespace hemera {
 					found = found || (parameter.name != nullptr && std::string_view(*parameter.name) == tag.name);
 				}
 				if (!found) {
+					// Fixed by naming the one parameter without a @param, when there is one, or by going
+					std::vector<std::string> undocumented;
+					for (const SignatureParameter& parameter : parameters) {
+						if (parameter.name != nullptr && std::none_of(documentation->tags.begin(), documentation->tags.end(),
+							[&](const DocumentationTag& other) { return other.tag == "param" && other.name == std::string_view(*parameter.name); })) {
+							undocumented.push_back(text_of(parameter.name));
+						}
+					}
+					WithFixes fixes(param_tag_fixes(checker_options, std::string(file), tag.line, tag.column, tag.name,
+						undocumented.size() == 1 ? std::optional<std::string>(undocumented[0]) : std::nullopt));
 					report_error(ErrorCode::E4041, file, tag.line, tag.column, std::format("@param {}: there's no parameter named so", tag.name));
 				}
 			}
@@ -6313,6 +6355,66 @@ namespace hemera {
 	}
 
 	// Whether the cases cover every value: every enum member, union variant or boolean, or _.
+	/*
+	 * The arms a match on subject needs to cover what covered doesn't, as their patterns: an enum's members, like .Red,
+	 * and a union's variants, None, or Some(_) for one with a value, whose patterns so far don't cover it all; and true
+	 * or false. Empty for what only case _ covers, like integers.
+	 */
+	static bool exhaustive(const Value& subject, const std::set<std::string>& covered);
+
+	static std::vector<std::string> missing_arms(const Value& subject, const std::set<std::string>& covered) {
+		std::vector<std::string> missing;
+		TypeInfo const* type = ValueKind::VALUE == subject.kind ? base_of(subject.type) : nullptr;
+		if (type == nullptr || covered.contains("_")) {
+			return missing;
+		}
+		if (TypeInfoVariant::ENUM == type->variant) {
+			for (InternedString member : static_cast<TypeInfoEnum const*>(type)->members) {
+				if (!covered.contains(text_of(member))) {
+					missing.push_back("." + text_of(member));
+				}
+			}
+		}
+		else if (TypeInfoVariant::UNION == type->variant) {
+			for (const UnionVariant& variant : static_cast<TypeInfoUnion const*>(type)->variants) {
+				const std::string name = text_of(variant.name);
+				if (covered.contains(name)) {
+					continue;
+				}
+				// Covered by the patterns on its value already, like Some(.None) and Some(Some(x))
+				if (variant.types.size() == 1) {
+					std::set<std::string> inner;
+					const std::string prefix = name + "(";
+					for (const std::string& each : covered) {
+						if (each.starts_with(prefix) && each.ends_with(")")) {
+							inner.insert(each.substr(prefix.size(), each.size() - prefix.size() - 1));
+						}
+					}
+					if (!inner.empty() && exhaustive(typed(variant.types[0]), inner)) {
+						continue;
+					}
+				}
+				std::string pattern = name;
+				if (!variant.types.empty()) {
+					pattern += "(";
+					for (size_t i = 0; i < variant.types.size(); ++i) {
+						pattern += i == 0 ? "_" : ", _";
+					}
+					pattern += ")";
+				}
+				missing.push_back(pattern);
+			}
+		}
+		else if (TypeInfoVariant::BOOLEAN == type->variant) {
+			for (const char* value : { "true", "false" }) {
+				if (!covered.contains(value)) {
+					missing.push_back(value);
+				}
+			}
+		}
+		return missing;
+	}
+
 	static bool exhaustive(const Value& subject, const std::set<std::string>& covered) {
 		if (covered.contains("_")) {
 			return true;
@@ -6511,6 +6613,9 @@ namespace hemera {
 			}
 		}
 		if (!exhaustive(subject, covered) && ValueKind::POISONED != subject.kind) {
+			// Fixed by an arm for each, or case _
+			WithFixes fixes(missing_arm_fixes(checker.walk.executor.global_data->options, checker.walk.file_path, node,
+				missing_arms(subject, covered)));
 			error_at(checker, ErrorCode::E4026, node, "match must cover every value it can be; add the missing cases, or case _");
 		}
 		continues = any_continues;
@@ -7403,6 +7508,18 @@ namespace hemera {
 		checked->made = &executor.program_info->made_nodes;
 		Checker checker(walk);
 		checker.record = checked.get();
+		// Its locals in scope, for the fixes of a name looking it up finds undeclared
+		NamesInScope in_scope([&checker]() {
+			std::vector<std::string> names;
+			for (const Scope& scope : checker.scopes) {
+				for (const Local& local : scope.locals) {
+					if (local.name != nullptr) {
+						names.push_back(text_of(local.name));
+					}
+				}
+			}
+			return names;
+		});
 		const Options* options = executor.global_data->options;
 		// Without startup code, the program starts at its entry function, before there's a context
 		const bool entry = options != nullptr && !options->startup_code && function->generic == nullptr
@@ -7463,7 +7580,8 @@ namespace hemera {
 			FunctionParts parts;
 			if (function->generic == nullptr && checker.walk.executor.program_info->check_documentation
 				&& function_parts(function->node, parts)) {
-				check_function_documentation(checker.walk.file_path, parts.name, function_node_, type, true);
+				check_function_documentation(checker.walk.file_path, parts.name, function_node_, type, true,
+					checker.walk.executor.global_data->options);
 			}
 			{
 				ProgramInfo* program = checker.walk.executor.program_info;

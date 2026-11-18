@@ -912,6 +912,141 @@ TEST(Server, AnswersEditorFeaturesFromTheIndex) {
 	EXPECT_EQ("helper", (*symbols->getAsArray())[0].getAsObject()->getString("name")->str());
 }
 
+namespace {
+	// A session with a workspace folder of its own, name, and text open in its main.hsc, whose check prints output
+	struct Opened {
+		std::string folder;
+		std::string path;
+		std::string uri;
+		Session session;
+
+		Opened(const std::string& name, const std::string& text, const std::string& output = "", const std::string& index = "") {
+			folder = fresh_folder(name);
+			path = folder + "/main.hsc";
+			uri = hemera::lsp::uri_from_path(path);
+			write_file(path, text);
+			session.output = output;
+			session.index_json = index;
+			session.initialize({}, {}, Array{ Object{ { "uri", hemera::lsp::uri_from_path(folder) }, { "name", name } } });
+			session.notify("textDocument/didOpen", document(uri, text, 1));
+			session.published();
+		}
+
+		const Value* ask(int64_t id, const std::string& method, Object params) {
+			params["textDocument"] = Object{ { "uri", uri } };
+			session.request(id, method, std::move(params));
+			return session.last().get("result");
+		}
+
+		// Code actions for line, from its start, of the kinds in only, or all
+		std::vector<const Object*> actions(int64_t id, int64_t line, Array only = {}) {
+			Object context{ { "diagnostics", Array{} } };
+			if (!only.empty()) {
+				context["only"] = std::move(only);
+			}
+			const Value* found = ask(id, "textDocument/codeAction", Object{ { "range", Object{
+				{ "start", Object{ { "line", line }, { "character", 0 } } }, { "end", Object{ { "line", line }, { "character", 0 } } } } },
+				{ "context", std::move(context) } });
+			std::vector<const Object*> made;
+			if (found != nullptr && found->getAsArray() != nullptr) {
+				for (const Value& action : *found->getAsArray()) {
+					made.push_back(action.getAsObject());
+				}
+			}
+			return made;
+		}
+
+		// An action's edits to the document, each "range newText"
+		std::vector<std::string> edits_of(const Object& action) {
+			std::vector<std::string> found;
+			for (const Value& edit : *action.getObject("edit")->getObject("changes")->getArray(uri)) {
+				found.push_back(range_text(*edit.getAsObject()->getObject("range")) + " " + edit.getAsObject()->getString("newText")->str());
+			}
+			return found;
+		}
+	};
+}
+
+// A diagnostic's fixes are quick fixes on its line, until what they'd change is edited.
+TEST(Server, QuickFixesComeFromTheChecksFixes) {
+	const size_t literal = MAIN_TEXT.find('"');
+	Opened opened("quick_fix", MAIN_TEXT, std::format(
+		R"({{"severity":"error","code":"hemera:E4015","file":"{}","line":4,"column":11,"message":"Type mismatch","fixes":[{{"title":"Change to 0","edits":[[{},7,"0"]]}}]}})",
+		fresh_folder("quick_fix") + "/main.hsc", literal) + "\n");
+	const std::vector<const Object*> actions = opened.actions(30, 3);
+	ASSERT_EQ(1u, actions.size());
+	EXPECT_EQ("Change to 0", actions[0]->getString("title")->str());
+	EXPECT_EQ("quickfix", actions[0]->getString("kind")->str());
+	EXPECT_EQ(Value(true), *actions[0]->get("isPreferred"));
+	EXPECT_EQ(1u, actions[0]->getArray("diagnostics")->size());
+	// "été" is 5 UTF-16 code units with its quotes
+	EXPECT_EQ((std::vector<std::string>{ "3:11-3:16 0" }), opened.edits_of(*actions[0]));
+	EXPECT_TRUE(opened.actions(31, 1).empty()) << "no diagnostic on that line";
+
+	// The string changed since: the fix would change what it no longer knows
+	std::string changed = MAIN_TEXT;
+	changed.replace(literal + 1, 5, "ete");
+	opened.session.notify("textDocument/didChange", Object{ { "textDocument", Object{ { "uri", opened.uri }, { "version", 2 } } },
+		{ "contentChanges", Array{ Object{ { "text", changed } } } } });
+	EXPECT_TRUE(opened.actions(32, 3).empty());
+}
+
+// A declaration without a doc comment gets one written from the index: a summary, its parameters and its result.
+TEST(Server, WritesADocComment) {
+	const std::string text = "package main\n\nscale :: fn(value : int) -> int {\n    return value\n}\n";
+	const std::string folder = fresh_folder("doc_comment");
+	const size_t name = text.find("scale");
+	const std::string index = std::format("{{\"version\":1,\"files\":[\"{}\"],\"declarations\":[\n"
+		"{{\"file\":0,\"name\":[{},5],\"span\":[{},{}],\"kind\":\"function\",\"type\":\"fn(int) -> int\","
+		"\"parameters\":[{{\"name\":\"value\",\"type\":\"int\"}}]}}],\"uses\":[]}}", folder + "/main.hsc", name, name, text.size() - 1);
+	Opened opened("doc_comment", text, "", index);
+	const std::vector<const Object*> actions = opened.actions(33, 2, Array{ "refactor" });
+	ASSERT_EQ(1u, actions.size());
+	EXPECT_EQ("Write a doc comment", actions[0]->getString("title")->str());
+	EXPECT_EQ((std::vector<std::string>{ "2:0-2:0 /**\n * TODO: say what it is.\n *\n * @param value TODO: what it is.\n"
+		" * @return TODO: what it gives.\n */\n" }), opened.edits_of(*actions[0]));
+}
+
+// Organizing imports sorts them as the formatter does, changing nothing else.
+TEST(Server, OrganizesImports) {
+	const std::string text = "package main\n\nimport strings from \"std:strings\"\nimport runtime from \"base:runtime\"\n\n"
+		"main :: fn( ) -> int {\n    return 0\n}\n";
+	Opened opened("organize", text);
+	const std::vector<const Object*> actions = opened.actions(34, 0, Array{ "source.organizeImports" });
+	ASSERT_EQ(1u, actions.size());
+	EXPECT_EQ((std::vector<std::string>{ "2:0-3:34 import runtime from \"base:runtime\"\nimport strings from \"std:strings\"" }),
+		opened.edits_of(*actions[0]));
+}
+
+// Formatting a range, or after a typed }, changes only the declarations it touches; one that doesn't parse, nothing.
+TEST(Server, FormatsOnlyTheDeclarationsARangeTouches) {
+	const std::string text = "package main\n\nfirst :: fn( ) -> int {\n  return 1\n}\n\nsecond :: fn( ) -> int {\n  return 2\n}\n";
+	Opened opened("format_range", text);
+	const auto edits = [](const Value* found) {
+		std::vector<std::string> made;
+		for (const Value& edit : *found->getAsArray()) {
+			made.push_back(range_text(*edit.getAsObject()->getObject("range")) + " " + edit.getAsObject()->getString("newText")->str());
+		}
+		return made;
+	};
+	const Value* ranged = opened.ask(35, "textDocument/rangeFormatting", Object{ { "range", Object{
+		{ "start", Object{ { "line", 7 }, { "character", 0 } } }, { "end", Object{ { "line", 7 }, { "character", 4 } } } } },
+		{ "options", Object{ { "tabSize", 4 }, { "insertSpaces", true } } } });
+	ASSERT_NE(nullptr, ranged);
+	EXPECT_EQ((std::vector<std::string>{ "6:0-9:0 second :: fn() -> int {\n    return 2\n}\n" }), edits(ranged));
+	// Just after first's }
+	const Value* typed = opened.ask(36, "textDocument/onTypeFormatting", Object{ { "position", Object{ { "line", 4 }, { "character", 1 } } },
+		{ "ch", "}" }, { "options", Object{ { "tabSize", 4 }, { "insertSpaces", true } } } });
+	ASSERT_NE(nullptr, typed);
+	EXPECT_EQ((std::vector<std::string>{ "2:0-6:0 first :: fn() -> int {\n    return 1\n}\n\n" }), edits(typed));
+
+	Opened broken("format_broken", "package main\n\nfirst :: fn( {\n");
+	const Value* none = broken.ask(37, "textDocument/onTypeFormatting", Object{ { "position", Object{ { "line", 2 }, { "character", 14 } } },
+		{ "ch", "}" }, { "options", Object{ { "tabSize", 4 }, { "insertSpaces", true } } } });
+	ASSERT_NE(nullptr, none);
+	EXPECT_TRUE(none->getAsArray()->empty());
+}
+
 TEST(Server, AnswersMoveWithEditsSinceTheCheck) {
 	Indexed indexed;
 	indexed.open_main();

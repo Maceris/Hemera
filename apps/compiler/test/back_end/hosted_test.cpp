@@ -1383,6 +1383,134 @@ TEST(Build, ChecksOnlyTheTargetsNamed)
 	}
 }
 
+// The diagnostics a check of the package in folder reports, with their fixes.
+static std::vector<hemera::Diagnostic> checked_diagnostics(const std::filesystem::path& folder) {
+	hemera::reset_reporting_storage();
+	mlir::MLIRContext context;
+	context.loadDialect<mlir::BuiltinDialect>();
+	context.loadDialect<hmir::HemeraDialect>();
+	mlir::OpBuilder builder(&context);
+	mlir::ModuleOp module = mlir::ModuleOp::create(builder, builder.getUnknownLoc(), "fixed");
+	auto program_info = std::make_unique<hemera::ProgramInfo>(&context, &builder, &module);
+	hemera::Options options;
+	options.input = std::filesystem::canonical(folder);
+	options.output_name = (folder / "fixed").string();
+	options.builtin_paths[hemera::BuiltinPackage::STD] = std::filesystem::canonical(std_folder());
+	options.build_extent = hemera::BuildExtent::CHECK;
+	hemera::kick_off_processing(program_info.get(), &options);
+	if (hemera::error_count() == 0) {
+		hemera::finish_program(&options, program_info.get(), module);
+	}
+	std::vector<hemera::Diagnostic> found = hemera::diagnostics();
+	module.erase();
+	return found;
+}
+
+/*
+ * A copy of the fixes scenario called name, checked, its first error's fix whose title starts with title applied to its
+ * file, and checked again: the errors before, the fix's title, and the errors after, as codes and messages.
+ */
+struct Fixed {
+	std::vector<std::string> before;
+	std::vector<std::string> titles;
+	std::string applied;
+	std::vector<std::string> after;
+	std::string text;
+};
+
+static Fixed fixed(std::string_view name, std::string_view title) {
+	// A folder of its own each time, as a file's documentation is checked once a process
+	static int made = 0;
+	const std::filesystem::path folder = std::filesystem::path(HEMERA_TEST_OUTPUT_DIR) / "fixes" / std::format("{}_{}", name, ++made);
+	std::filesystem::remove_all(folder);
+	std::filesystem::create_directories(folder);
+	std::filesystem::copy_file(scenario("fixes") / name / "main.hsc", folder / "main.hsc");
+	const auto errors = [](const std::vector<hemera::Diagnostic>& found) {
+		std::vector<std::string> made;
+		for (const hemera::Diagnostic& diagnostic : found) {
+			if (hemera::Severity::ERROR == diagnostic.severity) {
+				made.push_back(diagnostic.code + " " + diagnostic.message);
+			}
+		}
+		return made;
+	};
+	Fixed result;
+	const std::vector<hemera::Diagnostic> first = checked_diagnostics(folder);
+	result.before = errors(first);
+	for (const hemera::Diagnostic& diagnostic : first) {
+		if (hemera::Severity::ERROR != diagnostic.severity || !result.applied.empty()) {
+			continue;
+		}
+		for (const hemera::DiagnosticFix& fix : diagnostic.fixes) {
+			result.titles.push_back(fix.title);
+		}
+		for (const hemera::DiagnosticFix& fix : diagnostic.fixes) {
+			if (!fix.title.starts_with(title) || !result.applied.empty()) {
+				continue;
+			}
+			// Its edits, from the last, so the offsets of those before stay right
+			std::string text = read_file(diagnostic.file);
+			std::vector<hemera::DiagnosticEdit> edits = fix.edits;
+			std::sort(edits.begin(), edits.end(), [](const auto& a, const auto& b) { return a.offset > b.offset; });
+			for (const hemera::DiagnosticEdit& edit : edits) {
+				text.replace(edit.offset, edit.length, edit.text);
+			}
+			std::ofstream(diagnostic.file, std::ios::binary) << text;
+			result.applied = fix.title;
+			result.text = text;
+		}
+	}
+	result.after = errors(checked_diagnostics(folder));
+	return result;
+}
+
+// A match's missing arms, one for each, or case _; either, applied, leaves the program checking.
+TEST(Fixes, AddAMatchsMissingArms) {
+	StringCacheGuard string_cache;
+	const Fixed arms = fixed("match", "Add the missing cases");
+	ASSERT_EQ(1u, arms.before.size());
+	EXPECT_TRUE(arms.before[0].starts_with("E4026")) << arms.before[0];
+	EXPECT_EQ((std::vector<std::string>{ "Add the missing cases", "Add case _" }), arms.titles);
+	EXPECT_TRUE(arms.after.empty()) << arms.after.front();
+	EXPECT_NE(std::string::npos, arms.text.find("        case .Green => {}\n        case .Blue => {}\n    }")) << arms.text;
+	const Fixed rest = fixed("match", "Add case _");
+	EXPECT_TRUE(rest.after.empty()) << rest.after.front();
+}
+
+// A @param naming no parameter: renamed to the one without a @param, or removed with its line.
+TEST(Fixes, ChangeOrRemoveAParamTag) {
+	StringCacheGuard string_cache;
+	const Fixed renamed = fixed("param", "Change to @param value");
+	ASSERT_FALSE(renamed.before.empty());
+	EXPECT_TRUE(renamed.before[0].starts_with("E4041")) << renamed.before[0];
+	EXPECT_EQ((std::vector<std::string>{ "Change to @param value", "Remove @param valu" }), renamed.titles);
+	EXPECT_TRUE(renamed.after.empty()) << renamed.after.front();
+	const Fixed removed = fixed("param", "Remove @param valu");
+	EXPECT_EQ(std::string::npos, removed.text.find(" * @param")) << removed.text;
+	EXPECT_NE(std::string::npos, removed.text.find(" *\n * @return Twice it.")) << removed.text;
+}
+
+// A package's name used without an import: imported from std, after base's import, as the style rules sort them.
+TEST(Fixes, ImportAPackageUsedByName) {
+	StringCacheGuard string_cache;
+	const Fixed imported = fixed("import", "Import math");
+	ASSERT_FALSE(imported.before.empty());
+	EXPECT_TRUE(imported.before[0].starts_with("E4008")) << imported.before[0];
+	EXPECT_EQ("Import math from \"std:math\"", imported.applied);
+	EXPECT_TRUE(imported.after.empty()) << imported.after.front();
+	EXPECT_NE(std::string::npos, imported.text.find("import runtime from \"base:runtime\"\nimport math from \"std:math\"\n")) << imported.text;
+}
+
+// A misspelled local and field: changed to the name spelled almost the same, which leaves it checking.
+TEST(Fixes, ChangeANameToOneSpelledAlike) {
+	StringCacheGuard string_cache;
+	const Fixed field = fixed("spelling", "Change to width");
+	ASSERT_FALSE(field.before.empty());
+	EXPECT_EQ("Change to width", field.applied);
+	const Fixed local = fixed("spelling", "Change to total");
+	EXPECT_EQ("Change to total", local.applied);
+}
+
 // The warnings a program reports through generating it (extent COMPILE), or through what a check reaches (CHECK), sorted.
 static std::vector<std::string> reached_warnings(std::string_view name, hemera::BuildExtent extent, size_t& functions) {
 	hemera::reset_reporting_storage();

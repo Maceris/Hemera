@@ -8,6 +8,7 @@
 #include <string_view>
 
 #include "error/reporting.h"
+#include "front_end/fixes.h"
 #include "front_end/front_end.h"
 #include "front_end/name_index.h"
 #include "front_end/names.h"
@@ -673,6 +674,14 @@ namespace hemera {
 			park_locked(walk, names, chain_key(waited), where, name, waited->branches.front());
 			return Progress::PARKED;
 		}
+		// Fixed by importing a package of that name, or by a name spelled almost the same
+		std::vector<std::string> locals;
+		for (InternedString local : walk.locals) {
+			locals.emplace_back(*local);
+		}
+		WithFixes fixes(undeclared_name_fixes(walk.executor.global_data->options, *walk.executor.program_info, walk.file, walk.file_path,
+			walk.package_path != nullptr ? std::string_view(*walk.package_path) : std::string_view(), where, std::string_view(*name),
+			std::move(locals), true));
 		report_at(ErrorCode::E4008, walk.file_path, &walk.executor.program_info->made_nodes, where, std::string(std::string_view(*name)));
 		return Progress::FAILED;
 	}

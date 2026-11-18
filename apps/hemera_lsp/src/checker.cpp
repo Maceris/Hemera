@@ -61,6 +61,24 @@ namespace hemera::lsp {
 					}
 				}
 			}
+			if (const llvm::json::Array* fixes = object->getArray("fixes")) {
+				for (const llvm::json::Value& entry : *fixes) {
+					const llvm::json::Object* fix = entry.getAsObject();
+					const llvm::json::Array* edits = fix != nullptr ? fix->getArray("edits") : nullptr;
+					if (edits == nullptr) {
+						continue;
+					}
+					CompilerDiagnostic::Fix made{ fix->getString("title").value_or("").str(), {} };
+					for (const llvm::json::Value& edit : *edits) {
+						const llvm::json::Array* parts = edit.getAsArray();
+						if (parts != nullptr && parts->size() == 3) {
+							made.edits.push_back(CompilerDiagnostic::Edit{ static_cast<uint32_t>((*parts)[0].getAsInteger().value_or(0)),
+								static_cast<uint32_t>((*parts)[1].getAsInteger().value_or(0)), (*parts)[2].getAsString().value_or("").str() });
+						}
+					}
+					diagnostic.fixes.push_back(std::move(made));
+				}
+			}
 			found.push_back(std::move(diagnostic));
 		}
 		return found;

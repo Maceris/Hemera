@@ -2271,7 +2271,7 @@ namespace hemera {
 			if (signature == nullptr || has_child(signature, ast::NodeType::GENERIC_TAG)) {
 				// A generic function's types are worked out for each call
 				if (documented) {
-					check_function_documentation(walk.file_path, parts.name, signature, nullptr, false);
+					check_function_documentation(walk.file_path, parts.name, signature, nullptr, false, walk.executor.global_data->options);
 				}
 				return Progress::DONE;
 			}
@@ -2316,7 +2316,8 @@ namespace hemera {
 				each->value_type = function;
 			}
 			if (documented && TypeInfoVariant::FUNCTION == function->variant) {
-				check_function_documentation(walk.file_path, parts.name, signature, static_cast<TypeInfoFunction*>(function), false);
+				check_function_documentation(walk.file_path, parts.name, signature, static_cast<TypeInfoFunction*>(function), false,
+					walk.executor.global_data->options);
 			}
 			return Progress::DONE;
 		}

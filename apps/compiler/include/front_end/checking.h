@@ -12,6 +12,8 @@
 
 namespace hemera {
 
+	struct Options;
+
 	/*
 	 * Type checking of expressions and statements (checking.cpp): function bodies, constants'
 	 * values, and parameters' defaults (docs/operators.md, docs/control_flow.md, docs/functions.md).
@@ -348,8 +350,9 @@ namespace hemera {
 	/// A function's documentation comment, if it has one, checked against it, once: each param tag naming one of its
 	/// parameters, each tparam tag one of its generic parameters, and, given its type, a return tag for each of its
 	/// results at most, a named one's naming it; then, after_body, each error tag one of the variants of its Result's
-	/// error type (E4041). name is its name's node, and function its fn node.
+	/// error type (E4041). name is its name's node, and function its fn node. options say how the file is read, for the
+	/// fixes a report has; may be null, for none.
 	/// </summary>
 	void check_function_documentation(std::string_view file, const ast::Node* name, ast::Node* function, const TypeInfoFunction* type,
-		bool after_body);
+		bool after_body, const Options* options = nullptr);
 }

@@ -176,6 +176,21 @@ namespace hemera {
 		uint16_t column = 0;
 	};
 
+	// One change a fix makes in its diagnostic's file: the bytes from offset, length of them, become text.
+	struct DiagnosticEdit {
+		uint32_t offset = 0;
+		uint32_t length = 0;
+		std::string text;
+	};
+
+	// A way to fix what a diagnostic says, as an editor offers it: what it's called, and the changes it makes.
+	struct DiagnosticFix {
+		// Like "Add the missing cases" or "Change to count"
+		std::string title;
+		// In the diagnostic's file, in the order they're in it, none overlapping
+		std::vector<DiagnosticEdit> edits;
+	};
+
 	struct Diagnostic {
 		Severity severity = Severity::ERROR;
 		// Whose code it is, like hemera or fonts; empty for a message, which has no code
@@ -194,6 +209,23 @@ namespace hemera {
 		std::string target;
 		// For code compile-time code inserted, each #insert that put it where it is, the first first; empty otherwise
 		std::vector<DiagnosticSite> inserted;
+		// Ways to fix it, the likeliest first (WithFixes); empty when the compiler can't tell
+		std::vector<DiagnosticFix> fixes;
+	};
+
+	/*
+	 * While one is alive, what this thread reports has fixes, as Diagnostic::fixes: for the reports around which
+	 * the fix is worked out. Not nested.
+	 */
+	class WithFixes {
+	public:
+		explicit WithFixes(std::vector<DiagnosticFix> fixes);
+		~WithFixes();
+		WithFixes(const WithFixes&) = delete;
+		WithFixes& operator=(const WithFixes&) = delete;
+
+	private:
+		std::vector<DiagnosticFix> fixes;
 	};
 
 	/*

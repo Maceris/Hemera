@@ -3,8 +3,8 @@
 `hemera-lsp` is Hemera's language server. An editor starts it and speaks the
 [Language Server Protocol](https://microsoft.github.io/language-server-protocol/) to it over standard input and output,
 and it shows the compiler's errors and warnings where they are, each time a file is opened or saved, formats,
-outlines and folds files, finds what names refer to, and colors each by what it is, with signature help and inlay
-hints. The VS Code extension is built with it; another editor with a
+outlines and folds files, finds what names refer to, and colors each by what it is, with signature help, inlay
+hints and quick fixes. The VS Code extension is built with it; another editor with a
 language server client can start `hemera-lsp` the same way.
 
 ## Building
@@ -102,7 +102,24 @@ These come from the server's own lexer and parser, in its own process, as you ty
 * **Folding** folds blocks, brackets over several lines, block comments, runs of line comments, and runs of imports,
   whether the file parses or not.
 
-There's no range formatting, as a part of a file's layout depends on what's around it.
+* **Format Selection** formats the file, but changes only the top-level declarations the selection touches: the
+  formatter's layout of one depends on all of it, so it's laid out whole, and the file and its formatted text are
+  matched declaration by declaration.
+* **Formatting as you type** formats the declaration a `}` you type closes, the same way, once the file parses. It's
+  only on when VS Code's `editor.formatOnType` is, which it isn't by default.
+* **Organize Imports** sorts a file's imports as the formatter does ([style rules](formatting.md)), and changes nothing
+  else. Imports inside an `#if` stay where they are, and a file with a comment among its imports is left alone.
+
+## Fixes and Code Actions
+
+When the compiler can tell how to fix an error, its check says so ([fixes](compilation.md#diagnostics-as-json)), and
+each way is a quick fix on the error's line: an arm for each case a `match` leaves out, a `@param` renamed to the
+parameter it means or removed, an import of a package used by name, or a name spelled as one in scope. A fix whose text
+you've changed since the check isn't offered, as what it would change isn't what it was.
+
+**Write a doc comment**, a refactoring on a function, type or constant's name, writes one above a declaration that has
+none, from the last check: a summary line, a `@param` for each parameter and a `@return` when it returns something,
+each with a `TODO` to fill in.
 
 ## Completion
 
@@ -195,7 +212,9 @@ notifications, UTF-8 positions when the client offers them, else UTF-16, and `te
 `textDocument/references`, `textDocument/prepareRename`, `textDocument/rename`, `textDocument/completion`, with
 `.`, `"`, `/` and `:` as trigger characters, `textDocument/semanticTokens/full` and `textDocument/semanticTokens/range`,
 with the legend above, `textDocument/signatureHelp`, with `(` and `,` as trigger characters, `textDocument/documentHighlight`,
-`textDocument/inlayHint`, `workspace/symbol`, and `workspace/executeCommand` for
+`textDocument/inlayHint`, `textDocument/codeAction`, with the kinds `quickfix`, `refactor.rewrite` and
+`source.organizeImports`, `textDocument/rangeFormatting`, `textDocument/onTypeFormatting` on `}`, `workspace/symbol`,
+and `workspace/executeCommand` for
 `hemera.checkEverything`, Check Everything, with no arguments. Its settings come in initialize's
 `initializationOptions`, and later in `workspace/didChangeConfiguration`'s `settings.hemera`, as an object with
 `compilerPath`, `root`, `arguments` and `checkerMemory`, named as above without `hemera.`. When the client's

@@ -465,6 +465,9 @@ namespace hemera::lsp {
 				{ "documentHighlightProvider", true },
 				{ "workspaceSymbolProvider", true },
 				{ "inlayHintProvider", true },
+				{ "codeActionProvider", Object{ { "codeActionKinds", Array{ "quickfix", "refactor.rewrite", "source.organizeImports" } } } },
+				{ "documentRangeFormattingProvider", true },
+				{ "documentOnTypeFormattingProvider", Object{ { "firstTriggerCharacter", "}" } } },
 				{ "executeCommandProvider", Object{ { "commands", Array{ "hemera.checkEverything" } } } },
 			} },
 			{ "serverInfo", Object{ { "name", "hemera-lsp" }, { "version", VERSION_STR } } },
@@ -646,6 +649,9 @@ namespace hemera::lsp {
 				 * of some targets' replace theirs, and the build's own, which every check reports
 				 */
 				Found& of_root = findings[job.root];
+				for (const auto& [read_key, read_text] : job.texts) {
+					of_root.texts[read_key] = read_text;
+				}
 				if (job.targets.empty()) {
 					of_root.by_target.clear();
 				}
@@ -768,28 +774,7 @@ namespace hemera::lsp {
 					const LineIndex index(text);
 					Array published_diagnostics;
 					for (const CompilerDiagnostic* diagnostic : diagnostics) {
-						const uint32_t line = diagnostic->line > 0 ? diagnostic->line - 1 : 0;
-						const uint32_t start = diagnostic->column;
-						const uint32_t end = token_end(index.line(line), start);
-						Object range{
-							{ "start", Object{ { "line", line }, { "character", index.character(line, start, position_encoding) } } },
-							{ "end", Object{ { "line", line }, { "character", index.character(line, end, position_encoding) } } },
-						};
-						const int64_t severity = diagnostic->severity == "error" ? 1 : diagnostic->severity == "warning" ? 2 : 3;
-						Object published_diagnostic{ { "range", std::move(range) }, { "severity", severity }, { "source", "hemera" },
-							{ "message", diagnostic->message } };
-						if (!diagnostic->code.empty()) {
-							published_diagnostic["code"] = diagnostic->code;
-						}
-						if (!diagnostic->related.empty()) {
-							Array related;
-							for (const CompilerDiagnostic::Place& place : diagnostic->related) {
-								related.push_back(Object{ { "location", place_location(place.file, place.line, place.column) },
-									{ "message", place.message } });
-							}
-							published_diagnostic["relatedInformation"] = std::move(related);
-						}
-						published_diagnostics.push_back(std::move(published_diagnostic));
+						published_diagnostics.push_back(lsp_diagnostic(*diagnostic, index));
 					}
 					now.insert(uri);
 					messages.push_back(Object{ { "jsonrpc", "2.0" }, { "method", "textDocument/publishDiagnostics" },
@@ -849,6 +834,12 @@ namespace hemera::lsp {
 		if (method == "workspace/symbol") {
 			return symbols(params);
 		}
+		if (method == "textDocument/codeAction") {
+			return code_actions(params);
+		}
+		if (method == "textDocument/rangeFormatting" || method == "textDocument/onTypeFormatting") {
+			return format_range(params, method == "textDocument/onTypeFormatting");
+		}
 		if (method == "textDocument/references") {
 			return references(params);
 		}
@@ -899,6 +890,311 @@ namespace hemera::lsp {
 				{ "end", position_at(index, change->end, position_encoding) } } },
 			{ "newText", change->text },
 		} };
+	}
+
+	namespace {
+		// The first byte of node's tokens, and every token's under it; NO_SPAN for one with none
+		uint32_t first_byte(const ast::Node* node) {
+			uint32_t first = node->value.offset;
+			for (const ast::Node* child : node->children) {
+				first = std::min(first, first_byte(child));
+			}
+			return first;
+		}
+
+		/*
+		 * Where each top-level item of a parsed text starts, in order, and the text's end last: the parts the formatter's
+		 * output and its input are matched by, each from one item's start to the next's
+		 */
+		std::vector<size_t> item_starts(const ast::Node* tree, size_t text_size) {
+			std::vector<size_t> starts{ 0 };
+			for (const ast::Node* item : tree->children) {
+				const uint32_t first = first_byte(item);
+				if (first != Token::NO_SPAN && first > starts.back()) {
+					starts.push_back(first);
+				}
+			}
+			starts.push_back(text_size);
+			return starts;
+		}
+	}
+
+	Array Server::format_parts(const std::string& uri, size_t start, size_t end) {
+		const Document* document = open_documents.find_uri(uri);
+		const Parses* parses_of = parsed(uri);
+		if (document == nullptr || parses_of == nullptr || parses_of->current->tree == nullptr) {
+			return Array{};
+		}
+		ReportScope scope;
+		ReportScope* outer = report_scope();
+		set_report_scope(&scope);
+		const formatting::Result formatted = formatting::format_source(document->text, document->path.empty() ? uri : document->path);
+		// Already formatted, as a file usually is, needs no parse of what the formatter made
+		const bool changed = formatted.parsed && formatted.text != document->text;
+		const std::unique_ptr<ParsedDocument> reparsed = changed ? parse_document(formatted.text, 0, uri) : nullptr;
+		set_report_scope(outer);
+		reset_reporting_storage();
+		if (!changed || !formatted.lost_comments.empty() || reparsed == nullptr || reparsed->tree == nullptr) {
+			return Array{};
+		}
+		// The same items in both, in order, or the parts can't be matched
+		const std::vector<size_t> before = item_starts(parses_of->current->tree, document->text.size());
+		const std::vector<size_t> after = item_starts(reparsed->tree, formatted.text.size());
+		if (before.size() != after.size()) {
+			return Array{};
+		}
+		const LineIndex lines(document->text);
+		Array edits;
+		for (size_t i = 0; i + 1 < before.size(); ++i) {
+			// Only the parts the range touches, a part running from its start to the next's; an empty range, the one it's in
+			const bool touches = start == end ? before[i] <= start && start < before[i + 1] : before[i] < end && before[i + 1] > start;
+			if (!touches) {
+				continue;
+			}
+			const std::string_view old_part = std::string_view(document->text).substr(before[i], before[i + 1] - before[i]);
+			const std::string_view new_part = std::string_view(formatted.text).substr(after[i], after[i + 1] - after[i]);
+			if (old_part == new_part) {
+				continue;
+			}
+			edits.push_back(Object{
+				{ "range", Object{ { "start", position_at(lines, before[i], position_encoding) },
+					{ "end", position_at(lines, before[i + 1], position_encoding) } } },
+				{ "newText", std::string(new_part) },
+			});
+		}
+		return edits;
+	}
+
+	Value Server::format_range(const Object* params, bool on_type) {
+		const std::optional<std::string> uri = document_uri(params);
+		const Document* document = uri.has_value() ? open_documents.find_uri(*uri) : nullptr;
+		if (document == nullptr) {
+			return Array{};
+		}
+		const LineIndex lines(document->text);
+		const auto offset_of = [&](const Object* position) {
+			return position == nullptr ? size_t{ 0 } : lines.offset_of(static_cast<uint32_t>(position->getInteger("line").value_or(0)),
+				static_cast<uint32_t>(position->getInteger("character").value_or(0)), position_encoding);
+		};
+		if (on_type) {
+			// The item the } typed closes: the one the character before the cursor is in
+			const size_t at = offset_of(params->getObject("position"));
+			return format_parts(*uri, at > 0 ? at - 1 : 0, at > 0 ? at - 1 : 0);
+		}
+		const Object* range = params->getObject("range");
+		return format_parts(*uri, offset_of(range != nullptr ? range->getObject("start") : nullptr),
+			offset_of(range != nullptr ? range->getObject("end") : nullptr));
+	}
+
+	Value Server::code_actions(const Object* params) {
+		const std::optional<std::string> uri = document_uri(params);
+		const Document* document = uri.has_value() ? open_documents.find_uri(*uri) : nullptr;
+		const Object* range = params != nullptr ? params->getObject("range") : nullptr;
+		if (document == nullptr || document->path.empty() || range == nullptr) {
+			return Array{};
+		}
+		// Only those of the kinds asked for, when it says
+		std::vector<std::string> only;
+		if (const Object* context = params->getObject("context")) {
+			if (const Array* kinds = context->getArray("only")) {
+				for (const Value& kind : *kinds) {
+					only.push_back(kind.getAsString().value_or("").str());
+				}
+			}
+		}
+		const auto wanted = [&](std::string_view kind) {
+			return only.empty() || std::any_of(only.begin(), only.end(), [&](const std::string& asked) {
+				return kind == asked || kind.starts_with(asked + ".");
+			});
+		};
+		const Object* start = range->getObject("start");
+		const Object* end = range->getObject("end");
+		const int64_t first_line = start != nullptr ? start->getInteger("line").value_or(0) : 0;
+		const int64_t last_line = end != nullptr ? end->getInteger("line").value_or(first_line) : first_line;
+		const std::shared_ptr<const LoadedIndex> index = index_for(document->path);
+		std::optional<std::pair<std::string, std::string>> texts = index != nullptr ? texts_of(*index, document->path) : std::nullopt;
+		const std::string key = path_key(document->path);
+		// The text the last check read of it, which its fixes' offsets count in: as open then, or else from the index's
+		auto found_root = findings.find(root_for(document->path));
+		std::string then = texts.has_value() ? texts->first : document->text;
+		if (found_root != findings.end()) {
+			if (auto read = found_root->second.texts.find(key); read != found_root->second.texts.end()) {
+				then = read->second;
+			}
+		}
+		const Moved moved(then, document->text);
+		const LineIndex lines(document->text);
+		Array actions;
+
+		// Each fix of each diagnostic on the lines asked about, its edits moved to the text now; one in what changed isn't offered
+		if (wanted("quickfix")) {
+			std::set<std::tuple<uint32_t, uint32_t, std::string, std::string>> seen;
+			auto found = findings.find(root_for(document->path));
+			if (found != findings.end()) {
+				for (const auto& [target, diagnostics] : found->second.by_target) {
+					for (const CompilerDiagnostic& diagnostic : diagnostics) {
+						const int64_t line = static_cast<int64_t>(diagnostic.line) - 1;
+						if (diagnostic.fixes.empty() || path_key(diagnostic.file) != key || line < first_line || line > last_line
+							|| !seen.emplace(diagnostic.line, diagnostic.column, diagnostic.code, diagnostic.message).second) {
+							continue;
+						}
+						for (const CompilerDiagnostic::Fix& fix : diagnostic.fixes) {
+							Array edits;
+							bool moves = true;
+							for (const CompilerDiagnostic::Edit& edit : fix.edits) {
+								const std::optional<size_t> from = moved.forward(edit.offset);
+								const std::optional<size_t> to = moved.forward(static_cast<size_t>(edit.offset) + edit.length);
+								// What it replaces has to be as the check read it, not just its ends where they were
+								if (!from.has_value() || !to.has_value() || *to - *from != edit.length || *to > document->text.size()
+									|| static_cast<size_t>(edit.offset) + edit.length > then.size()
+									|| std::string_view(document->text).substr(*from, edit.length) != std::string_view(then).substr(edit.offset, edit.length)) {
+									moves = false;
+									break;
+								}
+								edits.push_back(Object{ { "range", Object{ { "start", position_at(lines, *from, position_encoding) },
+									{ "end", position_at(lines, *to, position_encoding) } } }, { "newText", edit.text } });
+							}
+							if (!moves) {
+								continue;
+							}
+							actions.push_back(Object{
+								{ "title", fix.title },
+								{ "kind", "quickfix" },
+								{ "diagnostics", Array{ lsp_diagnostic(diagnostic, lines) } },
+								{ "isPreferred", diagnostic.fixes.size() == 1 },
+								{ "edit", Object{ { "changes", Object{ { document->uri, std::move(edits) } } } } },
+							});
+						}
+					}
+				}
+			}
+		}
+
+		// A doc comment for the declaration whose name the range starts on, when it has none
+		if (wanted("refactor.rewrite") && index != nullptr && start != nullptr) {
+			const size_t now = lines.offset_of(static_cast<uint32_t>(first_line), static_cast<uint32_t>(start->getInteger("character").value_or(0)),
+				position_encoding);
+			const std::optional<size_t> at_then = moved.back(now);
+			const std::optional<LoadedIndex::NameAt> name = at_then.has_value() ? index->name_at(key, *at_then) : std::nullopt;
+			const IndexedDeclaration* declaration = name.has_value() ? &index->declarations[name->declaration] : nullptr;
+			const bool documentable = declaration != nullptr && path_key(declaration->file) == key && declaration->text.empty()
+				&& name->offset == declaration->name_offset
+				&& (declaration->kind == "function" || declaration->kind == "type" || declaration->kind == "constant")
+				&& declaration->brief.empty() && declaration->details.empty() && declaration->tags.empty();
+			const std::optional<size_t> line_at = documentable ? moved.forward(declaration->name_offset) : std::nullopt;
+			if (line_at.has_value()) {
+				const size_t line_start = std::string_view(document->text).rfind('\n', *line_at == 0 ? 0 : *line_at - 1);
+				const size_t insert_at = *line_at == 0 || line_start == std::string_view::npos ? 0 : line_start + 1;
+				const std::string_view newline = document->text.find("\r\n") != std::string::npos ? "\r\n" : "\n";
+				std::string comment = std::format("/**{0} * TODO: say what it is.{0}", newline);
+				const bool returns = declaration->kind == "function" && declaration->type.find(") -> ") != std::string::npos;
+				if (!declaration->parameters.empty() || returns) {
+					comment += std::format(" *{}", newline);
+				}
+				for (const IndexedDeclaration::Parameter& parameter : declaration->parameters) {
+					comment += std::format(" * @param {} TODO: what it is.{}", parameter.name, newline);
+				}
+				if (returns) {
+					comment += std::format(" * @return TODO: what it gives.{}", newline);
+				}
+				comment += std::format(" */{}", newline);
+				const Value place = position_at(lines, insert_at, position_encoding);
+				actions.push_back(Object{
+					{ "title", "Write a doc comment" },
+					{ "kind", "refactor.rewrite" },
+					{ "edit", Object{ { "changes", Object{ { document->uri, Array{ Object{
+						{ "range", Object{ { "start", place }, { "end", place } } }, { "newText", comment } } } } } } } },
+				});
+			}
+		}
+
+		// The file's imports, sorted as the formatter sorts them, and nothing else changed
+		if (wanted("source.organizeImports")) {
+			const Parses* parses_of = parsed(document->uri);
+			const ParsedDocument* current = parses_of != nullptr ? parses_of->current.get() : nullptr;
+			if (current != nullptr && current->tree != nullptr) {
+				const auto import_span = [](const ast::Node* tree) -> std::optional<std::pair<size_t, size_t>> {
+					std::optional<std::pair<size_t, size_t>> span;
+					for (size_t i = 0; i < tree->children.size(); ++i) {
+						const ast::Node* item = tree->children[i];
+						if (ast::NodeType::IMPORT != item->node_type) {
+							continue;
+						}
+						const uint32_t first = first_byte(item);
+						// To the start of what follows the last import
+						const size_t next = i + 1 < tree->children.size() ? first_byte(tree->children[i + 1]) : Token::NO_SPAN;
+						span = std::make_pair(span.has_value() ? span->first : first, next);
+					}
+					return span;
+				};
+				ReportScope scope;
+				ReportScope* outer = report_scope();
+				set_report_scope(&scope);
+				const formatting::Result formatted = formatting::format_source(document->text, document->path);
+				const std::unique_ptr<ParsedDocument> reparsed = formatted.parsed ? parse_document(formatted.text, 0, *uri) : nullptr;
+				set_report_scope(outer);
+				reset_reporting_storage();
+				const auto old_span = import_span(current->tree);
+				const auto new_span = reparsed != nullptr && reparsed->tree != nullptr ? import_span(reparsed->tree) : std::nullopt;
+				if (old_span.has_value() && new_span.has_value() && old_span->second != Token::NO_SPAN && new_span->second != Token::NO_SPAN
+					&& formatted.lost_comments.empty()) {
+					// Each import's line, sorted, and what came after them as it was
+					const auto import_lines = [](std::string_view text) {
+						std::vector<std::string> found;
+						for (size_t at = 0; at < text.size();) {
+							size_t end_line = text.find('\n', at);
+							end_line = end_line == std::string_view::npos ? text.size() : end_line;
+							std::string_view line = text.substr(at, end_line - at);
+							if (line.ends_with('\r')) {
+								line.remove_suffix(1);
+							}
+							if (line.starts_with("import ")) {
+								found.emplace_back(line);
+							}
+							at = end_line + 1;
+						}
+						return found;
+					};
+					const std::string_view old_block = std::string_view(document->text).substr(old_span->first, old_span->second - old_span->first);
+					const std::vector<std::string> old_lines = import_lines(old_block);
+					const std::vector<std::string> new_lines = import_lines(std::string_view(formatted.text).substr(new_span->first,
+						new_span->second - new_span->first));
+					std::vector<std::string> sorted_old = old_lines;
+					std::vector<std::string> sorted_new = new_lines;
+					std::sort(sorted_old.begin(), sorted_old.end());
+					std::sort(sorted_new.begin(), sorted_new.end());
+					// Nothing but imports and blank lines among them, which a comment between them would be lost from
+					const size_t last_line_end = old_lines.empty() ? 0 : old_block.rfind(old_lines.back()) + old_lines.back().size();
+					size_t other_lines = 0;
+					for (size_t at = 0; at < last_line_end;) {
+						size_t end_line = old_block.find('\n', at);
+						end_line = end_line == std::string_view::npos ? old_block.size() : end_line;
+						const std::string_view line = old_block.substr(at, end_line - at);
+						if (!line.starts_with("import ") && line.find_first_not_of(" \t\r") != std::string_view::npos) {
+							++other_lines;
+						}
+						at = end_line + 1;
+					}
+					// The same imports in another order: only then is it the order that changes
+					if (other_lines == 0 && old_lines != new_lines && sorted_old == sorted_new) {
+						const std::string_view newline = document->text.find("\r\n") != std::string::npos ? "\r\n" : "\n";
+						std::string block;
+						for (const std::string& line : new_lines) {
+							block += (block.empty() ? "" : std::string(newline)) + line;
+						}
+						actions.push_back(Object{
+							{ "title", "Organize imports" },
+							{ "kind", "source.organizeImports" },
+							{ "edit", Object{ { "changes", Object{ { document->uri, Array{ Object{
+								{ "range", Object{ { "start", position_at(lines, old_span->first, position_encoding) },
+									{ "end", position_at(lines, old_span->first + last_line_end, position_encoding) } } },
+								{ "newText", block } } } } } } } },
+						});
+					}
+				}
+			}
+		}
+		return actions;
 	}
 
 	std::optional<std::pair<std::string, std::string>> Server::texts_of(const LoadedIndex& index, const std::string& file) {
@@ -1093,6 +1389,29 @@ namespace hemera::lsp {
 			of_each.push_back(tables_for(index));
 		}
 		return workspace_symbols(query.value_or("").str(), of_each, workspace_folders, position_encoding);
+	}
+
+	Object Server::lsp_diagnostic(const CompilerDiagnostic& diagnostic, const LineIndex& index) {
+		const uint32_t line = diagnostic.line > 0 ? diagnostic.line - 1 : 0;
+		const uint32_t start = diagnostic.column;
+		const uint32_t end = token_end(index.line(line), start);
+		Object range{
+			{ "start", Object{ { "line", line }, { "character", index.character(line, start, position_encoding) } } },
+			{ "end", Object{ { "line", line }, { "character", index.character(line, end, position_encoding) } } },
+		};
+		const int64_t severity = diagnostic.severity == "error" ? 1 : diagnostic.severity == "warning" ? 2 : 3;
+		Object made{ { "range", std::move(range) }, { "severity", severity }, { "source", "hemera" }, { "message", diagnostic.message } };
+		if (!diagnostic.code.empty()) {
+			made["code"] = diagnostic.code;
+		}
+		if (!diagnostic.related.empty()) {
+			Array related;
+			for (const CompilerDiagnostic::Place& place : diagnostic.related) {
+				related.push_back(Object{ { "location", place_location(place.file, place.line, place.column) }, { "message", place.message } });
+			}
+			made["relatedInformation"] = std::move(related);
+		}
+		return made;
 	}
 
 	Value Server::tokens(const Object* params, bool range) {

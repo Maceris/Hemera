@@ -113,6 +113,11 @@ namespace hemera::lsp {
 		struct Found {
 			std::map<std::string, std::vector<CompilerDiagnostic>> by_target;
 			std::set<std::string> published;
+			/*
+			 * The text each open document had when a check found what's in by_target, by path_key, which fixes' offsets
+			 * count in; a check's replaces those it read, and a file not there was read from disk
+			 */
+			std::map<std::string, std::string> texts;
 		};
 		std::map<std::string, Found> findings;
 		// Each root's name index, from its last check that wrote one, by path_key of the root
@@ -173,6 +178,29 @@ namespace hemera::lsp {
 
 		// textDocument/documentHighlight's answer: each place in the document the name at params' position is named
 		llvm::json::Value highlights(const llvm::json::Object* params);
+
+		/*
+		 * textDocument/codeAction's answer: for the lines of params' range, each fix of each diagnostic there, moved to the
+		 * text now; writing a doc comment for a declaration named where the range starts that has none; and organizing
+		 * the file's imports as the formatter sorts them. Only the kinds params' context asks for, when it says.
+		 */
+		llvm::json::Value code_actions(const llvm::json::Object* params);
+
+		// The diagnostic as it's published, its place in index's text
+		llvm::json::Object lsp_diagnostic(const CompilerDiagnostic& diagnostic, const LineIndex& index);
+
+		/*
+		 * textDocument/rangeFormatting's answer, or with on_type, textDocument/onTypeFormatting's for the item the
+		 * character before params' position is in: format_parts.
+		 */
+		llvm::json::Value format_range(const llvm::json::Object* params, bool on_type);
+
+		/*
+		 * The document formatted, but only the top-level items from start to end changed, byte offsets in its text: the
+		 * formatter's output and the text matched item by item, each from its start to the next's, the edits only where
+		 * they differ. None when it doesn't parse, or their items don't match.
+		 */
+		llvm::json::Array format_parts(const std::string& uri, size_t start, size_t end);
 
 		/*
 		 * A file's text as the index's offsets count it, and as it is now: an open document's, from when the check
