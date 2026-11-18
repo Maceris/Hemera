@@ -123,9 +123,18 @@ architecture's instructions, from `base/intrinsics`' package for it, are compile
 function that uses them gets compiled, but calling it at compile time stops with the trap.
 
 Compile-time code can look at the program through `base/compiler`: `compiler.package_info` for a package the file
-imports, with its files, imports, functions, constants (with their values) and types, `find_function` and
-`find_constant` in one, and `report`, `report_error` and `report_warning` at any location ([Diagnostics](#diagnostics)).
+imports, with its files, imports, functions, constants and types, `find_function` and `find_constant` in one, and
+`report`, `report_error` and `report_warning` at any location ([Diagnostics](#diagnostics)).
 `compiler.target_setting` reads a setting given on the command line as `--setting=name=value`.
+
+A `PackageInfo`'s constants have their values only when the program's code names `PackageInfo.constants` somewhere,
+like `for constant in package.constants`, since working out every constant of every package is most of the cost of
+describing a program. Otherwise each `ConstantInfo` still has its name, type, location and documentation, but a value
+whose `data` is null, as one that can't be worked out has; `find_constant` works out the one it finds either way,
+along with every other package's constant of the same name in that program, in one run, since code that asks one
+package for a constant by name, like a tier each package declares, tends to ask the rest.
+Code that only reads a `PackageInfo` through reflection, like printing it as an `any`, doesn't name the field, so it
+sees constants without values.
 
 ### Diagnostics
 
@@ -543,14 +552,16 @@ Each target is checked on its own, with its own `#if` choices and settings, then
 returns false, or reports an error, stops that target. The rest are generated and linked, then each step registered
 with `compiler.add_step` runs, after the targets it depends on, with their outputs. Checks and steps are the build
 package's own functions, so they run with its types: a value from a target, like a constant in its `ProgramInfo`,
-has the target's types, which are compared by name (see `ConstantInfo`).
+has the target's types, which are compared by name (see `ConstantInfo`). Its packages' constants have values only
+when the build's code names `PackageInfo.constants` (see Compile-Time Execution); a check that wants a few uses
+`find_constant`, which works out just those.
 
 Targets are built several at once, each a program of its own: its files are read, parsed and checked for it, even
 ones another target already used, since its `#if` choices, settings and package paths can make them mean something
 else, and the work within a target is spread across threads like any program's. `--jobs=N` says how many are built
 at once: 1 for one at a time, in the order they were registered, and by default a quarter of the machine's logical
 processors. The checks take turns, since they run the build package's own code, though what describing a target for
-them takes, like working out its constants, is done beside other targets'. Either way, each target's outputs
+them takes, like working out its constants when the build names them, is done beside other targets'. Either way, each target's outputs
 are the same (see Deterministic Output), and what it reports, its errors and warnings and `--time-phases`'s lines, is
 printed in one piece and in the order the targets were registered, once it and every target before it are done.
 A target's errors stop only it: the others are still built, and the build fails. Steps run once every target is done.

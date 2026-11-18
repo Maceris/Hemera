@@ -1232,6 +1232,58 @@ TEST(Build, ChecksTargetsWithoutBuildingThem)
 	module.erase();
 }
 
+/*
+ * docs/compilation.md, Build Checks: a check's ProgramInfo has its constants' values only when the build's code names
+ * PackageInfo.constants; find_constant gives one either way.
+ */
+TEST(Build, DescribesConstantsValuesOnlyForChecksNamingThem)
+{
+	// The warning the build's check reports, and whether the build's code named PackageInfo.constants
+	auto check = [](std::string_view build, std::string& warning, bool& named) {
+		hemera::reset_reporting_storage();
+		hemera::reset_build_registry();
+		mlir::MLIRContext context;
+		context.loadDialect<mlir::BuiltinDialect>();
+		context.loadDialect<hmir::HemeraDialect>();
+		mlir::OpBuilder builder(&context);
+		mlir::ModuleOp module = mlir::ModuleOp::create(builder, builder.getUnknownLoc(), "build");
+		auto program_info = std::make_unique<hemera::ProgramInfo>(&context, &builder, &module);
+		const std::filesystem::path output_folder = std::filesystem::path(HEMERA_TEST_OUTPUT_DIR) / "build_constants";
+		std::filesystem::create_directories(output_folder);
+		hemera::Options options;
+		options.input = std::filesystem::canonical(scenario("build_constants") / build);
+		options.output_name = (output_folder / "build").string();
+		options.settings = { { "output", (output_folder / "app").string() } };
+		options.build_extent = hemera::BuildExtent::CHECK;
+		hemera::kick_off_processing(program_info.get(), &options);
+		ASSERT_EQ(hemera::error_count(), 0) << "first error: " << static_cast<int>(hemera::error_list()->front());
+		hemera::Allocator<> alloc;
+		EXPECT_TRUE(hemera::build_targets(program_info.get(), options, alloc));
+		EXPECT_EQ(hemera::error_count(), 0);
+		for (const hemera::Diagnostic& diagnostic : hemera::diagnostics()) {
+			if (hemera::Severity::WARNING == diagnostic.severity) {
+				warning = diagnostic.message;
+			}
+			else {
+				ADD_FAILURE() << diagnostic.message;
+			}
+		}
+		named = program_info->names_package_constants;
+		hemera::reset_build_registry();
+		module.erase();
+	};
+	StringCacheGuard string_cache;
+	std::string warning;
+	bool named = false;
+	check("named", warning, named);
+	EXPECT_TRUE(named);
+	EXPECT_TRUE(warning.ends_with("LIMIT is 7, GREETING is hello")) << warning;
+	warning.clear();
+	check("unnamed", warning, named);
+	EXPECT_FALSE(named) << "find_constant isn't PackageInfo.constants";
+	EXPECT_TRUE(warning.ends_with("LIMIT is 7")) << warning;
+}
+
 // hemera --index on a build package: each target's names recorded while it's checked, merged into one index.
 TEST(Build, IndexesEveryTarget)
 {

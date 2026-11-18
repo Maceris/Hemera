@@ -19,7 +19,10 @@ PackageInfo :: struct {
     imports : ImportInfo[],
     /** Its top-level functions. */
     functions : FunctionInfo[],
-    /** Its top-level constants that aren't functions or types, with their values. */
+    /**
+     * Its top-level constants that aren't functions or types. They have their values only when the program reading
+     * this names this field somewhere; otherwise each value's data is null, and find_constant works out one's.
+     */
     constants : ConstantInfo[],
     /** Its top-level types, aliases included. */
     types : TypeDeclaration[],
@@ -48,7 +51,10 @@ ConstantInfo :: struct {
     name : string,
     /** Its type, in the program it was evaluated in. */
     type : type,
-    /** Its value, worked out at compile time, of type. */
+    /**
+     * Its value, worked out at compile time, of type; data is null for one that can't be worked out, like one holding
+     * a function, or in a PackageInfo read by a program that never names PackageInfo.constants.
+     */
     value : any,
     /** Where it's declared. */
     location : SourceCodeLocation,

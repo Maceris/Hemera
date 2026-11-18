@@ -243,6 +243,14 @@ namespace hemera {
 		 */
 		std::shared_ptr<NameUses> name_uses;
 
+		/*
+		 * Whether its code names base's compiler.PackageInfo.constants anywhere, set while it's checked. Only then
+		 * does describing a package for it (a build check's ProgramInfo, package_info, load_package) work out every
+		 * constant's value; otherwise each constant's record has a value with null data, and find_constant works out
+		 * one on demand.
+		 */
+		std::atomic_bool names_package_constants = false;
+
 		std::atomic_size_t next_location_id;
 
 		/// <summary>

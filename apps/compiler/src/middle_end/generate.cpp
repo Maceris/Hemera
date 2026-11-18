@@ -11595,23 +11595,46 @@ namespace hemera {
 		}
 
 		/*
-		 * Constants' values, worked out in one run: each one's type (an untyped one's default) and a copy of its
-		 * value in the compile-time data. Values that can't be worked out are left null.
+		 * The type reflection gives a constant: its own, or an untyped one's default. Null for one initialized
+		 * outside the program, or with no type to give.
+		 */
+		TypeInfo* constant_type(const Declaration* constant) {
+			if (constant->externally_initialized) {
+				return nullptr;
+			}
+			TypeInfo* type = constant->value_type;
+			if (type == nullptr) {
+				type = Untyped::INTEGER == constant->untyped ? BUILTIN_int : Untyped::FLOAT == constant->untyped ? BUILTIN_f64
+					: Untyped::STRING == constant->untyped ? BUILTIN_string : Untyped::BOOLEAN == constant->untyped ? BUILTIN_bool : nullptr;
+			}
+			return type;
+		}
+
+		/*
+		 * Constants' values, worked out in one run: each one's type (constant_type) and a copy of its value in the
+		 * compile-time data. Values that can't be worked out are left null.
 		 */
 		std::vector<std::pair<const TypeInfo*, const uint8_t*>> constant_values(Call& call, const std::vector<Declaration*>& constants) {
 			std::vector<const void*> keys;
 			std::vector<CompileTimeItem> items;
 			for (Declaration* constant : constants) {
-				TypeInfo* type = constant->value_type;
-				if (type == nullptr) {
-					type = Untyped::INTEGER == constant->untyped ? BUILTIN_int : Untyped::FLOAT == constant->untyped ? BUILTIN_f64
-						: Untyped::STRING == constant->untyped ? BUILTIN_string : Untyped::BOOLEAN == constant->untyped ? BUILTIN_bool : nullptr;
-				}
 				keys.push_back(constant);
-				items.push_back(CompileTimeItem{ definition_value(constant->node), constant->externally_initialized ? nullptr : type,
-					constant->checked.get(), constant, nullptr });
+				items.push_back(CompileTimeItem{ definition_value(constant->node), constant_type(constant), constant->checked.get(), constant, nullptr });
 			}
 			return worked_out(call, keys, std::move(items));
+		}
+
+		/*
+		 * Constants' types without their values, for a program whose code never names PackageInfo.constants
+		 * (ProgramInfo::names_package_constants): each value is left null, as one that can't be worked out is.
+		 */
+		std::vector<std::pair<const TypeInfo*, const uint8_t*>> constant_types(const std::vector<Declaration*>& constants) {
+			std::vector<std::pair<const TypeInfo*, const uint8_t*>> types;
+			types.reserve(constants.size());
+			for (Declaration* constant : constants) {
+				types.emplace_back(constant_type(constant), nullptr);
+			}
+			return types;
 		}
 
 		/*
@@ -11965,11 +11988,12 @@ namespace hemera {
 		}
 
 		/*
-		 * A package's PackageInfo, with its constants' values worked out, or taken from known when given, which
-		 * saves a compile-time run for each package when describing many.
+		 * A package's PackageInfo. With with_values, its constants' values are worked out, or taken from known when
+		 * given, which saves a compile-time run for each package when describing many; without, as for a reader
+		 * that never names PackageInfo.constants, each constant's value is left null.
 		 */
 		void write_package(Call& call, uint8_t* record, const TypeInfoStruct* layout, hemera::PackageInfo* package,
-			const KnownConstants* known = nullptr) {
+			bool with_values, const KnownConstants* known = nullptr) {
 			CompileTimeData& data = call.data;
 			const std::string path = text_of(package->full_path);
 			data.write_text(record, layout, "name", text_of(package->self_reported_name));
@@ -12029,7 +12053,10 @@ namespace hemera {
 				write_function(call, at, function_layout, functions[i]);
 			});
 			std::vector<std::pair<const TypeInfo*, const uint8_t*>> values;
-			if (known != nullptr) {
+			if (!with_values) {
+				values = constant_types(constants);
+			}
+			else if (known != nullptr) {
 				for (Declaration* constant : constants) {
 					auto found = known->find(constant);
 					values.push_back(found != known->end() ? found->second : std::make_pair(nullptr, nullptr));
@@ -12094,6 +12121,23 @@ namespace hemera {
 				}
 			}
 			return nullptr;
+		}
+
+		/*
+		 * constant first, then every other package's top-level constant of the same name in call's program, which
+		 * find_constant works out with it: code that asks one package for a constant by name, like a tier each
+		 * package declares, tends to ask the others too, and one run for them all costs about what one run for each does.
+		 */
+		std::vector<Declaration*> alike_constants(Call& call, Declaration* constant) {
+			std::vector<Declaration*> alike{ constant };
+			std::scoped_lock<std::mutex> lock(call.program->names.mutex);
+			for (const auto& [path, package] : call.program->packages) {
+				auto found = call.program->names.declarations.find(std::make_pair(path, constant->name));
+				if (found != call.program->names.declarations.end() && found->second != constant && is_constant(found->second)) {
+					alike.push_back(found->second);
+				}
+			}
+			return alike;
 		}
 
 		// A SourceCodeLocation argument's file, line and column.
@@ -12980,7 +13024,7 @@ namespace hemera {
 			if (name == "package_info") {
 				hemera::PackageInfo* package = imported(call, read_string(call.arguments[0]));
 				write_optional(call, package != nullptr, [&](uint8_t* at, const TypeInfoStruct* layout) {
-					write_package(call, at, layout, package);
+					write_package(call, at, layout, package, call.program->names_package_constants);
 				});
 				return;
 			}
@@ -13022,7 +13066,8 @@ namespace hemera {
 					}
 				}
 				write_optional(call, package != nullptr && package->files.size() > 0, [&](uint8_t* at, const TypeInfoStruct* layout) {
-					write_package(described, at, layout, package);
+					// Whether the values are wanted is the reading program's to say, the one load_package was called in
+					write_package(described, at, layout, package, call.program->names_package_constants);
 				});
 				return;
 			}
@@ -13045,7 +13090,7 @@ namespace hemera {
 						write_function(call, at, layout, found);
 						return;
 					}
-					const auto values = constant_values(call, { found });
+					const auto values = constant_values(call, alike_constants(call, found));
 					write_constant(call, at, layout, found, values[0].first, values[0].second);
 				});
 				return;
@@ -13353,21 +13398,28 @@ namespace hemera {
 		std::sort(packages.begin(), packages.end(), [](const hemera::PackageInfo* a, const hemera::PackageInfo* b) {
 			return std::string_view(*a->full_path) < std::string_view(*b->full_path);
 		});
-		// Every package's constants worked out in one run
-		std::vector<Declaration*> constants;
-		for (hemera::PackageInfo* package : packages) {
-			const std::vector<Declaration*> found = constants_of(target, text_of(package->full_path));
-			constants.insert(constants.end(), found.begin(), found.end());
-		}
 		/*
-		 * Worked out in the target's own program, beside other targets', the lock taken only to copy each value into
-		 * the build's memory: this is most of describing a target, which every target does
+		 * Every package's constants worked out in one run, only when the build's code names PackageInfo.constants:
+		 * otherwise nothing a check runs can read their values, and find_constant works out one on demand
 		 */
-		holding.unlock();
-		call.build_memory = &build_memory;
-		const auto values = constant_values(call, constants);
-		call.build_memory = nullptr;
-		holding.lock();
+		const bool with_values = build->names_package_constants;
+		std::vector<Declaration*> constants;
+		std::vector<std::pair<const TypeInfo*, const uint8_t*>> values;
+		if (with_values) {
+			for (hemera::PackageInfo* package : packages) {
+				const std::vector<Declaration*> found = constants_of(target, text_of(package->full_path));
+				constants.insert(constants.end(), found.begin(), found.end());
+			}
+			/*
+			 * Worked out in the target's own program, beside other targets', the lock taken only to copy each value
+			 * into the build's memory: this is most of describing a target, when it's done
+			 */
+			holding.unlock();
+			call.build_memory = &build_memory;
+			values = constant_values(call, constants);
+			call.build_memory = nullptr;
+			holding.lock();
+		}
 		// And their functions' constant defaults
 		std::vector<Declaration*> functions;
 		for (hemera::PackageInfo* package : packages) {
@@ -13386,7 +13438,7 @@ namespace hemera {
 		uint8_t* root = nullptr;
 		for (size_t i = 0; i < packages.size(); ++i) {
 			uint8_t* record = package_records + i * package_layout->size;
-			write_package(call, record, package_layout, packages[i], &known);
+			write_package(call, record, package_layout, packages[i], with_values, &known);
 			if (text_of(packages[i]->full_path) == options.input.string()) {
 				root = record;
 			}

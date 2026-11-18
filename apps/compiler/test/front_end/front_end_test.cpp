@@ -756,6 +756,26 @@ TEST(FrontEnd, RecordsExternallyInitializedConstants)
 	EXPECT_EQ(plain->section, nullptr);
 }
 
+// docs/compilation.md, Build Checks: describing a package works out its constants' values only for code that names them
+TEST(FrontEnd, NotesCodeNamingPackageConstants)
+{
+	hemera::disable_reporting_printing();
+	StringCacheGuard string_cache;
+	{
+		FrontEndFixture fixture;
+		std::vector<hemera::ErrorCode> errors = process_package(fixture, scenario("package_constants/named"));
+		ASSERT_TRUE(errors.empty()) << reported(errors);
+		EXPECT_TRUE(fixture.program_info->names_package_constants);
+	}
+	{
+		// Base's other fields, and another struct's constants, don't count
+		FrontEndFixture fixture;
+		std::vector<hemera::ErrorCode> errors = process_package(fixture, scenario("package_constants/unnamed"));
+		ASSERT_TRUE(errors.empty()) << reported(errors);
+		EXPECT_FALSE(fixture.program_info->names_package_constants);
+	}
+}
+
 TEST(FrontEnd, ReportsSectionWithoutExternallyInitialized)
 {
 	hemera::disable_reporting_printing();

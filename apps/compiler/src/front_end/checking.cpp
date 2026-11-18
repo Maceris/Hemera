@@ -1105,6 +1105,24 @@ namespace hemera {
 		return false;
 	}
 
+	/*
+	 * Notes it when code names base's compiler.PackageInfo.constants, the one field describing a package needs
+	 * every constant's value for (ProgramInfo::names_package_constants). Another struct called PackageInfo doesn't count.
+	 */
+	static void note_package_constants(Checker& checker, const TypeInfoStruct* type, InternedString name) {
+		ProgramInfo* program = checker.walk.executor.program_info;
+		if (program == nullptr || program->names_package_constants || type->name == nullptr
+			|| std::string_view(*type->name) != "PackageInfo" || std::string_view(*name) != "constants") {
+			return;
+		}
+		NameRegistry& names = program->names;
+		std::scoped_lock<std::mutex> lock(names.mutex);
+		auto found = names.declarations.find(std::make_pair(intern(std::string(BASE_PACKAGE_PREFIX) + "compiler"), intern(std::string("PackageInfo"))));
+		if (found != names.declarations.end() && found->second->type_value == type) {
+			program->names_package_constants = true;
+		}
+	}
+
 	static Progress check_member(Checker& checker, ast::Node* where, InternedString name, Value& value) {
 		const ValueKind kind = value.kind;
 		if (ValueKind::POISONED == kind) {
@@ -1194,6 +1212,7 @@ namespace hemera {
 			const StructMember* found = find_member(static_cast<TypeInfoStruct const*>(type), name);
 			if (found != nullptr) {
 				record_member_use(checker.walk, where, type, name);
+				note_package_constants(checker, static_cast<TypeInfoStruct const*>(type), name);
 				const bool is_context = value.is_context;
 				value = typed(found->member_type);
 				value.is_location = is_location;
