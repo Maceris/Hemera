@@ -371,6 +371,7 @@ namespace hemera {
 		bool debug_info_seen = false;
 		bool environment_seen = false;
 		bool install_path_seen = false;
+		bool no_cache = false;
 		bool object_format_seen = false;
 		bool os_seen = false;
 		bool stage_seen = false;
@@ -430,6 +431,9 @@ namespace hemera {
 				break;
 			case hemera::arg_parse::TIME_PHASES:
 				output.time_phases = true;
+				break;
+			case hemera::arg_parse::NO_CACHE:
+				no_cache = true;
 				break;
 			case hemera::arg_parse::NO_DOCUMENTATION_CHECKS:
 				output.check_documentation = false;
@@ -509,6 +513,7 @@ namespace hemera {
 			case hemera::arg_parse::HELP:
 			case hemera::arg_parse::INSTALL_PATH:
 			case hemera::arg_parse::JOBS:
+			case hemera::arg_parse::CACHE:
 			case hemera::arg_parse::LINKER_SCRIPT:
 			case hemera::arg_parse::SYSROOT:
 			case hemera::arg_parse::LIBRARY_PATH:
@@ -981,6 +986,15 @@ namespace hemera {
 				output.jobs = static_cast<uint32_t>(std::stoul(value));
 				break;
 			}
+			case hemera::arg_parse::CACHE: {
+				const std::string value(option_with_value.values[0]);
+				if (value.empty()) {
+					cout << "--cache takes the folder the build cache is kept in" << endl;
+					return false;
+				}
+				output.cache_folder = std::filesystem::absolute(std::filesystem::path(value));
+				break;
+			}
 			case hemera::arg_parse::INSTALL_PATH:
 				if (install_path_seen) {
 					cout << "Duplicate install path flag" << endl;
@@ -1279,6 +1293,7 @@ namespace hemera {
 			case hemera::arg_parse::GENERATE_ALL:
 			case hemera::arg_parse::VALGRIND_SECRETS:
 			case hemera::arg_parse::TIME_PHASES:
+			case hemera::arg_parse::NO_CACHE:
 			case hemera::arg_parse::NO_DOCUMENTATION_CHECKS:
 			case hemera::arg_parse::TEST:
 			case hemera::arg_parse::NO_RED_ZONE:
@@ -1321,6 +1336,8 @@ namespace hemera {
 		if (!install_path_seen) {
 			output.install_path = default_install_path();
 		}
+		// A run of hemera reuses what it built before, unless it's asked not to (docs/compilation.md, The Build Cache)
+		output.use_cache = !no_cache;
 
 		if (output.output_name == "") {
 			//NOTE(ches) Folder, file without extension, I don't care.

@@ -909,7 +909,44 @@ timeline kernel.elf: started 0 ms, checked 3120 ms, waited 12 ms for the build's
 
 What a target doesn't get to, like the build's checks after an error in it, is left out. A check through `hemera
 --serve` also times seeing whether the build package is as it was, freeing the targets' programs, and recording what
-the build read.
+the build read. Each check also says what its threads spent their time on, summed over them, as `phase   parse
+kernel.elf, summed over threads: 410 ms`, for finding packages, parsing, deciding `#if`s, resolving and checking, and
+running compile-time code; work that waited for other work counts each time it ran. With the build cache (below), a program has `find program in the build cache` for working out its key,
+and `take program from the build cache` when it was taken from it, or `keep program in the build cache` when it was
+built and kept.
+
+## The Build Cache
+
+Most of building a program is optimizing and linking it, so once a program is generated, the compiler looks for it in
+the build cache: outputs kept from a build of the same program before. When it's there, its outputs are copied into
+place, and it isn't lowered, optimized or linked again. As the same inputs make the same bytes (see Deterministic
+Output), what's copied is what building it would write. A program is still checked, run through its build's checks
+and generated every time, so everything its compile-time code does happens as it would.
+
+A program's key is a hash of:
+
+* its generated MLIR, locations included, which holds everything compile-time code and `#file_data` put into it, but
+  for its module's name, the output's whole path, which nothing built takes in;
+* the options lowering, optimizing and linking read: the target's architecture, OS, CPU and its features, code and
+  relocation models, optimization level, debug info, entry and startup code, and the like, the output file's name,
+  the linker named and the library folders, and its linker script's bytes;
+* the compiler, by its executable's bytes, `base` being part of it.
+
+So a program built into another folder takes what was kept from one built elsewhere, as a test that builds into a new
+folder each time does. A change that doesn't change the generated program, like a comment, needs nothing built; one
+in a package that only some targets import builds only those.
+
+What the linker finds itself, like an import library in a library folder or on its own search path, isn't in the key:
+one that changes on its own without the program changing isn't seen. Neither is where a PE/COFF program's PDB is written,
+which the PDB records, so a PE/COFF program with debug info is only taken for the same output path. A program whose
+lowering, optimizing or linking reported anything, a warning included, isn't kept, so building it again reports it
+again; nor is one fuzzed (`--fuzz`), nor one stopped short of linking.
+
+The cache is in the user's cache folder: `%LOCALAPPDATA%\Hemera\cache` on Windows, and `$XDG_CACHE_HOME/hemera`, or
+`~/.cache/hemera`, elsewhere. `--cache=folder` puts it elsewhere, and `--no-cache` builds every program afresh,
+neither taking from the cache nor keeping anything in it. Each program's outputs are kept in a folder of their own,
+named by its key; once a build keeps something, the cache is trimmed, the entries used longest ago removed, while it
+holds more than 4 GiB. An entry is written beside where it goes and renamed into place, so builds can share a cache.
 
 ## Debug Info
 

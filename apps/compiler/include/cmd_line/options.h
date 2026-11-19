@@ -644,6 +644,16 @@ namespace hemera {
         /// </summary>
         uint32_t jobs = 0;
         /// <summary>
+        /// Whether a program whose generated code, options and compiler are those of one built before takes that one's
+        /// outputs from the build cache, rather than being optimized and linked again (docs/compilation.md, The Build
+        /// Cache). On for a hemera run unless --no-cache; off for Options made in code, like the compiler's tests'.
+        /// </summary>
+        bool use_cache = false;
+        /// <summary>
+        /// --cache=folder: where the build cache keeps outputs; empty for the user's cache folder (cache_folder_of).
+        /// </summary>
+        std::filesystem::path cache_folder;
+        /// <summary>
         /// --setting=name=value, which compile-time code reads with compiler.target_setting.
         /// </summary>
         std::vector<std::pair<std::string, std::string>> settings;

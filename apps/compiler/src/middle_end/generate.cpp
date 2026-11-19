@@ -13270,6 +13270,8 @@ namespace hemera {
 		}
 		result.build_extent = build.build_extent;
 		result.time_phases = build.time_phases;
+		result.use_cache = build.use_cache;
+		result.cache_folder = build.cache_folder;
 		result.check_documentation = build.check_documentation;
 		result.optimization_level = target.optimization_level == "O0" ? OptimizationLevel::O0 : target.optimization_level == "O1" ? OptimizationLevel::O1
 			: target.optimization_level == "O3" ? OptimizationLevel::O3 : OptimizationLevel::O2;

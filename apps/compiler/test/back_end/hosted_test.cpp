@@ -1188,6 +1188,100 @@ TEST(Build, BuildsTargets)
 	module.erase();
 }
 
+/*
+ * scenarios/build_package built with the build cache in cache (docs/compilation.md, The Build Cache), its program
+ * answering answer, written to output. Returns whether the build worked.
+ */
+static bool build_cached(const std::string& output, const std::string& answer, const std::filesystem::path& cache) {
+	hemera::reset_reporting_storage();
+	hemera::reset_build_registry();
+	mlir::MLIRContext context;
+	context.loadDialect<mlir::BuiltinDialect>();
+	context.loadDialect<hmir::HemeraDialect>();
+	mlir::OpBuilder builder(&context);
+	mlir::ModuleOp module = mlir::ModuleOp::create(builder, builder.getUnknownLoc(), "build");
+	auto program_info = std::make_unique<hemera::ProgramInfo>(&context, &builder, &module);
+	hemera::Options options;
+	options.input = std::filesystem::canonical(scenario("build_package") / "build");
+	options.output_name = (std::filesystem::path(output).parent_path() / "build").string();
+	options.settings = { { "output", output }, { "answer", answer } };
+	options.use_cache = true;
+	options.cache_folder = cache;
+	hemera::kick_off_processing(program_info.get(), &options);
+	hemera::Allocator<> alloc;
+	const bool built = hemera::error_count() == 0 && hemera::build_targets(program_info.get(), options, alloc)
+		&& hemera::error_count() == 0;
+	hemera::reset_build_registry();
+	module.erase();
+	return built;
+}
+
+// The entries the build cache in cache holds: each a folder, under one named by its key's first two digits.
+static std::vector<std::filesystem::path> cache_entries(const std::filesystem::path& cache) {
+	std::vector<std::filesystem::path> entries;
+	std::error_code error;
+	for (const auto& group : std::filesystem::directory_iterator(cache, error)) {
+		for (const auto& entry : std::filesystem::directory_iterator(group.path(), error)) {
+			entries.push_back(entry.path());
+		}
+	}
+	return entries;
+}
+
+/*
+ * docs/compilation.md, The Build Cache: a program generated as one built before takes that one's outputs rather than
+ * being optimized and linked again, which a planted output shows, wherever it's written.
+ */
+TEST(Build, TakesUnchangedProgramsFromTheCache)
+{
+	StringCacheGuard string_cache;
+	const std::filesystem::path folder = std::filesystem::path(HEMERA_TEST_OUTPUT_DIR) / "build_cache";
+	const std::filesystem::path cache = folder / "cache";
+	std::filesystem::remove_all(folder);
+	std::filesystem::create_directories(folder / "first");
+	std::filesystem::create_directories(folder / "second");
+	const std::string first = (folder / "first" / "app").string();
+	ASSERT_TRUE(build_cached(first, "42", cache));
+	EXPECT_EQ(std::system(std::format("\"{}.exe\"", first).c_str()), 42);
+	const std::vector<std::filesystem::path> entries = cache_entries(cache);
+	ASSERT_EQ(entries.size(), 1u);
+
+	// What the entry holds is what a build of the same program writes, even into another folder
+	const std::filesystem::path kept = entries[0] / "0";
+	ASSERT_TRUE(std::filesystem::is_regular_file(kept));
+	{
+		std::ofstream planted(kept, std::ios::binary | std::ios::trunc);
+		planted << "planted";
+	}
+	const std::string second = (folder / "second" / "app").string();
+	ASSERT_TRUE(build_cached(second, "42", cache));
+	std::ifstream taken(second + ".exe", std::ios::binary);
+	const std::string bytes((std::istreambuf_iterator<char>(taken)), std::istreambuf_iterator<char>());
+	EXPECT_EQ(bytes, "planted");
+	EXPECT_EQ(cache_entries(cache).size(), 1u);
+}
+
+// A program generated differently, here by a setting its code reads, is built again, and kept beside the first.
+TEST(Build, BuildsChangedProgramsAgain)
+{
+	StringCacheGuard string_cache;
+	const std::filesystem::path folder = std::filesystem::path(HEMERA_TEST_OUTPUT_DIR) / "build_cache_changed";
+	const std::filesystem::path cache = folder / "cache";
+	std::filesystem::remove_all(folder);
+	std::filesystem::create_directories(folder);
+	const std::string output = (folder / "app").string();
+	ASSERT_TRUE(build_cached(output, "42", cache));
+	EXPECT_EQ(std::system(std::format("\"{}.exe\"", output).c_str()), 42);
+	// The app gives 42 only for the answer "42", and 1 for any other
+	ASSERT_TRUE(build_cached(output, "43", cache));
+	EXPECT_EQ(std::system(std::format("\"{}.exe\"", output).c_str()), 1);
+	EXPECT_EQ(cache_entries(cache).size(), 2u);
+	// And back: the first is taken again
+	ASSERT_TRUE(build_cached(output, "42", cache));
+	EXPECT_EQ(std::system(std::format("\"{}.exe\"", output).c_str()), 42);
+	EXPECT_EQ(cache_entries(cache).size(), 2u);
+}
+
 // hemera --check on a build package: its target checked and run through the build's check, then nothing built or run.
 TEST(Build, ChecksTargetsWithoutBuildingThem)
 {

@@ -1,5 +1,6 @@
 #include <algorithm>
 #include <chrono>
+#include <filesystem>
 #include <format>
 #include <map>
 #include <memory_resource>
@@ -248,6 +249,12 @@ namespace hemera {
 		}
 	}
 
+	// With --time-phases, adds the time since began to what the threads spent on work of kind (work_nanoseconds).
+	static void add_work_time(GlobalThreadData& global, WorkType kind, std::chrono::steady_clock::time_point began) {
+		const auto took = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now() - began);
+		global.work_nanoseconds[static_cast<size_t>(kind)] += static_cast<uint64_t>(took.count());
+	}
+
 	static void do_work(WorkThreadData& data) {
 		data.global_data->threads_running++;
 
@@ -275,6 +282,9 @@ namespace hemera {
 			}
 			else {
 				data.current_work = to_do;
+				const WorkType kind = to_do->type;
+				const bool timed = data.global_data->options != nullptr && data.global_data->options->time_phases;
+				const auto began = timed ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
 				switch (to_do->type) {
 					case WorkType::EXECUTION:
 						LOG_FATAL("Someone put LLVM work in the general queue");
@@ -291,6 +301,9 @@ namespace hemera {
 					case WorkType::TYPE_CHECK:
 						work_type_check(data, to_do->work_target);
 						break;
+				}
+				if (timed) {
+					add_work_time(*data.global_data, kind, began);
 				}
 				data.current_work = nullptr;
 				data.global_data->outstanding_work -= 1;
@@ -333,9 +346,14 @@ namespace hemera {
 			else {
 				data.doing_work = true;
 				data.current_work = to_do;
+				const bool timed = data.global_data->options != nullptr && data.global_data->options->time_phases;
+				const auto began = timed ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
 				switch (to_do->type) {
 				case WorkType::EXECUTION:
 					work_execution(data, to_do->work_target);
+					if (timed) {
+						add_work_time(*data.global_data, WorkType::EXECUTION, began);
+					}
 					break;
 				case WorkType::IF_ELSE:
 				case WorkType::IMPORT:
@@ -471,6 +489,20 @@ namespace hemera {
 			delete thread;
 		}
 		global_data.thread_data.clear();
+		/*
+		 * --time-phases: what checking spent its threads on, summed over them, like "phase   parse kernel.elf, summed
+		 * over threads: 410 ms"; work that waited on other work is counted for each time it ran
+		 */
+		if (options->time_phases) {
+			const std::string program = std::filesystem::path(options->output_name).filename().string();
+			constexpr std::pair<WorkType, std::string_view> KINDS[] = { { WorkType::IMPORT, "find packages" },
+				{ WorkType::PARSE, "parse" }, { WorkType::IF_ELSE, "decide #if" }, { WorkType::TYPE_CHECK, "resolve and check" },
+				{ WorkType::EXECUTION, "run compile-time code" } };
+			for (const auto& [kind, name] : KINDS) {
+				report_to_standard_error(std::format("phase   {} {}, summed over threads: {} ms", name, program,
+					global_data.work_nanoseconds[static_cast<size_t>(kind)].load() / 1000000));
+			}
+		}
 		check_import_names(*program_info);
 		check_name_security(*program_info);
 		release_warnings();

@@ -21,6 +21,7 @@
 #include "front_end/name_index.h"
 #include "hmir/hmir_dialect.h"
 #include "middle_end/build.h"
+#include "middle_end/build_cache.h"
 #include "middle_end/generate.h"
 #include "middle_end/serve.h"
 #include "memory/thread_safe_queue.h"
@@ -120,6 +121,8 @@ namespace hemera {
 		else if (!finish_program(options, program_info, mlir_module)) {
 			rc = -1;
 		}
+		// What the build cache holds past its limit, if this run kept something in it
+		trim_build_cache(*options);
 
 		// Written whether the run worked or not: an editor wants what's known
 		if (index != nullptr) {

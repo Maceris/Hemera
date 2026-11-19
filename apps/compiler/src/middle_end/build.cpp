@@ -17,6 +17,7 @@
 #include "front_end/info.h"
 #include "front_end/name_index.h"
 #include "hmir/hmir_dialect.h"
+#include "middle_end/build_cache.h"
 #include "middle_end/generate.h"
 #include "middle_end/reflection.h"
 #include "util/phase_timer.h"
@@ -60,6 +61,30 @@ namespace hemera {
 			}
 			return true;
 		}
+		/*
+		 * A program generated as one built before, with the same options and compiler, takes that one's outputs from
+		 * the build cache (docs/compilation.md, The Build Cache) rather than being lowered, optimized and linked again
+		 */
+		std::string cache_key;
+		std::vector<CacheOutput> cache_before;
+		if (caches(*options)) {
+			{
+				PhaseTimer looking(options->time_phases, std::format("find {} in the build cache", program));
+				cache_key = build_cache_key(*options, mlir_module);
+			}
+			// Timed only when it's taken, so --time-phases says which programs were
+			const auto taking = std::chrono::steady_clock::now();
+			if (!cache_key.empty() && reuse_from_cache(*options, cache_key)) {
+				if (options->time_phases) {
+					const auto took = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - taking);
+					report_to_standard_error(std::format("phase take {} from the build cache: {} ms", program, took.count()));
+				}
+				return true;
+			}
+			cache_before = cache_outputs(*options);
+		}
+		// What's reported from here on, which taking the outputs from the cache another time wouldn't report
+		const size_t reported_before = error_count() + warning_count();
 		llvm::LLVMContext context;
 		auto lowering = timer("lower");
 		std::unique_ptr<llvm::Module> lowered = lower_to_llvm(mlir_module, context, *options);
@@ -89,6 +114,10 @@ namespace hemera {
 			worked = error_count() == 0;
 		}
 		backend->destroy();
+		if (worked && !cache_key.empty() && error_count() + warning_count() == reported_before) {
+			PhaseTimer keeping(options->time_phases, std::format("keep {} in the build cache", program));
+			keep_in_cache(*options, cache_key, cache_before);
+		}
 		return worked;
 	}
 

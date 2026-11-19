@@ -103,6 +103,11 @@ namespace hemera {
 		/// </summary>
 		std::atomic_uint32_t outstanding_work;
 		/// <summary>
+		/// With --time-phases, how long the threads spent on each kind of work, by WorkType, in nanoseconds summed
+		/// over the threads; printed once the program's checked.
+		/// </summary>
+		std::atomic_uint64_t work_nanoseconds[5]{};
+		/// <summary>
 		/// Set once a thread has finished up, reporting a stall or checking provisional uses.
 		/// </summary>
 		std::atomic_bool stall_reported;
