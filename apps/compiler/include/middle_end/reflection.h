@@ -135,6 +135,13 @@ namespace hemera {
 		 */
 		std::atomic<uint64_t> age;
 		std::vector<std::unique_ptr<uint8_t[]>> blocks;
+		// Whether each of blocks is a thread's chunk, which release keeps in spare_chunks rather than freeing
+		std::vector<bool> chunked;
+		/*
+		 * Chunks release took back, given out again before new ones are made, the first released last in the list,
+		 * so a check after a release (hemera --serve) gets the same memory again rather than the heap's
+		 */
+		std::vector<std::unique_ptr<uint8_t[]>> spare_chunks;
 		uint8_t* free_start = nullptr;
 		size_t free_size = 0;
 		std::map<const TypeInfo*, uint8_t*> descriptors;

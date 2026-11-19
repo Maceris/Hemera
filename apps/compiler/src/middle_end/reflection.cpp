@@ -141,7 +141,13 @@ namespace hemera {
 		marked = false;
 		// No thread's chunk is in a block freed here
 		age = next_age.fetch_add(1);
+		for (size_t i = blocks.size(); i > at.blocks; --i) {
+			if (chunked[i - 1]) {
+				spare_chunks.push_back(std::move(blocks[i - 1]));
+			}
+		}
 		blocks.resize(at.blocks);
+		chunked.resize(at.blocks);
 		free_start = at.free_start;
 		free_size = at.free_size;
 	}
@@ -159,7 +165,14 @@ namespace hemera {
 			size_t padding = chunk.start != nullptr ? (alignment - reinterpret_cast<uintptr_t>(chunk.start) % alignment) % alignment : 0;
 			if (chunk.start == nullptr || padding + size > chunk.size) {
 				std::scoped_lock<std::recursive_mutex> lock(mutex);
-				blocks.push_back(std::make_unique<uint8_t[]>(CHUNK_SIZE));
+				if (spare_chunks.empty()) {
+					blocks.push_back(std::make_unique<uint8_t[]>(CHUNK_SIZE));
+				}
+				else {
+					blocks.push_back(std::move(spare_chunks.back()));
+					spare_chunks.pop_back();
+				}
+				chunked.push_back(true);
 				chunk = Chunk{ this, age.load(), blocks.back().get(), CHUNK_SIZE };
 				padding = (alignment - reinterpret_cast<uintptr_t>(chunk.start) % alignment) % alignment;
 			}
@@ -174,6 +187,7 @@ namespace hemera {
 		if (free_start == nullptr || padding + size > free_size) {
 			const size_t block = std::max<size_t>(size + alignment, 64 * 1024);
 			blocks.push_back(std::make_unique<uint8_t[]>(block));
+			chunked.push_back(false);
 			free_start = blocks.back().get();
 			free_size = block;
 			padding = (alignment - reinterpret_cast<uintptr_t>(free_start) % alignment) % alignment;

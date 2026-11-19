@@ -446,6 +446,30 @@ target_setting : fn(name : string, default := "") -> string : ---
  */
 build_permissions : fn() -> BuildPermissions : ---
 
+/** How compile-time code used a file, as it tells the compiler with note_file. */
+FileUse :: enum {
+    /** Its bytes were read, or it was found missing. */
+    Read,
+    /** It was written, made, deleted or renamed: what's there once the target is built is what it did. */
+    Written,
+    /** It's a folder, whose entries were listed. */
+    Listed,
+    /** Only whether it's there, and whether it's a file or a folder, was asked. */
+    Probed,
+    /** It was used some way the compiler can't follow, like through a directory opened before. */
+    Untracked,
+}
+
+/**
+ * Tell the compiler that compile-time code used a file, so the build cache knows what a target's build read and
+ * wrote (docs/compilation.md, The Build Cache); std's file functions call it as they run at compile time. Outside a
+ * target's build it does nothing.
+ *
+ * @param path The file's path, as the code gave it: relative to the compiler's current folder unless absolute.
+ * @param use How it was used.
+ */
+note_file : fn(path : string, use : FileUse) : ---
+
 /**
  * Report a compile error at location, without stopping compile-time execution, so every
  * problem can be reported. The build fails once the current target is done. Its code is hemera:E4029, which every

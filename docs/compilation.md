@@ -913,15 +913,16 @@ the build read. Each check also says what its threads spent their time on, summe
 kernel.elf, summed over threads: 410 ms`, for finding packages, parsing, deciding `#if`s, resolving and checking, and
 running compile-time code; work that waited for other work counts each time it ran. With the build cache (below), a program has `find program in the build cache` for working out its key,
 and `take program from the build cache` when it was taken from it, or `keep program in the build cache` when it was
-built and kept.
+built and kept; a target that wasn't checked at all has `take program's build from the build cache`.
 
 ## The Build Cache
 
 Most of building a program is optimizing and linking it, so once a program is generated, the compiler looks for it in
 the build cache: outputs kept from a build of the same program before. When it's there, its outputs are copied into
 place, and it isn't lowered, optimized or linked again. As the same inputs make the same bytes (see Deterministic
-Output), what's copied is what building it would write. A program is still checked, run through its build's checks
-and generated every time, so everything its compile-time code does happens as it would.
+Output), what's copied is what building it would write. The program is still checked, run through its build's checks
+and generated, so everything its compile-time code does happens as it would; only a build package's target whose
+files are all as they were skips those too (see Targets as They Were, below).
 
 A program's key is a hash of:
 
@@ -941,6 +942,32 @@ one that changes on its own without the program changing isn't seen. Neither is 
 which the PDB records, so a PE/COFF program with debug info is only taken for the same output path. A program whose
 lowering, optimizing or linking reported anything, a warning included, isn't kept, so building it again reports it
 again; nor is one fuzzed (`--fuzz`), nor one stopped short of linking.
+
+### Targets as They Were
+
+A build package's target goes further: once it's built, what its build used is kept too, and a later build of it
+whose every file is as it was doesn't check or build it at all. What it used is:
+
+* every file of its program's packages but `base`'s, and every `.hsc` file now in those packages' folders;
+* each file its compile-time code, its own and the build's checks run on it, read, listed or looked for through std's
+  file functions (`os.read_entire_file`, `os.open`, `os.list_directory`, `os.path_kind` and the like), which tell the
+  compiler as they run (`compiler.note_file`), and each `#file_data`'s file;
+* what it was built from besides: the build package's own files, each package `compiler.load_package` loaded and each
+  folder `compiler.subfolders` listed, the build's options and settings, the target as the build registered it, and
+  the compiler.
+
+Its key is made from the last of those, and kept with it are the others, each with its bytes' hash, and what its
+compile-time code wrote through std (`os.write_entire_file`, `os.delete_file`, `os.make_directory` and the like), as it
+was once the target was built. When every file is as it was, what was written is written again, the program's outputs
+are copied from the cache as above, and the target counts as built, for the steps after it. A file the target wrote
+before reading isn't one it read.
+
+A target's build isn't kept, so it's checked every time, when it reported anything, as a warning, so building it again
+reports it again; when its compile-time code used files some way the compiler can't follow, through a directory opened
+before (`os.open_directory`, `os.working_directory` and what's done in them) or by changing the current folder; and
+when its outputs weren't kept. Nothing is skipped when an index is asked for (`--index`), since checking the target is
+what makes it. Compile-time code that reads files without std, or reads the clock, isn't seen to change, as with
+`hemera --serve`. Each target keeps one entry, for the last way it was built.
 
 The cache is in the user's cache folder: `%LOCALAPPDATA%\Hemera\cache` on Windows, and `$XDG_CACHE_HOME/hemera`, or
 `~/.cache/hemera`, elsewhere. `--cache=folder` puts it elsewhere, and `--no-cache` builds every program afresh,

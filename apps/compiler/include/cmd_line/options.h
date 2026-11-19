@@ -654,6 +654,11 @@ namespace hemera {
         /// </summary>
         std::filesystem::path cache_folder;
         /// <summary>
+        /// Set as a program's built: the key its outputs are kept under in the build cache, whether it was built or
+        /// taken from it; empty when the cache wasn't used.
+        /// </summary>
+        std::string outputs_key;
+        /// <summary>
         /// --setting=name=value, which compile-time code reads with compiler.target_setting.
         /// </summary>
         std::vector<std::pair<std::string, std::string>> settings;

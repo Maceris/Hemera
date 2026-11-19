@@ -15,6 +15,7 @@
 #include "front_end/bounds.h"
 #include "front_end/ownership.h"
 #include "front_end/stack_pointers.h"
+#include "middle_end/build_cache.h"
 #include "middle_end/code_values.h"
 #include "util/logger.h"
 
@@ -5145,6 +5146,8 @@ namespace hemera {
 					result = error_at(checker, ErrorCode::E4014, node, "#file_data needs a string, the file's path");
 					return Progress::DONE;
 				}
+				// Read for the build cache, which keeps a target's build while its files are as they were
+				note_file_use(path.string(), FileUse::READ);
 				std::error_code error;
 				const uintmax_t size = std::filesystem::file_size(path, error);
 				if (error) {

@@ -1,7 +1,11 @@
 #pragma once
 
+#include <cstdint>
 #include <filesystem>
+#include <map>
+#include <mutex>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "mlir/IR/BuiltinOps.h"
@@ -9,6 +13,92 @@
 namespace hemera {
 
 	struct Options;
+	struct ProgramInfo;
+
+	/*
+	 * What a build package's target's build used of files, for the build cache to tell later whether it would build
+	 * the same (docs/compilation.md, The Build Cache): each file compile-time code read or wrote, as std's file
+	 * functions tell the compiler (compiler.note_file), and each #file_data's file, in the order they were used.
+	 */
+
+	/// <summary>
+	/// How a file was used, as base's compiler.FileUse numbers them.
+	/// </summary>
+	enum class FileUse : uint32_t {
+		READ = 0,
+		WRITTEN = 1,
+		LISTED = 2,
+		PROBED = 3,
+		UNTRACKED = 4,
+	};
+
+	/// <summary>
+	/// The files a target's build used. Its threads record into it at once, so it's locked.
+	/// </summary>
+	struct FileRecord {
+		std::mutex mutex;
+		// Each path, absolute, and how it was used, in order
+		std::vector<std::pair<std::string, FileUse>> uses;
+	};
+
+	/// <summary>
+	/// The record the calling thread notes files in, or null for none: set for a target's build (set_file_record),
+	/// and taken on by the threads its checking starts (front_end.cpp).
+	/// </summary>
+	FileRecord* file_record();
+	void set_file_record(FileRecord* record);
+
+	/// <summary>
+	/// Notes that path was used, in the calling thread's record, if it has one. A relative path is taken from the
+	/// compiler's current folder, as the code that used it took it.
+	/// </summary>
+	void note_file_use(const std::string& path, FileUse use);
+
+	/// <summary>
+	/// What a target is built from beyond its own files, worked out once for a build package's targets: the
+	/// compiler, the build's options, and every file the build package read, with each folder it listed.
+	/// </summary>
+	std::string build_identity(ProgramInfo* build, const Options& build_options);
+
+	/// <summary>
+	/// Each file's bytes' hash, worked out once in a build, as many targets read the same std files. Locked.
+	/// </summary>
+	struct FileHashes {
+		std::mutex mutex;
+		std::map<std::string, std::string> hashes;
+
+		// The hash of what's at path: "missing" if nothing, "folder" for a folder, or its bytes' hash
+		std::string of(const std::string& path, const Options& reading);
+	};
+
+	/// <summary>
+	/// What a target's build gives besides its files: whether it was built, the program's path, its outputs' key in
+	/// the cache (empty for a check, or a target that's Nothing).
+	/// </summary>
+	struct TargetResult {
+		std::string output;
+		std::string outputs_key;
+	};
+
+	/// <summary>
+	/// The key a target's build is kept under: what it's built from (identity), the target as the build registered
+	/// it, and its options. Empty when the compiler can't be read.
+	/// </summary>
+	std::string target_key(const std::string& identity, const std::string& registered, const Options& options);
+
+	/// <summary>
+	/// Whether the target kept under key would build the same now: every file it read as it was. If it would, what
+	/// it wrote is written again, its outputs copied into place, and result says what it gave. Returns false, having
+	/// written nothing, otherwise.
+	/// </summary>
+	bool replay_target(const Options& options, const std::string& key, FileHashes& hashes, TargetResult& result);
+
+	/// <summary>
+	/// Keeps what a target's build used and made under key: what it read, from its program's files (program) and its
+	/// record, what it wrote, as it is now, and result. Nothing is kept for a record with an untracked use.
+	/// </summary>
+	void keep_target(const Options& options, const std::string& key, ProgramInfo* program, FileRecord& record,
+		FileHashes& hashes, const TargetResult& result);
 
 	/*
 	 * The build cache (docs/compilation.md, The Build Cache): a program's outputs kept by a hash of everything they're

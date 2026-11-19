@@ -1,5 +1,6 @@
 package os
 
+import compiler from "base:compiler"
 import intrinsics from "base:intrinsics"
 import runtime from "base:runtime"
 
@@ -134,6 +135,7 @@ OpenMode :: enum {
  * @error Other Anything else the system reported.
  */
 open :: fn(path : string, mode : OpenMode) -> Result[File, OsError] {
+    noted(path, if mode == .READ { compiler.FileUse.Read } else { compiler.FileUse.Written })
     file, error :: system_open(path, mode)
     return as_result(file, error)
 }
@@ -229,6 +231,7 @@ file_size :: fn(file : File) -> Result[u64, OsError] {
  * @error Other Anything else the system reported.
  */
 read_entire_file :: fn(path : string, allocator := context.allocator) -> Result[string, OsError] #unrestricted {
+    noted(path, .Read)
     file, open_error :: system_open(path, .READ)
     match open_error {
         case Some(failure) => return .Error(failure)
@@ -321,6 +324,7 @@ read_all :: fn(file : File, allocator : runtime.Allocator) -> Result[string, OsE
  * @return Null if it worked; otherwise why not, as open or write gives it (NotFound when the folder is missing).
  */
 write_entire_file :: fn(path : string, contents : string) -> OsError? {
+    noted(path, .Written)
     file, open_error :: system_open(path, .WRITE)
     if open_error != null {
         return open_error
@@ -338,6 +342,7 @@ write_entire_file :: fn(path : string, contents : string) -> OsError? {
  *     allowed, and the system's error for a folder (IsADirectory, or AccessDenied on some systems).
  */
 delete_file :: fn(path : string) -> OsError? {
+    noted(path, .Written)
     return system_delete_file(path)
 }
 
@@ -352,7 +357,22 @@ delete_file :: fn(path : string) -> OsError? {
  *     allowed, and the system's other errors.
  */
 rename :: fn(from : string, to : string) -> OsError? {
+    noted(from, .Written)
+    noted(to, .Written)
     return system_rename(from, to)
+}
+
+/**
+ * Tell the compiler, when this runs at compile time, that a file was used, so the build cache knows what a target's
+ * build read and wrote (docs/compilation.md, The Build Cache); at run time it does nothing.
+ *
+ * @param path The file's path, as the caller was given it.
+ * @param use How it's used.
+ */
+noted :: fn(path : string, use : compiler.FileUse) {
+    if #is_compile_time {
+        compiler.note_file(path, use)
+    }
 }
 
 /** What's at a path, as path_kind tells it. */
@@ -373,6 +393,7 @@ PathKind :: enum {
  *     too-long path, one that isn't allowed, or a target without a file system), which aren't told apart.
  */
 path_kind :: fn(path : string) -> PathKind {
+    noted(path, .Probed)
     return system_path_kind(path)
 }
 
@@ -406,6 +427,7 @@ is_directory :: fn(path : string) -> bool {
  *     when its parent is missing, AccessDenied when it isn't allowed.
  */
 make_directory :: fn(path : string) -> OsError? {
+    noted(path, .Written)
     return system_make_directory(path)
 }
 
@@ -417,6 +439,7 @@ make_directory :: fn(path : string) -> OsError? {
  *     nothing is at path, NotADirectory when a file is.
  */
 remove_directory :: fn(path : string) -> OsError? {
+    noted(path, .Written)
     return system_remove_directory(path)
 }
 
@@ -458,6 +481,7 @@ list_directory :: fn(
     path : string,
     allocator := context.allocator
 ) -> Result[DirectoryEntry[..], OsError] #unrestricted {
+    noted(path, .Listed)
     listing : DirectoryEntry[..]
     push_context listing_context (allocator = allocator) {
         error :: system_list_directory(path, &listing, allocator)
@@ -526,6 +550,7 @@ current_directory :: fn(allocator := context.allocator) -> Result[string, OsErro
  * @return Null if it worked; otherwise why not: NotFound when nothing is at path, NotADirectory when a file is.
  */
 set_current_directory :: fn(path : string) -> OsError? {
+    noted(path, .Untracked)
     return system_set_current_directory(path)
 }
 
@@ -605,6 +630,8 @@ is_beneath :: fn(path : string) -> bool {
  * @error Other Anything else the system reported.
  */
 open_directory :: fn(path : string) -> Result[Directory, OsError] {
+    // What's done through it is by paths beneath it, which the compiler doesn't follow
+    noted(path, .Untracked)
     directory, error :: system_open_directory(path)
     return as_result(directory, error)
 }
@@ -623,6 +650,7 @@ open_directory :: fn(path : string) -> Result[Directory, OsError] {
  * @error Other Anything else the system reported, like a grant that isn't a directory.
  */
 working_directory :: fn() -> Result[Directory, OsError] {
+    noted(".", .Untracked)
     directory, error :: system_working_directory()
     return as_result(directory, error)
 }

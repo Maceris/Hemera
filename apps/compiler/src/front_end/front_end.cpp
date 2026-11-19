@@ -14,6 +14,7 @@
 #include "front_end/front_end.h"
 #include "front_end/names.h"
 #include "front_end/stack_pointers.h"
+#include "middle_end/build_cache.h"
 
 namespace hemera {
 	constexpr uint32_t MIN_THREAD_COUNT = 2;
@@ -469,17 +470,23 @@ namespace hemera {
 
 		{
 			std::vector<std::jthread> threads;
-			// The threads report in the scope of whoever started the program, like a build's target
+			/*
+			 * The threads report in the scope of whoever started the program, like a build's target, and note the
+			 * files they use in its record, for the build cache
+			 */
 			ReportScope* scope = report_scope();
+			FileRecord* record = file_record();
 
-			threads.emplace_back([scope, &data = *global_data.thread_data[0]] {
+			threads.emplace_back([scope, record, &data = *global_data.thread_data[0]] {
 				set_report_scope(scope);
+				set_file_record(record);
 				do_llvm_work(data);
 			});
 
 			for (size_t i = 1; i < static_cast<size_t>(THREAD_COUNT); ++i) {
-				threads.emplace_back([scope, &data = *global_data.thread_data[i]] {
+				threads.emplace_back([scope, record, &data = *global_data.thread_data[i]] {
 					set_report_scope(scope);
+					set_file_record(record);
 					do_work(data);
 				});
 			}

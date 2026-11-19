@@ -71,6 +71,7 @@ namespace hemera {
 			{
 				PhaseTimer looking(options->time_phases, std::format("find {} in the build cache", program));
 				cache_key = build_cache_key(*options, mlir_module);
+				options->outputs_key = cache_key;
 			}
 			// Timed only when it's taken, so --time-phases says which programs were
 			const auto taking = std::chrono::steady_clock::now();
@@ -215,6 +216,13 @@ namespace hemera {
 		}
 		size_t printed = 0;
 		const auto began = std::chrono::steady_clock::now();
+		// What every target is built from besides its own files, for the build cache; empty without it
+		std::string identity;
+		if (build_options.use_cache) {
+			PhaseTimer identifying(build_options.time_phases, "find what the build's targets are built from");
+			identity = build_identity(build, build_options);
+		}
+		FileHashes hashes;
 
 		auto build_one = [&](size_t i, BuildTarget& target) -> bool {
 			Options* options = nullptr;
@@ -227,6 +235,46 @@ namespace hemera {
 			if (!target_options(target, build_options, *options)) {
 				return false;
 			}
+			const std::string program_name = std::filesystem::path(options->output_name).filename().string();
+			/*
+			 * The build cache (docs/compilation.md, The Build Cache): a target whose every file is as it was when its
+			 * build was kept has what it wrote written again and its outputs copied, rather than being checked and
+			 * built. Not when an index is asked for, which its check makes
+			 */
+			std::string key;
+			if (!identity.empty() && index == nullptr) {
+				key = target_key(identity, std::format("{}\n{}", target.name, target.output_type), *options);
+				const auto looked = std::chrono::steady_clock::now();
+				TargetResult replayed;
+				if (!key.empty() && replay_target(*options, key, hashes, replayed)) {
+					if (options->time_phases) {
+						const auto took = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - looked);
+						report_to_standard_error(std::format("phase take {}'s build from the build cache: {} ms", program_name, took.count()));
+					}
+					target.built = true;
+					target.output = replayed.output;
+					return true;
+				}
+			}
+			// What its build reads and writes, for the cache to keep, noted by this thread and its check's
+			FileRecord record;
+			struct Recording {
+				explicit Recording(FileRecord* record) { set_file_record(record); }
+				~Recording() { set_file_record(nullptr); }
+				Recording(const Recording&) = delete;
+				Recording& operator=(const Recording&) = delete;
+			} recording(key.empty() ? nullptr : &record);
+			auto keep = [&]() {
+				// Kept only for a build that reported nothing, and whose outputs the cache has, as replaying it gives them
+				const bool outputs_kept = BuildExtent::CHECK == options->build_extent || target.output_type == "Nothing"
+					|| (options->build_extent >= BuildExtent::LINK && !options->outputs_key.empty());
+				if (key.empty() || !outputs_kept || !scopes[i]->diagnostics.empty() || scopes[i]->errors != 0) {
+					return;
+				}
+				PhaseTimer keeping(options->time_phases, std::format("keep {}'s build in the build cache", program_name));
+				const TargetResult result{ target.output, target.output_type == "Nothing" ? std::string() : options->outputs_key };
+				keep_target(*options, key, programs[i], record, hashes, result);
+			};
 			auto* mlir_context = new mlir::MLIRContext();
 			mlir_context->loadDialect<mlir::BuiltinDialect>();
 			mlir_context->loadDialect<mlir::func::FuncDialect>();
@@ -261,6 +309,7 @@ namespace hemera {
 			}
 			if (target.output_type == "Nothing") {
 				target.built = true;
+				keep();
 				return true;
 			}
 			if (!finish_program(options, program, *mlir_module) || error_count() != 0) {
@@ -268,6 +317,7 @@ namespace hemera {
 			}
 			target.built = true;
 			target.output = OSType::Win32 == options->os ? options->output_name + (options->typed_library ? ".dll" : ".exe") : options->output_name;
+			keep();
 			return true;
 		};
 

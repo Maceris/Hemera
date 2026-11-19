@@ -1282,6 +1282,91 @@ TEST(Build, BuildsChangedProgramsAgain)
 	EXPECT_EQ(cache_entries(cache).size(), 2u);
 }
 
+/*
+ * scenarios/build_cache, copied to work/src, built with the build cache in work/cache: its app written to
+ * work/out/app, and its check copying work/data.txt to work/out/copied.txt. Returns whether the build worked.
+ */
+static bool build_cache_scenario(const std::filesystem::path& work) {
+	hemera::reset_reporting_storage();
+	hemera::reset_build_registry();
+	mlir::MLIRContext context;
+	context.loadDialect<mlir::BuiltinDialect>();
+	context.loadDialect<hmir::HemeraDialect>();
+	mlir::OpBuilder builder(&context);
+	mlir::ModuleOp module = mlir::ModuleOp::create(builder, builder.getUnknownLoc(), "build");
+	auto program_info = std::make_unique<hemera::ProgramInfo>(&context, &builder, &module);
+	hemera::Options options;
+	options.input = std::filesystem::canonical(work / "src" / "build");
+	options.output_name = (work / "out" / "build").string();
+	options.builtin_paths[hemera::BuiltinPackage::STD] = std::filesystem::canonical(std_folder());
+	options.settings = { { "output", (work / "out" / "app").string() }, { "data", (work / "data.txt").string() },
+		{ "written", (work / "out" / "copied.txt").string() } };
+	options.use_cache = true;
+	options.cache_folder = work / "cache";
+	hemera::kick_off_processing(program_info.get(), &options);
+	hemera::Allocator<> alloc;
+	const bool built = hemera::error_count() == 0 && hemera::build_targets(program_info.get(), options, alloc)
+		&& hemera::error_count() == 0;
+	hemera::reset_build_registry();
+	module.erase();
+	return built;
+}
+
+static std::string read_whole(const std::filesystem::path& path) {
+	std::ifstream file(path, std::ios::binary);
+	return std::string((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+}
+
+static void write_whole(const std::filesystem::path& path, std::string_view bytes) {
+	std::ofstream file(path, std::ios::binary | std::ios::trunc);
+	file << bytes;
+}
+
+/*
+ * docs/compilation.md, The Build Cache: a target whose every file is as it was isn't checked or built again; what its
+ * build's check wrote is written again, and its outputs copied, as a planted copy shows. A file its check reads, or
+ * one its program takes in with #file_data, changed, and it's built again.
+ */
+TEST(Build, SkipsTargetsWhoseFilesAreAsTheyWere)
+{
+	StringCacheGuard string_cache;
+	const std::filesystem::path work = std::filesystem::path(HEMERA_TEST_OUTPUT_DIR) / "build_cache_targets";
+	std::filesystem::remove_all(work);
+	std::filesystem::create_directories(work / "out");
+	std::filesystem::copy(scenario("build_cache"), work / "src", std::filesystem::copy_options::recursive);
+	write_whole(work / "data.txt", "first");
+	const std::string app = (work / "out" / "app.exe").string();
+
+	ASSERT_TRUE(build_cache_scenario(work));
+	EXPECT_EQ(std::system(std::format("\"{}\"", app).c_str()), 42);
+	EXPECT_EQ(read_whole(work / "out" / "copied.txt"), "first");
+
+	// The target's entry is the one with a record; what its check wrote is kept beside it, as w0
+	std::filesystem::path kept;
+	for (const std::filesystem::path& entry : cache_entries(work / "cache")) {
+		if (std::filesystem::is_regular_file(entry / "record")) {
+			kept = entry / "w0";
+		}
+	}
+	ASSERT_TRUE(std::filesystem::is_regular_file(kept));
+	write_whole(kept, "planted");
+	std::filesystem::remove(app);
+	std::filesystem::remove(work / "out" / "copied.txt");
+	ASSERT_TRUE(build_cache_scenario(work));
+	EXPECT_EQ(read_whole(work / "out" / "copied.txt"), "planted") << "the check ran, though nothing changed";
+	EXPECT_EQ(std::system(std::format("\"{}\"", app).c_str()), 42);
+
+	// What the check reads changed: it runs again
+	write_whole(work / "data.txt", "second");
+	ASSERT_TRUE(build_cache_scenario(work));
+	EXPECT_EQ(read_whole(work / "out" / "copied.txt"), "second");
+
+	// What #file_data takes in changed: the app is built again, and exits with the new byte
+	write_whole(work / "src" / "app" / "answer.txt", "+");
+	ASSERT_TRUE(build_cache_scenario(work));
+	EXPECT_EQ(std::system(std::format("\"{}\"", app).c_str()), 43);
+}
+
 // hemera --check on a build package: its target checked and run through the build's check, then nothing built or run.
 TEST(Build, ChecksTargetsWithoutBuildingThem)
 {

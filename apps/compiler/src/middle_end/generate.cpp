@@ -50,6 +50,7 @@
 #include "middle_end/reflection.h"
 #include "middle_end/schema_writer.h"
 #include "middle_end/build.h"
+#include "middle_end/build_cache.h"
 
 namespace hemera {
 
@@ -9101,6 +9102,7 @@ namespace hemera {
 	 */
 	static mlir::Value emit_file_data(Generator& generator, ast::Node* node, TypeInfo* type) {
 		const std::filesystem::path path = file_data_path(current_file(generator), node);
+		note_file_use(path.string(), FileUse::READ);
 		std::ifstream file(path, std::ios::binary);
 		std::vector<char> bytes((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
 		auto array = static_cast<TypeInfoArray const*>(base(type));
@@ -13025,6 +13027,13 @@ namespace hemera {
 				else {
 					report_coded(error, prefix, code, file, line, column, message);
 				}
+				return;
+			}
+			if (name == "note_file") {
+				// compiler.note_file(path, use): a file compile-time code used, for the build cache (build_cache.h)
+				const std::string path(read_string(call.arguments[0]));
+				const uint64_t use = read_unsigned(call.arguments[1], call.type->input[1].type->size);
+				note_file_use(path, use <= static_cast<uint64_t>(FileUse::UNTRACKED) ? static_cast<FileUse>(use) : FileUse::UNTRACKED);
 				return;
 			}
 			if (name == "build_permissions") {
