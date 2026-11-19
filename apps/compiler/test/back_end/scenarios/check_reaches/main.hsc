@@ -51,6 +51,17 @@ unreached :: fn() -> int {
     return 1
 }
 
+// Named only in type_of, whose type is known without it, so it isn't reached
+typed_only :: fn(count : int) -> int {
+    #run compiler.report_warning(#source_location, "typed_only was reached")
+    return count
+}
+
+// Takes a type at compile time, as a launch takes a program's entry's
+takes_type :: fn[F](F : type) -> int {
+    return 0
+}
+
 main :: fn() -> int {
-    return helper() + HANDLER.handle() - 9
+    return helper() + HANDLER.handle() + takes_type(type_of(typed_only)) - 9
 }

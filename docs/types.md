@@ -119,6 +119,11 @@ A type can be used as a value of type `type`: `t : type = int`, `type_of(x)`, or
 Two type values are equal when they're the same type, so `value.type == int` checks what an `any` holds.
 A plain alias is the type it names; a distinct alias is a type of its own.
 
+`type_of(x)` is `x`'s type as the compiler knows it, without evaluating `x`: for an `any`, that's `any`, not what it
+holds. Since it's known at compile time, it's a type the way the type's name is, so it can be given to a compile-time
+parameter, as in `size_of(type_of(x))` or `launch(type_of(program.main), ...)`, and a function named in it isn't made
+part of the program for it.
+
 ```
 describe :: fn(value: any) -> string {
     if value.type == string {

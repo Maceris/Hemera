@@ -13730,8 +13730,13 @@ namespace hemera {
 					return;
 				}
 			}
+			// A type, like type_of(main), is known without evaluating anything in it, so nothing in it is reached
+			const CheckedNode* named = checked(generator, node);
+			if (named != nullptr && ValueKind::TYPE == named->kind) {
+				return;
+			}
 			// What it names, and the head of a name like HANDLER.handle, which checking keeps apart
-			for (const CheckedNode* found : { checked(generator, node), head_of(generator, node) }) {
+			for (const CheckedNode* found : { named, head_of(generator, node) }) {
 				if (found == nullptr) {
 					continue;
 				}

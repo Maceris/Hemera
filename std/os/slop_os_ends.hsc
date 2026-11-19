@@ -7,7 +7,7 @@ package os
  *
  *     main :: fn(log: slop_os.DebugLog?, manager: os.Channel[process_manager.ProcessManager]) -> int {
  *         ...
- *         launched :: os.launch(manager, port, "hello", module, 2 * MIB, hello.main, HelloGrants.{log = copy})?
+ *         launched :: os.launch(manager, port, "hello", module, 2 * MIB, type_of(hello.main), HelloGrants.{log = copy})?
  *     }
  *
  * A program's entry takes its grants as parameters, named after them (docs/compilation.md, Entry
@@ -686,7 +686,6 @@ LaunchEvents :: struct {
      * written. A launch that fails gives back what it made for the program (its budget, its process, the watch on its
      * end, and the handles it made for the manager), so none of it stays charged to the caller.
      *
-     * @tparam F The entry's function type.
      * @tparam G The grants' struct type, which EntryGrants requires to match F.
      * @param manager The process manager's channel, which stays the caller's.
      * @param port A port bound to manager's end (port_for), waited on for its answer.
@@ -694,7 +693,8 @@ LaunchEvents :: struct {
      * @param executable The program's file, which stays the caller's: it's duplicated for the manager, executable too
      *     where the caller's handle allows it.
      * @param budget How many bytes of memory the program's budget has, split off the caller's.
-     * @param entry The program's entry; only its type is used, to check grants.
+     * @param F The program's entry's type, type_of(its entry): its parameters are what grants is checked against.
+     *     A type rather than the function, so the caller's program doesn't take in the launched one's code.
      * @param grants The handles and values the program's entry takes. The handles are the program's once it's
      *     started; if the launch fails before the Load is sent, they're still the caller's.
      * @param options What the launch does beyond its grants (LaunchOptions).
@@ -710,7 +710,7 @@ LaunchEvents :: struct {
         name : string,
         executable : slop_os.Memory,
         budget : u64,
-        entry : F,
+        F : type,
         grants : G,
         options : LaunchOptions = LaunchOptions.{}
     ) -> Result[Launched, LaunchError] where EntryGrants(F, G) {

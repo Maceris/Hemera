@@ -2716,7 +2716,12 @@ namespace hemera {
 			callee = typed(BUILTIN_usize);
 		}
 		else if (name == "type_of") {
-			callee = typed(BUILTIN_type);
+			/*
+			 * A value's type is known without evaluating it, so it's that type, as its name would be: a type a
+			 * compile-time parameter binds (docs/types.md), and a function named in it isn't reached for it
+			 */
+			callee = ValueKind::VALUE == values[0].kind && values[0].type != nullptr ? type_value(values[0].type)
+				: typed(BUILTIN_type);
 		}
 		else if (name == "types_are_aliases" || name == "is_secret_type" || name == "has_defaults") {
 			callee = typed(BUILTIN_bool);
