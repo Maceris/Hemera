@@ -446,6 +446,14 @@ target_setting : fn(name : string, default := "") -> string : ---
  */
 build_permissions : fn() -> BuildPermissions : ---
 
+/**
+ * Tell whether the build only checks (hemera --check, or a target of a build package checked so): nothing's generated,
+ * and compile-time code that writes files, as a build package's steps or a target's manifest, should write none.
+ *
+ * @return True while checking; false while building, and in #run code of a build that generates.
+ */
+checking : fn() -> bool : ---
+
 /** How compile-time code used a file, as it tells the compiler with note_file. */
 FileUse :: enum {
     /** Its bytes were read, or it was found missing. */

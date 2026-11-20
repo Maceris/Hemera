@@ -9,6 +9,10 @@ import compiler from "base:compiler"
 import os from "std:os"
 
 copy_data :: fn(target : ptr[compiler.BuildOptions], program : ptr[compiler.ProgramInfo]) -> bool {
+    // A check writes nothing
+    if compiler.checking() {
+        return true
+    }
     read := ""
     match os.read_entire_file(compiler.target_setting("data")) {
         case Ok(bytes) => read = bytes

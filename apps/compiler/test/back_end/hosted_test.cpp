@@ -1284,9 +1284,11 @@ TEST(Build, BuildsChangedProgramsAgain)
 
 /*
  * scenarios/build_cache, copied to work/src, built with the build cache in work/cache: its app written to
- * work/out/app, and its check copying work/data.txt to work/out/copied.txt. Returns whether the build worked.
+ * work/out/app (or app, in work), and its check copying work/data.txt to work/out/copied.txt, but while checking
+ * (extent). Returns whether the build worked.
  */
-static bool build_cache_scenario(const std::filesystem::path& work) {
+static bool build_cache_scenario(const std::filesystem::path& work,
+	hemera::BuildExtent extent = hemera::BuildExtent::LINK, const std::filesystem::path& app = "out/app") {
 	hemera::reset_reporting_storage();
 	hemera::reset_build_registry();
 	mlir::MLIRContext context;
@@ -1299,10 +1301,11 @@ static bool build_cache_scenario(const std::filesystem::path& work) {
 	options.input = std::filesystem::canonical(work / "src" / "build");
 	options.output_name = (work / "out" / "build").string();
 	options.builtin_paths[hemera::BuiltinPackage::STD] = std::filesystem::canonical(std_folder());
-	options.settings = { { "output", (work / "out" / "app").string() }, { "data", (work / "data.txt").string() },
+	options.settings = { { "output", (work / app).string() }, { "data", (work / "data.txt").string() },
 		{ "written", (work / "out" / "copied.txt").string() } };
 	options.use_cache = true;
 	options.cache_folder = work / "cache";
+	options.build_extent = extent;
 	hemera::kick_off_processing(program_info.get(), &options);
 	hemera::Allocator<> alloc;
 	const bool built = hemera::error_count() == 0 && hemera::build_targets(program_info.get(), options, alloc)
@@ -1365,6 +1368,30 @@ TEST(Build, SkipsTargetsWhoseFilesAreAsTheyWere)
 	write_whole(work / "src" / "app" / "answer.txt", "+");
 	ASSERT_TRUE(build_cache_scenario(work));
 	EXPECT_EQ(std::system(std::format("\"{}\"", app).c_str()), 43);
+}
+
+/*
+ * docs/compilation.md, Build Packages: a target's output's folder is made as it's built, but not while checking, when
+ * compiler.checking() tells compile-time code to write nothing too.
+ */
+TEST(Build, MakesOutputFoldersButWritesNothingWhileChecking)
+{
+	StringCacheGuard string_cache;
+	const std::filesystem::path work = std::filesystem::path(HEMERA_TEST_OUTPUT_DIR) / "build_output_folders";
+	std::filesystem::remove_all(work);
+	std::filesystem::create_directories(work);
+	std::filesystem::copy(scenario("build_cache"), work / "src", std::filesystem::copy_options::recursive);
+	write_whole(work / "data.txt", "first");
+	const std::filesystem::path app = std::filesystem::path("made") / "inside" / "app";
+
+	ASSERT_TRUE(build_cache_scenario(work, hemera::BuildExtent::CHECK, app));
+	EXPECT_FALSE(std::filesystem::exists(work / "made")) << "a check made the output's folder";
+	EXPECT_FALSE(std::filesystem::exists(work / "out" / "copied.txt")) << "the check wrote while checking";
+
+	std::filesystem::create_directories(work / "out");
+	ASSERT_TRUE(build_cache_scenario(work, hemera::BuildExtent::LINK, app));
+	EXPECT_EQ(std::system(std::format("\"{}\"", (work / app).string() + ".exe").c_str()), 42);
+	EXPECT_EQ(read_whole(work / "out" / "copied.txt"), "first");
 }
 
 // hemera --check on a build package: its target checked and run through the build's check, then nothing built or run.

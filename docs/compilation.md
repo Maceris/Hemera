@@ -532,7 +532,10 @@ A program whose compile-time code registers targets with `compiler.add_target` i
 nothing itself, and once it's checked, the compiler builds each target it registered, in the same process, several
 at once (see below). A target is a root package and its `BuildOptions`, usually started from
 `compiler.command_line_options()` so settings and options given on the command line carry over. Its `root`,
-`output_path` and `linker_script` are relative to the build package's folder.
+`output_path` and `linker_script` are relative to the build package's folder. An output's folder is made if it isn't
+there, unless the build only checks, so a build package can send its outputs out of its sources, to a `build` folder
+of its own. Compile-time code that writes files, as a step or a target's own checks might, can ask
+`compiler.checking()`, true under `hemera --check`, and write nothing then, as the compiler doesn't.
 
 An output's name, `output_path` or `--output`, names every file made from it: `name.mlir`, `name.o`, and on Windows
 `name.exe` or `name.dll` once it's linked. A name that already ends with that extension keeps just the one, so

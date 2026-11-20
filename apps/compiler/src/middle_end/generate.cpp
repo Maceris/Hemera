@@ -13036,6 +13036,12 @@ namespace hemera {
 				note_file_use(path, use <= static_cast<uint64_t>(FileUse::UNTRACKED) ? static_cast<FileUse>(use) : FileUse::UNTRACKED);
 				return;
 			}
+			if (name == "checking") {
+				// compiler.checking(): whether the build only checks (--check), so compile-time code writes nothing
+				CompileTimeData::write_number_at(call.result, call.type->output[0].type->size,
+					BuildExtent::CHECK == call.options->build_extent ? 1 : 0);
+				return;
+			}
 			if (name == "build_permissions") {
 				const TypeInfoStruct* layout = struct_of(call.type->output[0].type);
 				const bool granted = call.options->allow_run && in_root_package(call);
@@ -13249,6 +13255,17 @@ namespace hemera {
 		}
 		result.input = root;
 		result.output_name = target_output_name(build, target, root);
+		// Its folder made, for a build that writes it, as a build package's outputs needn't go where something is
+		if (BuildExtent::CHECK != build.build_extent) {
+			const std::filesystem::path folder = std::filesystem::path(result.output_name).parent_path();
+			if (!folder.empty()) {
+				std::filesystem::create_directories(folder, error);
+				if (error) {
+					return refuse(std::format("its output's folder {} couldn't be made: {}", folder.string(),
+						error.message()));
+				}
+			}
+		}
 		result.entry = target.entry.empty() ? "main" : target.entry;
 		if (target.test) {
 			result.test = true;
