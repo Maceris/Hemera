@@ -233,7 +233,9 @@ mut_bytes_of :: fn[T](message : ptr[mut T]) -> mut u8[] {
  *
  * @param end The end it's sent through, which stays the caller's.
  * @param port A port bound to end (port_for), waited on while the ring is full if wait; nothing else should be bound
- *     to it, as the packets it gives while waiting are dropped.
+ *     to it, as the packets it gives while waiting are dropped. That's end's own Readable too: a message that came
+ *     meanwhile raised its packet once, and won't again, so a caller that reads end tries a read (try_receive) before
+ *     it waits on port again, which finds it, or finds end empty and arms it for the next.
  * @param bytes The message, at most channel_max_payload of the ring's size.
  * @param handles At most MAX_HANDLES_PER_BATCH handles that go with it, moved out of the caller's table once
  *     they're sent, so they're no longer the caller's; none for a message without handles.
