@@ -188,8 +188,27 @@ stroke :: fn(canvas : ptr[mut Canvas], path : ptr[Path], paint : Paint, stroke :
     fill_flat(canvas, paint, .NonZero)
 }
 
-/** Fill a rectangle, in the path's units. */
+/**
+ * Fill a rectangle, in the path's units.
+ *
+ * Under a transform that keeps its sides along the image's (no rotation or shear), each pixel's coverage is worked out
+ * from how much of it the rectangle covers, with no path rasterized, and a run of pixels an opaque solid paint covers
+ * whole is written as it is; otherwise it's filled as a path.
+ */
 fill_rect :: fn(canvas : ptr[mut Canvas], x : f32, y : f32, width : f32, height : f32, paint : Paint) {
+    if canvas.transform.b == 0 && canvas.transform.c == 0 {
+        a :: apply(canvas.transform, Point.{x = x, y = y})
+        b :: apply(canvas.transform, Point.{x = x + width, y = y + height})
+        fill_box(
+            canvas,
+            intrinsics.minimum(a.x, b.x),
+            intrinsics.minimum(a.y, b.y),
+            intrinsics.maximum(a.x, b.x),
+            intrinsics.maximum(a.y, b.y),
+            paint
+        )
+        return void
+    }
     reset(&canvas.outline)
     rect(&canvas.outline, x, y, width, height)
     // Through flat directly, so the outline path's free for the fill
@@ -207,16 +226,130 @@ clear :: fn(canvas : ptr[mut Canvas], color : Color) {
     p :: premultiply(color)
     bytes :: u8.[to_byte(p.b), to_byte(p.g), to_byte(p.r), to_byte(p.a)]
     for y in cast[usize](region.y0)..<cast[usize](region.y1) {
-        for x in cast[usize](region.x0)..<cast[usize](region.x1) {
-            at :: y * canvas.target.stride + 4 * x
-            for i in cast[usize](0)..<4 {
-                if at + i < canvas.target.pixels.count {
-                    canvas.target.pixels[at + i] = bytes[i]
-                }
-            }
-        }
+        fill_run(canvas, y, cast[usize](region.x0), cast[usize](region.x1), bytes)
     }
     canvas.damage = union_of(canvas.damage, region)
+}
+
+/**
+ * Write one pixel's bytes over a run of a row, replacing what's there: the first pixel's written, then copied in ever
+ * larger blocks.
+ *
+ * @param canvas The canvas, whose target's written; its clip isn't looked at.
+ * @param y The row.
+ * @param x0 The run's first column.
+ * @param x1 One past its last; nothing's written when it isn't past x0, or the run isn't all within the pixels.
+ * @param bytes The pixel: blue, green, red and alpha, premultiplied.
+ */
+fill_run :: fn(canvas : ptr[mut Canvas], y : usize, x0 : usize, x1 : usize, bytes : u8[4]) {
+    if x1 <= x0 {
+        return void
+    }
+    start :: y * canvas.target.stride + 4 * x0
+    count :: 4 * (x1 - x0)
+    pixels :: canvas.target.pixels
+    if start > pixels.count {
+        return void
+    }
+    rest :: pixels[start..<pixels.count]
+    if count > rest.count || count < 4 {
+        return void
+    }
+    run :: rest[0..<count]
+    run[0] = bytes[0]
+    run[1] = bytes[1]
+    run[2] = bytes[2]
+    run[3] = bytes[3]
+    // What's written so far, copied after itself: never more than's been written, so the two never overlap
+    done := cast[usize](4)
+    loop {
+        if done >= run.count {
+            break
+        }
+        after :: run[done..<run.count]
+        step :: if done < after.count { done } else { after.count }
+        intrinsics.mem_copy_non_overlapping(cast[mut rawptr](after.data), cast[rawptr](run.data), step)
+        done += step
+    }
+}
+
+/**
+ * Fill a rectangle in pixels whose sides are along the image's: each pixel by how much of it the rectangle covers,
+ * within the clip. Rows and columns it covers whole, with an opaque solid paint, are written as runs (fill_run).
+ *
+ * @param canvas The canvas; what's drawn is added to its damage.
+ * @param x0 The rectangle's left, in pixels, which may be a fraction or off the image.
+ * @param y0 Its top.
+ * @param x1 Its right, not left of x0.
+ * @param y1 Its bottom, not above y0.
+ * @param paint What it's filled with; a gradient's worked out at each pixel's centre, transformed back.
+ */
+fill_box :: fn(canvas : ptr[mut Canvas], x0 : f32, y0 : f32, x1 : f32, y1 : f32, paint : Paint) {
+    limit :: cast[f32](1 << 24)
+    bounds :: Rect.{
+        x0 = cast[i32](intrinsics.floor(intrinsics.maximum(x0, -limit))),
+        y0 = cast[i32](intrinsics.floor(intrinsics.maximum(y0, -limit))),
+        x1 = cast[i32](intrinsics.ceil(intrinsics.minimum(x1, limit))),
+        y1 = cast[i32](intrinsics.ceil(intrinsics.minimum(y1, limit))),
+    }
+    region :: intersect(intersect(bounds, canvas.clip), image_rect(canvas))
+    if is_empty(region) {
+        return void
+    }
+    solid :: is_solid(&paint)
+    colour := paint_at(&paint, Point.{})
+    opaque :: solid && colour.a >= 1
+    bytes :: u8.[to_byte(colour.b), to_byte(colour.g), to_byte(colour.r), to_byte(colour.a)]
+    back :: inverse(canvas.transform)
+    // The columns every pixel of which is inside, within the region: written as a run on a row covered whole
+    inside_x0 :: cast[i32](intrinsics.ceil(intrinsics.maximum(x0, -limit)))
+    inside_x1 :: cast[i32](intrinsics.floor(intrinsics.minimum(x1, limit)))
+    inner_x0 :: if inside_x0 > region.x0 { inside_x0 } else { region.x0 }
+    inner_x1 :: if inside_x1 < region.x1 { inside_x1 } else { region.x1 }
+    touched := Rect.{}
+    for row in region.y0..<region.y1 {
+        y :: cast[f32](row)
+        cover_y :: intrinsics.minimum(y + 1, y1) - intrinsics.maximum(y, y0)
+        if cover_y <= 0.0001 {
+            continue
+        }
+        whole_row :: opaque && cover_y >= 1
+        first := region.x1
+        last := region.x0
+        column := region.x0
+        loop {
+            if column >= region.x1 {
+                break
+            }
+            if whole_row && column == inner_x0 && inner_x0 < inner_x1 {
+                fill_run(canvas, cast[usize](row), cast[usize](inner_x0), cast[usize](inner_x1), bytes)
+                // Columns are gone through left to right, so the run's after any pixel already touched in the row
+                if first == region.x1 {
+                    first = inner_x0
+                }
+                last = inner_x1 - 1
+                column = inner_x1
+                continue
+            }
+            x :: cast[f32](column)
+            covered :: (intrinsics.minimum(x + 1, x1) - intrinsics.maximum(x, x0)) * cover_y
+            if covered > 0.0001 {
+                if !solid {
+                    colour = paint_at(&paint, apply(back, Point.{x = x + 0.5, y = y + 0.5}))
+                }
+                blend(canvas, cast[usize](column), cast[usize](row), colour, intrinsics.minimum(covered, 1))
+                if first == region.x1 {
+                    first = column
+                }
+                last = column
+            }
+            column += 1
+        }
+        if first < region.x1 {
+            touched = union_of(touched, Rect.{x0 = first, y0 = row, x1 = last + 1, y1 = row + 1})
+        }
+    }
+    canvas.damage = union_of(canvas.damage, touched)
 }
 
 /** The whole image, as a rectangle. */
@@ -246,6 +379,12 @@ fill_flat :: fn(canvas : ptr[mut Canvas], paint : Paint, rule : FillRule) {
     }
     solid :: is_solid(&paint)
     colour := paint_at(&paint, Point.{})
+    /*
+     * An opaque solid paint over a pixel covered whole, or as near as rounding to bytes can't tell, is the paint's own
+     * bytes, written without blending
+     */
+    opaque :: solid && colour.a >= 1
+    bytes :: u8.[to_byte(colour.b), to_byte(colour.g), to_byte(colour.r), to_byte(colour.a)]
     back :: inverse(canvas.transform)
     touched := Rect.{}
     for row in cast[usize](0)..<cast[usize](region.y1 - region.y0) {
@@ -261,10 +400,21 @@ fill_flat :: fn(canvas : ptr[mut Canvas], paint : Paint, rule : FillRule) {
                 continue
             }
             x :: cast[usize](region.x0) + column
-            if !solid {
-                colour = paint_at(&paint, apply(back, Point.{x = cast[f32](x) + 0.5, y = cast[f32](y) + 0.5}))
+            if opaque && covered >= 0.999 {
+                pixel :: four(canvas.target.pixels, y * canvas.target.stride + 4 * x)
+                if pixel.count == 4 {
+                    pixel[0] = bytes[0]
+                    pixel[1] = bytes[1]
+                    pixel[2] = bytes[2]
+                    pixel[3] = bytes[3]
+                }
             }
-            blend(canvas, x, y, colour, covered)
+            else {
+                if !solid {
+                    colour = paint_at(&paint, apply(back, Point.{x = cast[f32](x) + 0.5, y = cast[f32](y) + 0.5}))
+                }
+                blend(canvas, x, y, colour, covered)
+            }
             first = if column < first { column } else { first }
             last = column
         }

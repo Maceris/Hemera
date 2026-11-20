@@ -547,6 +547,13 @@ TEST(Hosted, AllocatesFromArenas)
 	run_hosted("arena", hemera::TargetStackCheck::Off, 0, "", false, false, false, {}, true);
 }
 
+// std/memory's copy between slices: the smaller count, elements whole, overlapping sources, and empty slices.
+TEST(Hosted, CopiesBetweenSlices)
+{
+	const HostedOutput checked = run_hosted("memory_copy", hemera::TargetStackCheck::Off, 0, "", false, false, false, {}, true);
+	EXPECT_NE(checked.output.find("3 tests: 3 passed, 0 failed"), std::string::npos) << checked.output;
+}
+
 // std/memory's SharedPtr, WeakPtr and LocalPtr (docs/memory.md, Shared Ownership).
 TEST(Hosted, SharesOwnership)
 {

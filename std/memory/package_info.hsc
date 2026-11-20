@@ -1,6 +1,6 @@
 /**
- * Memory related utilities: arenas, shared ownership, an allocator that fails on purpose for testing, and ByteCount,
- * a number of bytes.
+ * Memory related utilities: arenas, shared ownership, an allocator that fails on purpose for testing, copying between
+ * slices, and ByteCount, a number of bytes.
  */
 package memory
 
