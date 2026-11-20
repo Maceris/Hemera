@@ -20,6 +20,8 @@
 #include "front_end/front_end.h"
 #include "front_end/walk.h"
 #include "lexer/identifiers.h"
+#include "lexer/lexer.h"
+#include "parser/parser.h"
 #include "hmir/hmir_dialect.h"
 #include "hmir/hmir_ops.h"
 #include "hmir/hmir_passes.h"
@@ -12339,6 +12341,40 @@ namespace hemera {
 			return *kept;
 		}
 
+		// What compiler.declares was asked, and answered, in order, under listings_mutex
+		std::vector<DeclarationAsked>& declarations_asked() {
+			static auto* kept = new std::vector<DeclarationAsked>();
+			return *kept;
+		}
+
+		// Whether a file's top level, or an #if chain's branches in it, declares name
+		bool tree_declares(const ast::Node* node, std::string_view name) {
+			for (const ast::Node* child : node->children) {
+				if (ast::NodeType::DEFINITION == child->node_type && !child->children.empty()) {
+					const ast::Node* names = child->children[0];
+					if (ast::NodeType::IDENTIFIER == names->node_type) {
+						if (names->value.value != nullptr && *names->value.value == name) {
+							return true;
+						}
+					}
+					else if (ast::NodeType::LIST == names->node_type) {
+						for (const ast::Node* each : names->children) {
+							if (ast::NodeType::IDENTIFIER == each->node_type && each->value.value != nullptr
+								&& *each->value.value == name) {
+								return true;
+							}
+						}
+					}
+				}
+				else if (ast::NodeType::DIRECTIVE == child->node_type && child->value.value != nullptr
+					&& (*child->value.value == "#if" || *child->value.value == "#else_if" || *child->value.value == "#else")
+					&& tree_declares(child, name)) {
+					return true;
+				}
+			}
+			return false;
+		}
+
 		// A folder compile-time code gave: relative to the calling file's package, or absolute.
 		std::filesystem::path folder_from(Call& call, std::string_view folder) {
 			std::filesystem::path given(folder);
@@ -13097,6 +13133,18 @@ namespace hemera {
 					data.write_text_at(names + i * 16, found[i]);
 				}
 				CompileTimeData::write_view_at(call.result, found.empty() ? nullptr : names, found.size());
+				return;
+			}
+			if (name == "declares") {
+				std::error_code error;
+				const std::filesystem::path folder = std::filesystem::canonical(folder_from(call, read_string(call.arguments[0])), error);
+				const std::string wanted(read_string(call.arguments[1]));
+				const bool found = !error && package_declares(folder.string(), wanted, *call.options);
+				{
+					std::scoped_lock<std::mutex> lock(listings_mutex);
+					declarations_asked().push_back(DeclarationAsked{ error ? std::string() : folder.string(), wanted, found });
+				}
+				CompileTimeData::write_number_at(call.result, call.type->output[0].type->size, found ? 1 : 0);
 				return;
 			}
 			if (name == "load_package") {
@@ -14544,6 +14592,41 @@ namespace hemera {
 	std::vector<std::pair<std::string, std::vector<std::string>>> folder_listings() {
 		std::scoped_lock<std::mutex> lock(listings_mutex);
 		return listings();
+	}
+
+	std::vector<DeclarationAsked> declarations_answered() {
+		std::scoped_lock<std::mutex> lock(listings_mutex);
+		return declarations_asked();
+	}
+
+	bool package_declares(const std::string& folder, std::string_view name, const Options& reading) {
+		// What the files report is the target's own check's to say: kept apart here, and dropped
+		ReportScope quiet;
+		ReportScope* outer = report_scope();
+		set_report_scope(&quiet);
+		std::vector<std::string> paths;
+		std::error_code error;
+		for (const std::filesystem::directory_entry& entry : std::filesystem::directory_iterator(folder, error)) {
+			if (entry.is_regular_file(error) && entry.path().extension() == ".hsc") {
+				paths.push_back(entry.path().generic_string());
+			}
+		}
+		std::sort(paths.begin(), paths.end());
+		bool found = false;
+		for (const std::string& path : paths) {
+			const std::string* overlay = find_overlay(reading, path);
+			std::ifstream file(overlay != nullptr ? *overlay : path, std::ios::binary);
+			Allocator<> alloc;
+			MyVector<Token> tokens;
+			lexer::lex(file, tokens, alloc, path);
+			const ast::Node* tree = parser::file(path, tokens, alloc);
+			if (tree != nullptr && tree_declares(tree, name)) {
+				found = true;
+				break;
+			}
+		}
+		set_report_scope(outer);
+		return found;
 	}
 
 	std::vector<ProgramInfo*> loaded_program_list() {

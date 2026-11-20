@@ -116,6 +116,21 @@ subfolders : fn(folder : string) -> string[] : ---
 load_package : fn(folder : string) -> PackageInfo? : ---
 
 /**
+ * Whether the package in a folder declares a name, found by parsing its files without checking them: far cheaper
+ * than load_package, for a build package that only needs to know, as whether a test package has a main of its own.
+ *
+ * A declaration counts at the top level of any of the folder's .hsc files, or in a branch of an #if there, whichever
+ * branch a build would take; one an #insert would make doesn't. What the files report isn't reported here, but by the
+ * build of the package itself; a file that doesn't parse counts for what parsed of it. A build's cache, and an
+ * editor's checks, depend on the answer rather than the files' bytes.
+ *
+ * @param folder The package's folder, relative to the calling file's package, or absolute.
+ * @param name The declared name, compared exactly.
+ * @return True if a file declares it; false if none does, or there's no such folder.
+ */
+declares : fn(folder : string, name : string) -> bool : ---
+
+/**
  * Give info for a package imported by the calling file.
  *
  * @param import_name The import's alias, or the package's name if it was imported without one.

@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <mutex>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -159,6 +160,27 @@ namespace hemera {
 	 * (hemera --serve).
 	 */
 	std::vector<std::pair<std::string, std::vector<std::string>>> folder_listings();
+
+	// A question compile-time code asked with compiler.declares, and its answer
+	struct DeclarationAsked {
+		// The package's folder, by its canonical path; empty for one that couldn't be found
+		std::string folder;
+		std::string name;
+		bool declared = false;
+	};
+
+	/*
+	 * Each compiler.declares compile-time code asked, in the order it asked, so a build's identity holds what it was
+	 * told, not the files' bytes, and a long-lived compiler can ask again when they change (hemera --serve).
+	 */
+	std::vector<DeclarationAsked> declarations_answered();
+
+	/*
+	 * Whether a package's files, parsed but not checked, declare name at their top level or in an #if's branch there:
+	 * its folder's .hsc files, as reading's overlays have them. What they report isn't reported; a file that doesn't
+	 * parse declares what parsed of it.
+	 */
+	bool package_declares(const std::string& folder, std::string_view name, const Options& reading);
 
 	// The programs compiler.load_package loaded, which last as long as the compiler does.
 	std::vector<ProgramInfo*> loaded_program_list();

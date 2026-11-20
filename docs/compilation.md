@@ -575,6 +575,11 @@ for folder in compiler.subfolders("../programs") {
 }
 ```
 
+Checking a package is the costly part. When all a build needs is whether a package declares a name, like whether a
+test package has a `main` of its own, `compiler.declares(folder, name)` says, from its files parsed but not checked:
+a top-level declaration, or one in an `#if`'s branch there, counts. What the files report is left to the package's
+own build.
+
 Each target is checked on its own, with its own `#if` choices and settings, then every check registered with
 `compiler.add_check` runs on it, with its `BuildOptions` and its whole program as a `ProgramInfo`. A check that
 returns false, or reports an error, stops that target. The rest are generated and linked, then each step registered
@@ -617,7 +622,8 @@ changed:
 * the bytes of every file the build read, and the files in each of its packages' folders;
 * what each folder `compiler.subfolders` listed lists now;
 * each package `load_package` loaded, which is checked again if its files changed, and still counts as the same if
-  it reports nothing and its constants are what they were, which is what the build could have read of it.
+  it reports nothing and its constants are what they were, which is what the build could have read of it;
+* what each `compiler.declares` answered, asked again of the files as they are now.
 
 The build's own diagnostics are reported again with each check that reuses it. A loaded package whose files now have
 errors keeps the build too: a fresh `hemera`'s build would stop at those errors, so each check reports them, checks
@@ -956,8 +962,8 @@ whose every file is as it was doesn't check or build it at all. What it used is:
   file functions (`os.read_entire_file`, `os.open`, `os.list_directory`, `os.path_kind` and the like), which tell the
   compiler as they run (`compiler.note_file`), and each `#file_data`'s file;
 * what it was built from besides: the build package's own files, each package `compiler.load_package` loaded and each
-  folder `compiler.subfolders` listed, the build's options and settings, the target as the build registered it, and
-  the compiler.
+  folder `compiler.subfolders` listed, what each `compiler.declares` answered (not the files it parsed), the build's
+  options and settings, the target as the build registered it, and the compiler.
 
 Its key is made from the last of those, and kept with it are the others, each with its bytes' hash, and what its
 compile-time code wrote through std (`os.write_entire_file`, `os.delete_file`, `os.make_directory` and the like), as it

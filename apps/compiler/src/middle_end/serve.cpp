@@ -87,12 +87,14 @@ namespace hemera {
 			std::vector<Diagnostic> diagnostics;
 			/*
 			 * What it depends on: the arguments that decide it, the build's own files' bytes' hashes, each package
-			 * load_package loaded's, by its folder, and each folder's listing
+			 * load_package loaded's, by its folder, each folder's listing, and what compiler.declares answered
 			 */
 			std::vector<std::string> arguments;
 			std::map<std::string, uint64_t> files;
 			std::map<std::string, std::map<std::string, uint64_t>> loaded;
 			std::vector<std::pair<std::string, std::vector<std::string>>> listings;
+			// What compiler.declares answered, asked again when a check would reuse it
+			std::vector<DeclarationAsked> declared;
 			// Whether a check can reuse it: only a build package's, and only one checked without errors
 			bool reusable = false;
 			/*
@@ -151,6 +153,12 @@ namespace hemera {
 						return Freshness::CHANGED;
 					}
 				}
+				// What compiler.declares answered, asked again of the files as they are: parsing, not checking
+				for (const DeclarationAsked& asked : declared) {
+					if (!asked.folder.empty() && package_declares(asked.folder, asked.name, reading) != asked.declared) {
+						return Freshness::CHANGED;
+					}
+				}
 				for (const auto& [folder, program] : loaded_package_programs()) {
 					if (!broken.contains(folder) && read_files(program, reading) == loaded[folder]) {
 						continue;
@@ -201,6 +209,7 @@ namespace hemera {
 					loaded[folder] = read_files(program, reading);
 				}
 				listings = folder_listings();
+				declared = declarations_answered();
 			}
 		};
 

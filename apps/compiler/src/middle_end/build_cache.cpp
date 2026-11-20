@@ -524,6 +524,10 @@ namespace hemera {
 				text += std::format("  {}\n", subfolder);
 			}
 		}
+		// What compiler.declares answered, not the files' bytes: an edit that keeps the answers keeps the identity
+		for (const DeclarationAsked& asked : declarations_answered()) {
+			text += std::format("declares={} {} {}\n", asked.folder, asked.name, asked.declared ? 1 : 0);
+		}
 		return hash_text(text);
 	}
 
