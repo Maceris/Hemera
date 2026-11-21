@@ -538,15 +538,19 @@ LaunchEvents :: struct {
          * the watch couldn't be bound.
          */
         NoBudget,
-        /**
-         * More grants than a Load takes (MAX_GRANTS), a label too long, a handle that couldn't be duplicated, or a CPU
-         * budget the process couldn't be put on.
-         */
+        /** More grants than a Load takes (MAX_GRANTS), a label too long, or the process or its budget not duplicated. */
         BadGrants,
         /** The manager couldn't be sent the request, or didn't answer it. */
         ManagerGone,
         /** The manager couldn't load it: the executable isn't a program, or it ran out of memory. */
         NotLoaded,
+        /** The CPU budget given couldn't be put on the process: destroyed, or a handle without the right. */
+        NoCpuBudget,
+        /**
+         * The executable couldn't be duplicated for the manager: gone, as paged memory goes with its store
+         * (decisions/0094), or a handle without the right.
+         */
+        ProgramGone,
     }
 
     /** Where a launch says the program ended: a Once binding of its process's SIGNAL_TERMINATED to port, under key. */
@@ -703,6 +707,8 @@ LaunchEvents :: struct {
      * @return The started program's process, budget, first thread and image's address, and its faults' intercept.
      * @error NoBudget The caller's budget couldn't pay, or the arguments page couldn't be written.
      * @error BadGrants The grants don't fit a Load, or a handle couldn't be duplicated.
+     * @error NoCpuBudget The process couldn't be put on the CPU budget given.
+     * @error ProgramGone The executable couldn't be duplicated.
      * @error ManagerGone The manager couldn't be asked, or didn't answer.
      * @error NotLoaded The manager couldn't load the program.
      */
@@ -830,6 +836,8 @@ LaunchEvents :: struct {
      * @return The started program's process, budget, first thread and image's address, and its faults' intercept.
      * @error NoBudget The caller's budget couldn't pay, or the arguments page couldn't be written.
      * @error BadGrants The grants don't fit a Load, or a handle couldn't be duplicated.
+     * @error NoCpuBudget The process couldn't be put on the CPU budget given.
+     * @error ProgramGone The executable couldn't be duplicated.
      * @error ManagerGone The manager couldn't be asked, or didn't answer.
      * @error NotLoaded The manager couldn't load the program.
      */
@@ -865,10 +873,12 @@ LaunchEvents :: struct {
      * @return The started program's process, budget, first thread and image's address, and its faults' intercept.
      * @error NoBudget The caller's budget couldn't pay for the program's budget, process or address space, or the
      *     watch or the fault intercept couldn't be made.
-     * @error BadGrants The grants don't fit a Load, a label is too long, a handle couldn't be duplicated, or the
-     *     process couldn't be put on the CPU budget.
+     * @error BadGrants The grants don't fit a Load, a label is too long, or the process or its budget couldn't be
+     *     duplicated.
      * @error ManagerGone The manager couldn't be sent the Load, or didn't answer it.
      * @error NotLoaded The manager answered with anything but Loaded.
+     * @error NoCpuBudget The process couldn't be put on the CPU budget given.
+     * @error ProgramGone The executable couldn't be duplicated, as when the store whose paged memory it was has gone.
      */
     launch_given :: fn(
         manager : Channel[process_manager.ProcessManager],
@@ -942,7 +952,7 @@ LaunchEvents :: struct {
             case Some(cpu) => {
                 put :: slop_os.process_set_cpu_budget(process, cpu)
                 _ = slop_os.handle_close(cast[slop_os.Handle](cpu))
-                put or_return .Error(.BadGrants)
+                put or_return .Error(.NoCpuBudget)
             }
             case None => {}
         }
@@ -985,7 +995,7 @@ LaunchEvents :: struct {
         executing :: cast[slop_os.Rights](cast[u32](executable_rights) | cast[u32](slop_os.RIGHT_MEMORY_EXECUTE))
         load.executable = cast[slop_os.Memory](slop_os.handle_duplicate(cast[slop_os.Handle](executable), executing)
             or_else (slop_os.handle_duplicate(cast[slop_os.Handle](executable), executable_rights)
-                or_return .Error(.BadGrants)))
+                or_return .Error(.ProgramGone)))
         for grant in grants {
             if !add_grant(&load, grant.label, grant.handle) {
                 return .Error(.BadGrants)
