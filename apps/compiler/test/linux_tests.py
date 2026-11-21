@@ -114,6 +114,12 @@ TESTS = [
     ("canvas", ["--test"], 0),
     ("unicode_names", ["--test"], 0),
     ("ui", ["--test"], 0),
+    # Float-to-int casts saturating, NaN to 0, and the unchecked conversion; built unoptimized too
+    ("float_casts", [], 42),
+    ("float_casts_unoptimized", ["-O0"], 42),
+    # A struct literal past a selection DAG node's operands, stored a part at a time; built unoptimized too
+    ("large_literals", [], 42),
+    ("large_literals_unoptimized", ["-O0"], 42),
     # Instances of a generic whose parameter is an optional of a generic alias, each with its own
     ("generic_alias_arguments", ["--test"], 0),
     # #test(CASES), each case a test of its own
@@ -145,6 +151,8 @@ VALGRIND = "valgrind -q --error-exitcode=99 --track-origins=yes"
 SCENARIO_OF = {
     "assertion_debug": "assertion",
     "fuzz_magic": "fuzz_targets",
+    "float_casts_unoptimized": "float_casts",
+    "large_literals_unoptimized": "large_literals",
 }
 
 # What hemera --symbolize says about assertion_debug's first frame: assert inlined into check, into main
