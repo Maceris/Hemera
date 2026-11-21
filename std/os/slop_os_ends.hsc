@@ -623,6 +623,14 @@ LaunchEvents :: struct {
          * launcher was given itself is given too, but those named here (0121). Empty for none.
          */
         libraries : LaunchLibrary[],
+        /**
+         * Handles given beside the entry's parameters, each under its label, for the program's libraries or its
+         * runtime to find by it (slop_os.find_grant) rather than its entry; the program's once it's started, as the
+         * entry's are, and still the caller's if the launch fails before the Load is sent. A label past
+         * GRANT_LABEL_SIZE bytes is cut off, and one that's an entry parameter's name is given twice, the parameter
+         * taking the first. Empty for none.
+         */
+        extra : NamedGrant[],
     }
 
     /**
@@ -1063,6 +1071,11 @@ LaunchEvents :: struct {
                 }
             }
             if !add_grant(&load, string_of(&label[0], count), cast[slop_os.Handle](library.memory)) {
+                return .Error(.BadGrants)
+            }
+        }
+        for grant in options.extra {
+            if !add_grant(&load, grant.label, grant.handle) {
                 return .Error(.BadGrants)
             }
         }
