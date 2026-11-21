@@ -644,12 +644,13 @@ TEST(Hosted, LargeLiterals)
 
 /*
  * std/canvas's coverage summed to shapes' areas; the fill rules, strokes with each cap and dashed, transforms, clips,
- * damage, gradients, images and text from the glyph cache; and any path drawn without harm.
+ * damage, gradients, images and text from the glyph cache; any path drawn without harm, and anything drawn under any
+ * transform and clip.
  */
 TEST(Hosted, Canvas)
 {
 	const HostedOutput checked = run_hosted("canvas", hemera::TargetStackCheck::Off, 0, "", false, false, false, {}, true);
-	EXPECT_NE(checked.output.find("8 tests: 8 passed, 0 failed"), std::string::npos) << checked.output;
+	EXPECT_NE(checked.output.find("9 tests: 9 passed, 0 failed"), std::string::npos) << checked.output;
 }
 
 /*

@@ -299,6 +299,151 @@ draws_any_path #test :: fn(t: ptr[mut testing.T], source: ptr[mut testing.Source
     return .Ok
 }
 
+/*
+ * Anything drawn, under any transform and clip (decisions in the SlopOS repository's M16, its 16g): rotations and raw
+ * matrices of any entries, NaN and infinities among them; clips, saved and restored; the fast paths (clear, fill_rect,
+ * fill_box), images, gradients, shapes and strokes of any join, cap and dashes. Nothing's written outside the board,
+ * which the bounds checks would catch, and what's damaged is on it.
+ */
+draws_anything #test :: fn(t: ptr[mut testing.T], source: ptr[mut testing.Source]) -> testing.Outcome {
+    board :: runtime.new(Board)
+    defer runtime.free(board)
+    c := canvas_of(board)
+    defer canvas.free_canvas(&c)
+    path := canvas.Path.{}
+    defer canvas.free_path(&path)
+    // An image to draw, of any size up to 8 by 8, its pixels whatever the source says
+    texture : u8[8 * 8 * 4]
+    for &byte in texture {
+        byte^ = cast[u8](testing.draw_between(source, 0, 255))
+    }
+    side :: cast[usize](testing.draw_between(source, 1, 8))
+    bytes :: side * side * 4
+    if bytes > texture.count {
+        return .Ok
+    }
+    image :: canvas.Image.{pixels = texture[0..<bytes], width = side, height = side, stride = side * 4}
+    steps :: testing.draw_between(source, 1, 24)
+    for step in 0..<steps {
+        kind :: testing.draw_between(source, 0, 13)
+        if kind == 0 {
+            canvas.rotate(&c, coordinate(source))
+        }
+        else if kind == 1 {
+            canvas.set_transform(
+                &c,
+                canvas.Affine.{
+                    a = coordinate(source),
+                    b = coordinate(source),
+                    c = coordinate(source),
+                    d = coordinate(source),
+                    e = coordinate(source),
+                    f = coordinate(source),
+                }
+            )
+        }
+        else if kind == 2 {
+            canvas.translate(&c, coordinate(source), coordinate(source))
+            canvas.scale(&c, coordinate(source), coordinate(source))
+        }
+        else if kind == 3 {
+            canvas.clip_rect(&c, coordinate(source), coordinate(source), coordinate(source), coordinate(source))
+        }
+        else if kind == 4 {
+            canvas.save(&c)
+        }
+        else if kind == 5 {
+            canvas.restore(&c)
+        }
+        else if kind == 6 {
+            canvas.clear(&c, canvas.Color.{r = coordinate(source), g = 0.5, b = 0.25, a = coordinate(source)})
+        }
+        else if kind == 7 {
+            canvas.fill_rect(&c, coordinate(source), coordinate(source), coordinate(source), coordinate(source), paint(source))
+        }
+        else if kind == 8 {
+            canvas.fill_box(&c, coordinate(source), coordinate(source), coordinate(source), coordinate(source), paint(source))
+        }
+        else if kind == 9 {
+            canvas.draw_image(
+                &c,
+                image,
+                coordinate(source),
+                coordinate(source),
+                coordinate(source),
+                coordinate(source),
+                if testing.draw_between(source, 0, 1) == 0 { canvas.Filter.Nearest } else { canvas.Filter.Bilinear }
+            )
+        }
+        else if kind == 10 {
+            canvas.reset(&path)
+            shape :: testing.draw_between(source, 0, 3)
+            if shape == 0 {
+                canvas.rect(&path, coordinate(source), coordinate(source), coordinate(source), coordinate(source))
+            }
+            else if shape == 1 {
+                canvas.ellipse(&path, coordinate(source), coordinate(source), coordinate(source), coordinate(source))
+            }
+            else if shape == 2 {
+                canvas.circle(&path, coordinate(source), coordinate(source), coordinate(source))
+            }
+            else {
+                canvas.rounded_rect(
+                    &path,
+                    coordinate(source),
+                    coordinate(source),
+                    coordinate(source),
+                    coordinate(source),
+                    coordinate(source)
+                )
+            }
+            canvas.fill(&c, &path, paint(source), if testing.draw_between(source, 0, 1) == 0 { canvas.FillRule.NonZero } else { canvas.FillRule.EvenOdd })
+        }
+        else {
+            canvas.reset(&path)
+            canvas.move_to(&path, coordinate(source), coordinate(source))
+            for i in 0..<testing.draw_between(source, 1, 6) {
+                canvas.line_to(&path, coordinate(source), coordinate(source))
+            }
+            stroke := canvas.Stroke.{
+                width = coordinate(source),
+                miter_limit = coordinate(source),
+                dash_count = cast[usize](testing.draw_between(source, 0, 4)),
+            }
+            join :: testing.draw_between(source, 0, 2)
+            stroke.join = if join == 0 { canvas.Join.Miter } else if join == 1 { canvas.Join.Round } else { canvas.Join.Bevel }
+            cap :: testing.draw_between(source, 0, 2)
+            stroke.cap = if cap == 0 { canvas.Cap.Butt } else if cap == 1 { canvas.Cap.Round } else { canvas.Cap.Square }
+            for &dash in stroke.dashes {
+                dash^ = coordinate(source)
+            }
+            canvas.stroke(&c, &path, paint(source), stroke)
+        }
+    }
+    damage :: canvas.take_damage(&c)
+    if !canvas.is_empty(damage) && (damage.x0 < 0 || damage.y0 < 0 || damage.x1 > SIZE || damage.y1 > SIZE) {
+        testing.fail(t, "damage reaches off the board")
+    }
+    return .Ok
+}
+
+/** A paint: a colour of any components, or a gradient of any points, radius and stops. */
+paint :: fn(source: ptr[mut testing.Source]) -> canvas.Paint {
+    kind :: testing.draw_between(source, 0, 2)
+    if kind == 0 {
+        return .Solid(canvas.Color.{r = coordinate(source), g = coordinate(source), b = 0.5, a = coordinate(source)})
+    }
+    gradient := canvas.Gradient.{
+        start = canvas.Point.{x = coordinate(source), y = coordinate(source)},
+        end = canvas.Point.{x = coordinate(source), y = coordinate(source)},
+        radius = coordinate(source),
+    }
+    for i in 0..<testing.draw_between(source, 0, 5) {
+        canvas.add_stop(&gradient, coordinate(source), canvas.Color.{r = 1, g = coordinate(source), b = 0, a = 1})
+    }
+    return if kind == 1 { canvas.Paint.Linear(gradient) } else { canvas.Paint.Radial(gradient) }
+}
+
 /** A coordinate: usually on or near the board, sometimes far off, huge, or not a number. */
 coordinate :: fn(source: ptr[mut testing.Source]) -> f32 {
     kind :: testing.draw_between(source, 0, 12)
