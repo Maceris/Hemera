@@ -456,9 +456,9 @@ blend :: fn(canvas : ptr[mut Canvas], x : usize, y : usize, colour : Premultipli
     pixels[at + 3] = channel(rounded[3])
 }
 
-/** A channel's value, from 0 to 255 after rounding, as a byte. */
+/** A channel's value, rounded, as a byte: a cast saturates, so past 255 it's 255, and below 0 or NaN it's 0. */
 channel :: fn(value : f32) -> u8 {
-    return if value >= 255 { cast[u8](255) } else if value > 0 { cast[u8](value) } else { cast[u8](0) }
+    return cast[u8](value)
 }
 
 /**

@@ -22,6 +22,16 @@ foo :: fn() {
 }
 ```
 
+An `if` with an `else` is an expression too, each branch's block ending with its value. Its type is what it's
+assigned to, if that says; otherwise the branches find it together: an untyped constant takes the type another branch
+gives, whichever comes first, and when every branch is an untyped constant they're the widest's type, as one alone
+would be. A `match`'s arms do the same.
+
+```
+small :: if b { 0 } else { count() }     // count's type, say u64: 0 is a u64
+either :: if b { 0 } else { 1.5 }         // both untyped: f64
+```
+
 ## Defer
 
 The `defer` keyword is used to defer a statement until the end of a block. It will be executed before leaving the block,

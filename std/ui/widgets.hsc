@@ -227,7 +227,7 @@ list_item :: fn(ui : ptr[mut Ui], item : usize, row_height : f32, box : Box = Bo
     made.width = grow()
     made.role = .ListItem
     index :: open_node(ui, key("item"), made)
-    return if index == NO_NODE { cast[u64](0) } else { node(ui, index).id }
+    return if index == NO_NODE { 0 } else { node(ui, index).id }
 }
 
 /** End a list: the space for the items after those made, and the list closed. */

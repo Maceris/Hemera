@@ -61,7 +61,7 @@ struct HostedOutput {
 static HostedOutput run_hosted(std::string_view name, hemera::TargetStackCheck stack_check, int expected_exit_code = 42,
 	std::string_view arguments = "", bool debug_info = false, bool generate_all = false, bool valgrind_secrets = false,
 	const std::vector<std::filesystem::path>& library_paths = {}, bool test = false, std::string_view test_filter = "",
-	std::string_view fuzz = "", bool model_checked = false, std::string_view cpu = "")
+	std::string_view fuzz = "", bool model_checked = false, std::string_view cpu = "", bool unoptimized = false)
 {
 	HostedOutput result;
 	hemera::reset_reporting_storage();
@@ -86,6 +86,9 @@ static HostedOutput run_hosted(std::string_view name, hemera::TargetStackCheck s
 	options.model_checked = model_checked;
 	options.cpu = cpu;
 	options.debug_info = debug_info;
+	if (unoptimized) {
+		options.optimization_level = hemera::OptimizationLevel::O0;
+	}
 	options.generate_all = generate_all;
 	options.valgrind_secrets = valgrind_secrets;
 	options.library_paths = library_paths;
@@ -617,6 +620,26 @@ TEST(Hosted, Fonts)
 {
 	const HostedOutput checked = run_hosted("fonts", hemera::TargetStackCheck::Off, 0, "", false, false, false, {}, true);
 	EXPECT_NE(checked.output.find("7 tests: 7 passed, 0 failed"), std::string::npos) << checked.output;
+}
+
+/*
+ * Float-to-integer casts saturate, NaN to 0, scalars and vectors, at compile time and run time, optimized or not; and
+ * intrinsics.to_integer_unchecked converts within range as a cast does.
+ */
+TEST(Hosted, FloatCasts)
+{
+	run_hosted("float_casts", hemera::TargetStackCheck::Off, 42);
+	run_hosted("float_casts", hemera::TargetStackCheck::Off, 42, "", false, false, false, {}, false, "", "", false, "", true);
+}
+
+/*
+ * A struct literal larger than a selection DAG node's operands, assigned into an element: stored a part at a time, and
+ * built at -O0 too, where the unused whole value it was made from crashed instruction selection.
+ */
+TEST(Hosted, LargeLiterals)
+{
+	run_hosted("large_literals", hemera::TargetStackCheck::Off, 42);
+	run_hosted("large_literals", hemera::TargetStackCheck::Off, 42, "", false, false, false, {}, false, "", "", false, "", true);
 }
 
 /*

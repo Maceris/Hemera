@@ -46,7 +46,7 @@ Accessible :: struct {
 accessible :: fn(ui : ptr[mut Ui], into : ptr[mut Accessible[..]]) {
     runtime.array_reset(into)
     for each in ui.nodes {
-        parent :: if each.parent == NO_NODE { cast[u64](0) } else { node(ui, each.parent).id }
+        parent :: if each.parent == NO_NODE { 0 } else { node(ui, each.parent).id }
         runtime.array_add(
             into,
             Accessible.{

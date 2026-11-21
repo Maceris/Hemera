@@ -872,6 +872,19 @@ namespace hemera {
 			for (const auto& [offset, part] : parts) {
 				store(generator, part, offset_address(generator, address, offset));
 			}
+			/*
+			 * The inserts, now unused, taken away, outermost first, and what they were inserted into: left, an
+			 * unoptimized build's instruction selection still visits them, and a large one's operands, one for each
+			 * of its scalars, can pass the 65535 a node holds (an -O0 build crashed on a struct holding 64 KiB)
+			 */
+			for (LLVM::InsertValueOp each : inserts) {
+				if (each->use_empty()) {
+					each->erase();
+				}
+			}
+			if (mlir::Operation* base = whole.getDefiningOp(); base != nullptr && base->use_empty()) {
+				base->erase();
+			}
 			return;
 		}
 		// A large constant, like a table or #file_data's bytes: kept in a read-only global and copied, since
@@ -2728,6 +2741,17 @@ namespace hemera {
 		return load(generator, union_type->tag_type, address);
 	}
 
+	/*
+	 * A float, or a vector of them, cast to an integer type (docs/operators.md, Casting operators): saturating, as
+	 * LLVM's fptosi.sat and fptoui.sat, so past the type's range it's the type's least or most, and a NaN is 0, never
+	 * LLVM's poison. intrinsics.to_integer_unchecked is the plain conversion, for code that's proved its range.
+	 */
+	static mlir::Value saturated_to_integer(Generator& generator, mlir::Type target, mlir::Value v, bool is_signed) {
+		auto call = LLVM::CallIntrinsicOp::create(generator.builder, generator.loc, target,
+			generator.builder.getStringAttr(is_signed ? "llvm.fptosi.sat" : "llvm.fptoui.sat"), mlir::ValueRange{ v });
+		return call.getResult(0);
+	}
+
 	// A value converted to a type it implicitly converts to (docs/types.md, Implicit Casting), or cast to.
 	static mlir::Value convert(Generator& generator, mlir::Value v, TypeInfo const* from, TypeInfo const* to) {
 		if (from == nullptr || to == nullptr || !v) {
@@ -2859,8 +2883,7 @@ namespace hemera {
 				return is_signed(from_lane) ? static_cast<mlir::Value>(LLVM::SIToFPOp::create(b, l, target, v))
 					: static_cast<mlir::Value>(LLVM::UIToFPOp::create(b, l, target, v));
 			}
-			return is_signed(to_lane) ? static_cast<mlir::Value>(LLVM::FPToSIOp::create(b, l, target, v))
-				: static_cast<mlir::Value>(LLVM::FPToUIOp::create(b, l, target, v));
+			return saturated_to_integer(generator, target, v, is_signed(to_lane));
 		}
 		if (llvm::isa<mlir::IntegerType>(from_type) && llvm::isa<mlir::IntegerType>(target)) {
 			const unsigned from_width = from_type.getIntOrFloatBitWidth();
@@ -2887,8 +2910,7 @@ namespace hemera {
 				: static_cast<mlir::Value>(LLVM::UIToFPOp::create(b, l, target, v));
 		}
 		if (llvm::isa<mlir::FloatType>(from_type) && llvm::isa<mlir::IntegerType>(target)) {
-			return is_signed(to) ? static_cast<mlir::Value>(LLVM::FPToSIOp::create(b, l, target, v))
-				: static_cast<mlir::Value>(LLVM::FPToUIOp::create(b, l, target, v));
+			return saturated_to_integer(generator, target, v, is_signed(to));
 		}
 		if (llvm::isa<LLVM::LLVMPointerType>(from_type) && llvm::isa<mlir::IntegerType>(target)) {
 			return LLVM::PtrToIntOp::create(b, l, target, v);
@@ -6672,6 +6694,15 @@ namespace hemera {
 		}
 		else if (name == "copy_sign" && arguments.size() == 2) {
 			made = LLVM::CopySignOp::create(b, l, arguments[0], arguments[1]);
+		}
+		else if (name == "to_integer_unchecked" && arguments.size() == 1 && result_type != nullptr) {
+			// The plain conversion, for a number the code's proved within range: a cast saturates instead
+			TypeInfo const* whole = base(result_type);
+			TypeInfo const* lane = TypeInfoVariant::VECTOR == whole->variant
+				? static_cast<TypeInfoVector const*>(whole)->element_type : result_type;
+			const mlir::Type target = llvm_type(generator, result_type);
+			made = is_signed(lane) ? static_cast<mlir::Value>(LLVM::FPToSIOp::create(b, l, target, arguments[0]))
+				: static_cast<mlir::Value>(LLVM::FPToUIOp::create(b, l, target, arguments[0]));
 		}
 		else if (name == "minimum" && arguments.size() == 2) {
 			made = LLVM::MinimumOp::create(b, l, arguments[0], arguments[1]);

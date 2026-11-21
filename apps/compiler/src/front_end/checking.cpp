@@ -2808,6 +2808,7 @@ namespace hemera {
 			"splat", "select", "rotate_lanes", "reduce_add", "reduce_and", "reduce_or", "reduce_xor", "any_true", "all_true",
 			"rotate_left", "rotate_right", "byte_swap", "leading_zeros", "trailing_zeros", "count_ones",
 			"square_root", "floor", "ceil", "trunc", "round_even", "fused_multiply_add", "minimum", "maximum", "copy_sign",
+			"to_integer_unchecked",
 		};
 		if (declaration == nullptr || declaration->package_path == nullptr
 			|| !std::string_view(*declaration->package_path).starts_with("<base>")
@@ -2894,6 +2895,27 @@ namespace hemera {
 			}
 			const size_t count = name == "fused_multiply_add" ? 3 : name == "minimum" || name == "maximum" || name == "copy_sign" ? 2 : 1;
 			result = plain_function_type(checker.walk, std::vector<TypeInfo*>(count, own), own);
+			return Progress::DONE;
+		}
+		// A float, or a vector of them, to the integer type given explicitly, as many lanes, without saturating
+		if (name == "to_integer_unchecked") {
+			TypeInfo* target = callee.generic_arguments.size() == 1 ? callee.generic_arguments[0] : nullptr;
+			TypeInfoVector const* target_vector = is_variant(target, TypeInfoVariant::VECTOR)
+				? static_cast<TypeInfoVector const*>(base_of(target)) : nullptr;
+			TypeInfo const* target_lane = target_vector != nullptr ? (target_vector->is_bits ? nullptr : target_vector->element_type) : target;
+			if (target_lane == nullptr || !is_integer(target_lane)) {
+				return fail(nullptr, "takes the integer type to convert to, like to_integer_unchecked[i32](x)");
+			}
+			TypeInfo* own = vector != nullptr ? type : default_type(given);
+			TypeInfo const* lane = vector != nullptr ? (vector->is_bits ? nullptr : vector->element_type) : own;
+			const size_t size = lane != nullptr ? base_of(lane)->size : 0;
+			const bool lanes_match = (vector == nullptr) == (target_vector == nullptr)
+				&& (vector == nullptr || vector->count == target_vector->count);
+			if (lane == nullptr || !is_float(lane) || (size != 4 && size != 8) || !lanes_match) {
+				return fail(arguments[0], std::format("takes an f32 or f64, or a vector of them as many lanes as {}, not {}",
+					to_string(target), describe(given)));
+			}
+			result = plain_function_type(checker.walk, { own }, target);
 			return Progress::DONE;
 		}
 		if (name == "rotate_left" || name == "rotate_right" || name == "byte_swap" || name == "leading_zeros"
@@ -4789,6 +4811,32 @@ namespace hemera {
 		return value.variant < variants.size() && variants[value.variant].types.empty();
 	}
 
+	/*
+	 * The branches of an if or a match whose values were untyped constants, set aside until another branch gave their
+	 * type: each is checked against it now. When none did, they're the type of the widest of them (an integer, a float,
+	 * a complex number, a quaternion), as one alone would be: 0 and 1.5 are both f64.
+	 */
+	static Progress settle_untyped_branches(Checker& checker, const std::vector<std::pair<Value, ast::Node*>>& untyped,
+		TypeInfo*& type, Value& result, const char* what) {
+		if (untyped.empty()) {
+			return Progress::DONE;
+		}
+		if (type == nullptr) {
+			const Value* widest = &untyped.front().first;
+			for (const auto& [value, branch] : untyped) {
+				if (number_rank(value.kind) > number_rank(widest->kind)) {
+					widest = &value;
+				}
+			}
+			type = default_type(*widest);
+		}
+		for (const auto& [value, branch] : untyped) {
+			require_fit(checker, value, type, branch, what);
+		}
+		result = typed(type);
+		return Progress::DONE;
+	}
+
 	// if as an expression: each branch's block ends with its value.
 	static Progress check_if_expression(Checker& checker, ast::Node* node, TypeInfo* expected, Value& result) {
 		Value condition;
@@ -4800,6 +4848,8 @@ namespace hemera {
 		require_public(checker, node->children[0], "if's condition");
 		result = poisoned();
 		TypeInfo* type = expected;
+		// Branches whose value is an untyped constant, while no branch has given the type: they take the others'
+		std::vector<std::pair<Value, ast::Node*>> untyped;
 		for (size_t i = 1; i < node->children.size(); ++i) {
 			ast::Node* branch = node->children[i];
 			if (ast::NodeType::ELSE == branch->node_type && !branch->children.empty()) {
@@ -4822,7 +4872,10 @@ namespace hemera {
 			if (ValueKind::VARIANT == value.kind && value.type != nullptr && takes_no_values(value)) {
 				value = typed(value.type);
 			}
-			if (type == nullptr && ValueKind::POISONED != value.kind) {
+			if (type == nullptr && is_untyped(value)) {
+				untyped.emplace_back(value, branch);
+			}
+			else if (type == nullptr && ValueKind::POISONED != value.kind) {
 				type = default_type(value);
 				result = typed(type);
 			}
@@ -4831,7 +4884,7 @@ namespace hemera {
 				result = typed(type);
 			}
 		}
-		return Progress::DONE;
+		return settle_untyped_branches(checker, untyped, type, result, "each branch of if");
 	}
 
 	static Progress check_match(Checker& checker, ast::Node* node, TypeInfo* expected, Value* result, bool& continues);
@@ -6568,6 +6621,8 @@ namespace hemera {
 		std::set<std::string> covered;
 		TypeInfo* type = expected;
 		bool any_continues = false;
+		// Arms whose value is an untyped constant, while no arm has given the type: they take the others'
+		std::vector<std::pair<Value, ast::Node*>> untyped;
 		if (result != nullptr) {
 			*result = poisoned();
 		}
@@ -6610,6 +6665,10 @@ namespace hemera {
 				}
 				any_continues = any_continues || arm_continues;
 				if (result != nullptr && arm_continues && ValueKind::NOTHING != value.kind && ValueKind::POISONED != value.kind) {
+					if (type == nullptr && is_untyped(value)) {
+						untyped.emplace_back(value, outcome);
+						continue;
+					}
 					if (type == nullptr) {
 						type = default_type(value);
 					}
@@ -6618,6 +6677,12 @@ namespace hemera {
 					}
 					*result = typed(type);
 				}
+			}
+		}
+		if (result != nullptr) {
+			const Progress settled = settle_untyped_branches(checker, untyped, type, *result, "each arm of match");
+			if (settled != Progress::DONE) {
+				return settled;
 			}
 		}
 		if (!exhaustive(subject, covered) && ValueKind::POISONED != subject.kind) {

@@ -181,6 +181,12 @@ address. A float, a `bool` or a `char` isn't one, so `cast[ptr[u8]](1.5)` or `ca
 whether a pointer is null is `pointer != null`, and a float's bits are `bit_cast`'s. An untyped constant cast to an
 address is checked as its own type, so `cast[ptr[u8]](0x1000)` works and `cast[ptr[u8]]("text")` doesn't.
 
+A float cast to an integer type drops its fraction, rounding toward zero, and saturates: a value past the type's range
+is its least or its most, an infinity too, and a NaN is 0, so `cast[u8](300.0)` is 255, `cast[i32](-1e30)` is
+-2147483648 and `cast[i32](nan)` is 0, at compile time as at run time. Code that has proved its values are in range,
+like a hot loop that already clamps, can use `intrinsics.to_integer_unchecked[T](x)`, which skips those checks and
+gives a value it can't rely on outside the range.
+
 Since the value is already in parentheses, the result of a cast can be used directly, without wrapping the cast in
 more parentheses like C needs:
 

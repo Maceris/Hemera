@@ -1640,6 +1640,21 @@ TEST(FrontEnd, WarnsOfAssignmentOrder)
 	EXPECT_EQ(std::count(hemera::warning_list()->begin(), hemera::warning_list()->end(), hemera::WarningCode::W4003), 1);
 }
 
+/*
+ * An untyped constant in a branch of an if or an arm of a match takes the type another branch gives, whichever comes
+ * first; alone, the widest untyped constant's.
+ */
+TEST(FrontEnd, TypesBranchesTogether)
+{
+	hemera::disable_reporting_printing();
+	StringCacheGuard string_cache;
+	FrontEndFixture fixture;
+
+	std::vector<hemera::ErrorCode> errors = process_package(fixture, scenario("branch_types"));
+
+	EXPECT_TRUE(errors.empty()) << codes(errors);
+}
+
 // A place in the index as file:line:column, the file by its name alone, lines and columns from 1, for reading.
 static std::string where(const hemera::IndexPlace& place) {
 	std::ifstream file(place.file, std::ios::binary);

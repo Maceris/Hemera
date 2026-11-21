@@ -660,7 +660,7 @@ add_node :: fn(ui : ptr[mut Ui], label : u64, box : Box) -> u32 {
         return NO_NODE
     }
     parent :: ui.open
-    parent_id :: if parent == NO_NODE { cast[u64](0) } else { node(ui, parent).id }
+    parent_id :: if parent == NO_NODE { 0 } else { node(ui, parent).id }
     id := mix(mix(parent_id, label), box.key)
     if seen(ui, id) {
         ui.duplicates = true
@@ -867,7 +867,7 @@ begin :: fn(ui : ptr[mut Ui], input : Input, width : f32, height : f32) {
     // A press focuses what it's on, if that takes focus, and takes focus away otherwise
     if input.pressed {
         ui.active = ui.hover
-        set_focus(ui, if ui.hover != 0 && is_focusable(ui, ui.hover) { ui.hover } else { cast[u64](0) })
+        set_focus(ui, if ui.hover != 0 && is_focusable(ui, ui.hover) { ui.hover } else { 0 })
     }
     if input.wheel != 0 && ui.hover_scroll != 0 {
         place :: kept_of(ui, ui.hover_scroll)

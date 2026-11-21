@@ -101,6 +101,17 @@ trunc : fn[F](x : F) -> F : ---
  */
 round_even : fn[F](x : F) -> F : ---
 /**
+ * Convert a float to an integer type without saturating, rounding toward zero: what cast does for a number in the
+ * type's range, a few instructions less, for code that has proved its value is one (docs/operators.md, Casting
+ * operators). Past the range, an infinity or a NaN gives a value the program can't rely on.
+ *
+ * @tparam T The integer type, given explicitly, or a vector of them as many lanes as x has:
+ *     to_integer_unchecked[i32](x).
+ * @param x The float: f32 or f64, or a vector of them; a number within T's range.
+ * @return x without its fraction, as T.
+ */
+to_integer_unchecked : fn[T](x : any) -> T : ---
+/**
  * Multiply two floats and add a third, rounding once: x × y + z exactly, then rounded, which separate * and + may
  * not give, as the product is rounded first there.
  *
