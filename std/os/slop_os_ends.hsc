@@ -538,7 +538,9 @@ LaunchEvents :: struct {
          * the watch couldn't be bound.
          */
         NoBudget,
-        /** More grants than a Load takes (MAX_GRANTS), a label too long, or the process or its budget not duplicated. */
+        /**
+         * More grants than a Load takes (MAX_GRANTS), a label too long, or the process or its budget not duplicated.
+         */
         BadGrants,
         /** The manager couldn't be sent the request, or didn't answer it. */
         ManagerGone,
