@@ -231,6 +231,49 @@ TEST(Checker, AFullCheckWaitsForAQuickOneOfTheSameRoot) {
 	EXPECT_EQ((std::vector<std::string>{ "a:quick", "a:full" }), finished);
 }
 
+// A save's first check (CheckJob::quick) goes ahead of the checks waiting that aren't, behind the one running.
+TEST(Checker, ASavesFirstCheckGoesAheadOfTheWaitingOnes) {
+	std::mutex mutex;
+	std::condition_variable launched;
+	std::vector<HeldRun*> runs;
+	std::vector<std::string> finished;
+	Checker checker(
+		[&](const std::vector<std::string>& arguments) -> std::unique_ptr<hemera::lsp::Run> {
+			auto run = std::make_unique<HeldRun>(arguments.back());
+			std::lock_guard<std::mutex> lock(mutex);
+			runs.push_back(run.get());
+			launched.notify_all();
+			return run;
+		},
+		[&](const CheckJob& job, const RunResult& result) {
+			std::lock_guard<std::mutex> lock(mutex);
+			finished.push_back(job.root + ":" + result.output);
+		});
+	CheckJob running{ "a", { "hemera", "running" }, {} };
+	running.targets = { "kernel" };
+	CheckJob others{ "a", { "hemera", "others" }, {} };
+	others.targets = { "root_task", "supervisor" };
+	CheckJob own{ "a", { "hemera", "own" }, {} };
+	own.targets = { "entropy" };
+	own.quick = true;
+
+	checker.request(std::move(running));
+	{
+		std::unique_lock<std::mutex> lock(mutex);
+		launched.wait(lock, [&] { return runs.size() == 1; });
+	}
+	checker.request(std::move(others));
+	checker.request(std::move(own));
+	for (size_t started = 1; started <= 3; ++started) {
+		std::unique_lock<std::mutex> lock(mutex);
+		launched.wait(lock, [&] { return runs.size() >= started; });
+		runs[started - 1]->release();
+	}
+	checker.wait_idle();
+
+	EXPECT_EQ((std::vector<std::string>{ "a:running", "a:own", "a:others" }), finished);
+}
+
 TEST(Checker, OtherRootsWaitTheirTurn) {
 	std::vector<std::string> finished;
 	std::mutex mutex;

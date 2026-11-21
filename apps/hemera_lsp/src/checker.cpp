@@ -235,7 +235,12 @@ namespace hemera::lsp {
 			if (running != nullptr && running_root == job.root && covers(running_targets)) {
 				running->stop();
 			}
-			waiting.push_back(std::move(job));
+			// A quick one goes ahead of those that aren't, as what's saved is shown first
+			auto at = waiting.end();
+			if (job.quick) {
+				at = std::find_if(waiting.begin(), waiting.end(), [](const CheckJob& queued) { return !queued.quick; });
+			}
+			waiting.insert(at, std::move(job));
 		}
 		changed.notify_all();
 	}

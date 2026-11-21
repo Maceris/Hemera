@@ -545,20 +545,52 @@ namespace hemera::lsp {
 			 * index yet, is a check of everything.
 			 */
 			std::set<std::string> readers;
+			// How many files each target reads, from the index, for which one's the file's own
+			std::map<std::string, size_t> files_read;
+			// Whether the index says the file itself is read, not just its folder's others
+			bool read_before = false;
 			if (auto index = indexes.find(path_key(root)); index != indexes.end()) {
+				for (const auto& [any_file, of_file] : index->second->readers) {
+					for (const std::string& target : of_file) {
+						++files_read[target];
+					}
+				}
 				const std::string file = path_key(document->path);
 				if (auto of_file = index->second->readers.find(file); of_file != index->second->readers.end()) {
 					readers.insert(of_file->second.begin(), of_file->second.end());
 				}
 				const std::string folder = file.substr(0, file.rfind('/') + 1);
-				const bool read_before = !readers.empty();
+				read_before = !readers.empty();
 				for (const auto& [other, of_other] : index->second->readers) {
 					if (!read_before && other.starts_with(folder) && other.find('/', folder.size()) == std::string::npos) {
 						readers.insert(of_other.begin(), of_other.end());
 					}
 				}
 			}
-			jobs.push_back(job_for(root, std::vector<std::string>(readers.begin(), readers.end())));
+			/*
+			 * Of several, the one that reads the fewest files is checked first, on its own, as the file's most its: a
+			 * program's, not one that imports every program's package for its entry's type, which can take seconds
+			 * more. Its diagnostics are shown once it's done, and the others' after.
+			 */
+			if (read_before && readers.size() > 1) {
+				const std::string own = *std::min_element(readers.begin(), readers.end(), [&](const std::string& a, const std::string& b) {
+					return files_read[a] < files_read[b];
+				});
+				std::vector<std::string> others;
+				for (const std::string& reader : readers) {
+					if (reader != own) {
+						others.push_back(reader);
+					}
+				}
+				CheckJob quick = job_for(root, { own });
+				quick.quick = true;
+				quick.following = others;
+				jobs.push_back(std::move(quick));
+				jobs.push_back(job_for(root, others));
+			}
+			else {
+				jobs.push_back(job_for(root, std::vector<std::string>(readers.begin(), readers.end())));
+			}
 		}
 		for (CheckJob& job : jobs) {
 			checker->request(std::move(job));
@@ -660,6 +692,35 @@ namespace hemera::lsp {
 						of_root.by_target.erase(target);
 					}
 					of_root.by_target.erase("");
+				}
+				/*
+				 * A save's first check: what the targets checked after it found in the files it read, it's just checked
+				 * again, so that's put aside until they say it again, rather than shown as it was
+				 */
+				if (!job.following.empty()) {
+					std::set<std::string> rechecked;
+					if (auto index = indexes.find(path_key(job.root)); index != indexes.end()) {
+						for (const auto& [read_file_key, of_file] : index->second->readers) {
+							if (std::any_of(job.targets.begin(), job.targets.end(), [&](const std::string& target) {
+									return std::find(of_file.begin(), of_file.end(), target) != of_file.end();
+								})) {
+								rechecked.insert(read_file_key);
+							}
+						}
+					}
+					for (const std::string& target : job.following) {
+						auto of_target = of_root.by_target.find(target);
+						if (of_target == of_root.by_target.end()) {
+							continue;
+						}
+						std::erase_if(of_target->second, [&](const CompilerDiagnostic& diagnostic) {
+							std::string path = diagnostic.file;
+							if (path.starts_with("<base>/") && !base_folder.empty()) {
+								path = base_folder + path.substr(std::string_view("<base>").size());
+							}
+							return rechecked.contains(path_key(path));
+						});
+					}
 				}
 				for (CompilerDiagnostic& diagnostic : parse_diagnostics(result.output)) {
 					of_root.by_target[diagnostic.target].push_back(std::move(diagnostic));

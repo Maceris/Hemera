@@ -114,13 +114,22 @@ namespace hemera::lsp {
 		std::map<std::string, std::string> texts;
 		// For a check of some of a build package's targets (--targets), their names; empty for a check of everything
 		std::vector<std::string> targets;
+		/*
+		 * For a save's first check, of the target the saved file is most its own (Server::check): the other targets that
+		 * read it, checked after it. What they found before in the files this one's targets read is put aside once it's
+		 * done, as it's been checked again and they'll say it again if it's still so.
+		 */
+		std::vector<std::string> following;
+		// Whether it's such a first check, which goes ahead of the waiting checks that aren't
+		bool quick = false;
 	};
 
 	/*
 	 * Runs checks one at a time, on a thread of its own. A newer request for a root replaces a waiting one it does all
 	 * of, and stops a running one it does all of: a check of everything does a check of everything's, and a check of
 	 * some targets one's of no others. Any other is left to run, the newer one queued behind it, so no check's result
-	 * is lost that a newer one wouldn't give. A stopped check's result is left out. Requests wait their turn, in order.
+	 * is lost that a newer one wouldn't give. A stopped check's result is left out. Requests wait their turn, in order,
+	 * but for a quick one (CheckJob::quick), which goes ahead of the waiting ones that aren't.
 	 */
 	class Checker {
 	public:

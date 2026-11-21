@@ -1188,6 +1188,39 @@ TEST(Server, ASaveChecksOnlyTheTargetsThatReadItsFile) {
 }
 
 /*
+ * A save of a file several targets read checks first the one that reads the fewest files, the file's own, on its own,
+ * then the others; what those found in the files the first read is put aside once it's checked, not shown as it was.
+ */
+TEST(Server, ASaveChecksTheFilesOwnTargetFirst) {
+	Indexed indexed;
+	// helper.hsc is read by big alone, main.hsc by a and big: a reads one file, big two
+	indexed.session.index_json.insert(indexed.session.index_json.rfind('}'), ",\"targets\":[\"a\",\"big\"],\"readers\":[[1],[0,1]]");
+	// The first check: big finds an error in main.hsc
+	indexed.session.output = diagnostic_line(indexed.main, 4, 11, "Type mismatch", "big");
+	indexed.open_main();
+	ASSERT_EQ(1u, indexed.session.commands.size());
+	const size_t before = indexed.session.published().size();
+	ASSERT_EQ(1, last_published(indexed.session.published(), indexed.main));
+
+	// Fixed and saved: a first, whose check clears main.hsc at once, then big
+	indexed.session.output = "";
+	indexed.session.notify("textDocument/didSave", Object{ { "textDocument", Object{ { "uri", hemera::lsp::uri_from_path(indexed.main) } } } });
+	const std::vector<Object> published = indexed.session.published();
+
+	ASSERT_EQ(3u, indexed.session.commands.size());
+	EXPECT_EQ("a", targets_of(indexed.session.commands[1]));
+	EXPECT_EQ("big", targets_of(indexed.session.commands[2]));
+	std::vector<size_t> of_main;
+	for (const Object& params : std::vector<Object>(published.begin() + static_cast<std::ptrdiff_t>(before), published.end())) {
+		if (hemera::lsp::path_key(hemera::lsp::path_from_uri(*params.getString("uri"))) == hemera::lsp::path_key(indexed.main)) {
+			of_main.push_back(params.getArray("diagnostics")->size());
+		}
+	}
+	ASSERT_FALSE(of_main.empty());
+	EXPECT_EQ(0u, of_main.front());
+}
+
+/*
  * A check whose build stopped at errors, before its targets, as one in a package the build loads makes it, shows them,
  * and leaves the index as it was, so names still lead where they did.
  */

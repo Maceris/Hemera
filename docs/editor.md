@@ -64,6 +64,13 @@ target's diagnostics or index can change. What those targets find replaces what 
 targets found stays. A file no target read yet, like a new one, is checked as the other files in its folder are; one
 in a folder no target read is a check of everything.
 
+When several targets read the saved file, the one that reads the fewest files, usually the program the file belongs
+to, is checked first on its own, and its diagnostics are shown as soon as it's done; the others are checked after it.
+A target that imports many programs' packages, say for their entry points' types, can take seconds longer, and isn't
+waited for. Until the others are done, what they found before in the files the first one read isn't shown, as it's
+just been checked again; they show it again if it's still there. A save's first check goes ahead of checks waiting
+from earlier saves, though not of one already running.
+
 An open file that no target reads even then, like one only another architecture's targets import, isn't checked, and
 its names lead nowhere: it says so, as information on its package statement. A setting that adds the targets that
 read it, given in `hemera.arguments` like `--setting=name=value`, checks those instead.
