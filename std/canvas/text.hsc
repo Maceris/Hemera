@@ -57,17 +57,21 @@ clear_glyphs :: fn(cache : ptr[mut GlyphCache]) {
     runtime.array_reset(&cache.pool)
 }
 
+/** The largest text size draw_text draws, in the path's units per em, which the glyph cache keys in 64ths of a u32. */
+MAX_TEXT_SIZE : f32 : 65536
+
 /**
  * Draw text on a line, its baseline at y, starting at x.
  *
  * @param canvas The canvas.
  * @param font The font.
- * @param size Its size, in the path's units per em.
+ * @param size Its size, in the path's units per em: above 0 and at most MAX_TEXT_SIZE; another, NaN among them, draws
+ *     nothing.
  * @param x Where the first glyph's origin goes, in the path's units.
  * @param y The baseline.
  * @param text UTF-8; a line break is drawn as any other character, its glyph or the missing glyph.
  * @param paint What the glyphs are filled with.
- * @return Where the pen ended, the x after the text, in the path's units.
+ * @return Where the pen ended, the x after the text, in the path's units; x for a size that draws nothing.
  */
 draw_text :: fn(
     canvas : ptr[mut Canvas],
@@ -78,6 +82,10 @@ draw_text :: fn(
     text : u8[],
     paint : Paint
 ) -> f32 {
+    // Written so NaN fails it too
+    if !(size > 0 && size <= MAX_TEXT_SIZE) {
+        return x
+    }
     scale :: fonts.scale_of(font, size)
     if !is_translation(canvas.transform) {
         // Scaled, rotated or sheared: as paths

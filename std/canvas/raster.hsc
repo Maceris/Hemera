@@ -62,14 +62,32 @@ add_cell :: fn(raster : ptr[mut Raster], at : usize, value : f32) {
     }
 }
 
-/** Add an edge, in pixels: clipped to the region's sides, then accumulated row by row. */
+/** How far from 0 a coordinate the rasterizer takes is, in pixels, as bounds_of clamps them: 2^24. */
+COORDINATE_LIMIT : f32 : 16777216
+
+/** A coordinate, not NaN, brought within ±COORDINATE_LIMIT; infinities become the limit. */
+limited :: fn(value : f32) -> f32 {
+    return if value > COORDINATE_LIMIT {
+        COORDINATE_LIMIT
+    }
+    else if value < -COORDINATE_LIMIT { -COORDINATE_LIMIT } else { value }
+}
+
+/**
+ * Add an edge, in pixels: clipped to the region's sides, then accumulated row by row. One with a NaN end is dropped,
+ * and ends past ±COORDINATE_LIMIT are brought to it, so what's made of them stays finite, as the rows and cells
+ * counted from them have to.
+ */
 add_line :: fn(raster : ptr[mut Raster], from : Point, to : Point) {
+    if from.x != from.x || from.y != from.y || to.x != to.x || to.y != to.y {
+        return void
+    }
     w :: cast[f32](raster.width)
     // In the region's own coordinates
-    ax := from.x - cast[f32](raster.x0)
-    ay := from.y - cast[f32](raster.y0)
-    bx := to.x - cast[f32](raster.x0)
-    by := to.y - cast[f32](raster.y0)
+    ax := limited(from.x) - cast[f32](raster.x0)
+    ay := limited(from.y) - cast[f32](raster.y0)
+    bx := limited(to.x) - cast[f32](raster.x0)
+    by := limited(to.y) - cast[f32](raster.y0)
     if ay == by {
         return void
     }
@@ -345,18 +363,24 @@ bounds_of :: fn(path : ptr[Path]) -> Rect {
     x1 := cast[f32](-1e30)
     y1 := cast[f32](-1e30)
     for p in path.points {
+        // A NaN point is dropped by add_line, so it bounds nothing (and minimum and maximum would let it win)
+        if p.x != p.x || p.y != p.y {
+            continue
+        }
         x0 = intrinsics.minimum(x0, p.x)
         y0 = intrinsics.minimum(y0, p.y)
         x1 = intrinsics.maximum(x1, p.x)
         y1 = intrinsics.maximum(y1, p.y)
     }
-    // Clamped well within i32, so a wild coordinate can't overflow
-    limit :: cast[f32](1 << 24)
+    if x0 > x1 || y0 > y1 {
+        return Rect.{}
+    }
+    // Clamped well within i32 on both sides, so a wild coordinate can't overflow
     return Rect.{
-        x0 = cast[i32](intrinsics.floor(intrinsics.maximum(x0, -limit))),
-        y0 = cast[i32](intrinsics.floor(intrinsics.maximum(y0, -limit))),
-        x1 = cast[i32](intrinsics.ceil(intrinsics.minimum(x1, limit))) + 1,
-        y1 = cast[i32](intrinsics.ceil(intrinsics.minimum(y1, limit))) + 1,
+        x0 = cast[i32](intrinsics.floor(limited(x0))),
+        y0 = cast[i32](intrinsics.floor(limited(y0))),
+        x1 = cast[i32](intrinsics.ceil(limited(x1))) + 1,
+        y1 = cast[i32](intrinsics.ceil(limited(y1))) + 1,
     }
 }
 

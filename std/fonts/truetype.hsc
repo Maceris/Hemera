@@ -10,6 +10,13 @@ import runtime from "base:runtime"
 
 /** The most components a composite glyph is followed through, nested. */
 MAX_COMPOSITE_DEPTH :: 8
+/**
+ * The most components a glyph's outline follows in all, at every depth: a composite of composites, each naming the
+ * next many times, would otherwise read the glyph at the bottom many times to the power of the depth.
+ */
+MAX_COMPONENTS :: 256
+/** The most points a glyph's outline has, its components' together; past them it's not read. */
+MAX_OUTLINE_POINTS :: 1 << 18
 /** The most pair-kerning subtables kept from a font's GPOS. */
 MAX_PAIR_SUBTABLES :: 64
 
@@ -329,20 +336,29 @@ free_outline :: fn(outline : ptr[mut Outline]) {
  * @param font The font.
  * @param glyph The glyph's index.
  * @param outline Where its contours are added, in design units, y up.
- * @return False if the glyph's data couldn't be read whole; what was read is kept.
+ * @return False if the glyph's data couldn't be read whole, or it's a composite past MAX_COMPOSITE_DEPTH,
+ *     MAX_COMPONENTS or MAX_OUTLINE_POINTS; what was read is kept.
  */
 glyph_outline :: fn(font : ptr[Font], glyph : u32, outline : ptr[mut Outline]) -> bool {
-    return outline_of(font, glyph, outline, Transform.{}, 0)
+    components := cast[usize](0)
+    return outline_of(font, glyph, outline, Transform.{}, 0, &components)
 }
 
-/** A glyph's outline, its points transformed, followed into a composite's components to a depth. */
+/**
+ * A glyph's outline, its points transformed, followed into a composite's components to a depth, counting the
+ * components followed in components, as far as MAX_COMPONENTS.
+ */
 outline_of :: fn(
     font : ptr[Font],
     glyph : u32,
     outline : ptr[mut Outline],
     transform : Transform,
-    depth : usize
+    depth : usize,
+    components : ptr[mut usize]
 ) -> bool {
+    if outline.points.count > MAX_OUTLINE_POINTS {
+        return false
+    }
     place :: glyph_place(font, glyph)
     if place.size == 0 {
         return true
@@ -400,7 +416,9 @@ outline_of :: fn(
             placed.d = f2dot14(i16_at(data, at + 6))
             at += 8
         }
-        if !outline_of(font, component, outline, then(placed, transform), depth + 1) {
+        components^ += 1
+        if components^ > MAX_COMPONENTS
+            || !outline_of(font, component, outline, then(placed, transform), depth + 1, components) {
             return false
         }
         if flags & 0x0020 == 0 {

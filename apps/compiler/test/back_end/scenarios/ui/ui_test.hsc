@@ -219,6 +219,27 @@ keys :: fn(pressed: ui.Key[], shift: bool = false) -> ui.Input {
     return made
 }
 
+/** A secret field keeps nothing to undo: what was typed in it can't be brought back after it's gone. */
+keeps_no_undo_of_a_secret #test :: fn(t: ptr[mut testing.T]) -> testing.Outcome {
+    u :: new_ui()
+    defer free(u)
+    text : u8[..]
+    defer runtime.array_free(&text)
+    secret_frame(u, ui.Input.{}, &text)
+    field :: ui.find(u, "//role=textfield") or_else 0
+    testing.require(t, field != 0, "the field's there")?
+    ui.set_focus(u, field)
+    secret_frame(u, ui.Input.{text = string_bytes("hunter2")}, &text)
+    testing.expect(t, as_text(&text) == "hunter2", "typing goes into it")
+    secret_frame(u, keys(ui.Key.[ui.Key.Backspace]), &text)
+    secret_frame(u, keys(ui.Key.[ui.Key.Undo]), &text)
+    testing.expect(t, as_text(&text) == "hunter", "Ctrl+Z brings nothing back")
+    runtime.array_reset(&text)
+    secret_frame(u, keys(ui.Key.[ui.Key.Undo, ui.Key.Undo, ui.Key.Redo]), &text)
+    testing.expect(t, as_text(&text) == "", "once it's emptied, nor anything typed before")
+    return .Ok
+}
+
 edits_text #test :: fn(t: ptr[mut testing.T]) -> testing.Outcome {
     u :: new_ui()
     defer free(u)

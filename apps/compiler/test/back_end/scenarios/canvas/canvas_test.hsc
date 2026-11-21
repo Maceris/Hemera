@@ -229,6 +229,34 @@ draws_text #test :: fn(t: ptr[mut testing.T]) -> testing.Outcome {
     return .Ok
 }
 
+/**
+ * What isn't a finite number draws nothing, and is done with at once: a path through infinity or NaN, the same under a
+ * huge scale, and text at an infinite, NaN or negative size, whose pen stays where it started.
+ */
+draws_nothing_of_what_isnt_finite #test :: fn(t: ptr[mut testing.T]) -> testing.Outcome {
+    font :: fonts.open(SANS[0..<SANS.count]) or_else fonts.Font.{}
+    testing.require(t, font.units_per_em != 0, "Noto Sans opens")?
+    board :: runtime.new(Board)
+    defer runtime.free(board)
+    c := canvas_of(board)
+    defer canvas.free_canvas(&c)
+    infinite :: cast[f32](math.infinity[f64]())
+    nan :: cast[f32](math.nan[f64]())
+    path := canvas.Path.{}
+    defer canvas.free_path(&path)
+    canvas.move_to(&path, -infinite, 0)
+    canvas.line_to(&path, 10, 10)
+    canvas.line_to(&path, 10, nan)
+    canvas.close(&path)
+    canvas.fill(&c, &path, WHITE, .NonZero)
+    canvas.scale(&c, 1e20, 1e20)
+    canvas.fill(&c, &path, WHITE, .NonZero)
+    for size in f32.[infinite, nan, -16, 0] {
+        testing.expect_eq(t, canvas.draw_text(&c, &font, size, 4, 40, string_bytes("Hi"), WHITE), 4, "the pen stays")
+    }
+    return .Ok
+}
+
 /** Paths of any points, wild ones among them, filled and stroked without harm. */
 draws_any_path #test :: fn(t: ptr[mut testing.T], source: ptr[mut testing.Source]) -> testing.Outcome {
     board :: runtime.new(Board)
@@ -237,6 +265,11 @@ draws_any_path #test :: fn(t: ptr[mut testing.T], source: ptr[mut testing.Source
     defer canvas.free_canvas(&c)
     path := canvas.Path.{}
     defer canvas.free_path(&path)
+    // Sometimes under a transform: scaled, by a little or a lot, and moved
+    if testing.draw_between(source, 0, 3) == 0 {
+        canvas.translate(&c, coordinate(source), coordinate(source))
+        canvas.scale(&c, coordinate(source), coordinate(source))
+    }
     count :: testing.draw_between(source, 1, 40)
     for i in 0..<count {
         kind :: testing.draw_between(source, 0, 4)
@@ -268,12 +301,21 @@ draws_any_path #test :: fn(t: ptr[mut testing.T], source: ptr[mut testing.Source
 
 /** A coordinate: usually on or near the board, sometimes far off, huge, or not a number. */
 coordinate :: fn(source: ptr[mut testing.Source]) -> f32 {
-    kind :: testing.draw_between(source, 0, 9)
+    kind :: testing.draw_between(source, 0, 12)
     if kind == 0 {
         return 1e30
     }
     if kind == 1 {
         return cast[f32](math.nan[f64]())
+    }
+    if kind == 10 {
+        return -1e30
+    }
+    if kind == 11 {
+        return cast[f32](math.infinity[f64]())
+    }
+    if kind == 12 {
+        return -cast[f32](math.infinity[f64]())
     }
     if kind == 2 {
         return cast[f32](testing.draw_between(source, -100000, 100000))

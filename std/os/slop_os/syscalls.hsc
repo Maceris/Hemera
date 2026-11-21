@@ -1328,6 +1328,15 @@ Syscalls :: struct {
      * @error NotCounted The kernel wasn't built with coverage counters.
      */
     coverage_take : fn(counters : mut u8[]) -> Result[u64, CoverageError],
+    /**
+     * Tell what a memory object is: anonymous, paged, a window onto another, and so on. A server that maps memory a
+     * client gave it, like a compositor a buffer, takes only anonymous memory: touching paged memory waits on its
+     * pager, the client, and a window's pages are its parent's, which may be paged.
+     *
+     * @param memory The memory; no right is needed.
+     * @return Its kind.
+     */
+    memory_kind : fn(memory : Memory) -> Result[MemoryKind, HandleError],
 }
 
 // What process_set_control_flow is told a process's code was built for (the SlopOS repository's decisions/0186)
@@ -1460,6 +1469,24 @@ EXIT_KILLED : u64 : 1 << 32
  */
 syscall_bit :: fn(number : u32) -> u64 #no_context {
     return cast[u64](1) << cast[u64](number)
+}
+
+/** What a memory object is, as memory_kind says. */
+MemoryKind :: enum #backed_by(u8) {
+    /** Anonymous memory (memory_create): its own frames, zeroed as they're touched. */
+    Anonymous = 1,
+    /** Paged memory (memory_create_paged): a touch of a page that isn't there waits for its pager to supply it. */
+    Paged = 2,
+    /** A window onto another memory object (memory_create_window): its pages are the parent's. */
+    Window = 3,
+    /** DMA memory, made in a device's domain (dma_memory_create). */
+    Dma = 4,
+    /** Physically contiguous memory. */
+    Contiguous = 5,
+    /** A boot module's memory. */
+    BootModule = 6,
+    /** Device memory: a device's registers or its own memory, at a physical address. */
+    Device = 7,
 }
 
 /** What handle_info gives. */

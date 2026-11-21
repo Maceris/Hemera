@@ -7,6 +7,9 @@ import intrinsics from "base:intrinsics"
  * pair's first glyph's x advance adjusted; or, for a font without them, the kern table's format 0 pairs.
  */
 
+/** The most lookup indices of GPOS's kern features find_pair_kerning looks at, every feature's together. */
+MAX_KERN_INDICES :: 4096
+
 /** Find GPOS's pair-adjustment subtables of its kern features, for kerning. */
 find_pair_kerning :: fn(font : ptr[mut Font]) {
     data :: font.data
@@ -19,8 +22,16 @@ find_pair_kerning :: fn(font : ptr[mut Font]) {
     lookup_count :: cast[usize](u16_at(data, lookups))
     // Each lookup a kern feature names, once
     seen : bool[512]
+    /*
+     * At most MAX_KERN_INDICES of the features' lookup indices are looked at in all: a font whose many kern features
+     * each name many lookups, the same ones over and over, would otherwise take billions of steps to open
+     */
+    walked := cast[usize](0)
     feature_count :: cast[usize](u16_at(data, features))
     for f in cast[usize](0)..<feature_count {
+        if walked >= MAX_KERN_INDICES || font.pair_count >= font.pairs.count {
+            break
+        }
         record :: features + 2 + 6 * f
         if u32_at(data, record) != tag("kern") {
             continue
@@ -28,6 +39,10 @@ find_pair_kerning :: fn(font : ptr[mut Font]) {
         feature :: features + cast[usize](u16_at(data, record + 4))
         indices :: cast[usize](u16_at(data, feature + 2))
         for i in cast[usize](0)..<indices {
+            walked += 1
+            if walked > MAX_KERN_INDICES {
+                break
+            }
             index :: cast[usize](u16_at(data, feature + 4 + 2 * i))
             if index >= lookup_count || index >= seen.count || seen[index] {
                 continue

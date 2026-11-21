@@ -1,5 +1,6 @@
 package ui
 
+import intrinsics from "base:intrinsics"
 import runtime from "base:runtime"
 import fonts from "std:fonts"
 
@@ -437,13 +438,13 @@ edit :: fn(ui : ptr[mut Ui], id : ID, text : ptr[mut u8[..]], secret : bool) -> 
                 if editing.cursor == editing.anchor {
                     editing.anchor = before(current, editing.cursor)
                 }
-                changed = replace(ui, text, "") || changed
+                changed = replace(ui, text, "", secret) || changed
             }
             case .Delete => {
                 if editing.cursor == editing.anchor {
                     editing.anchor = after(current, editing.cursor)
                 }
-                changed = replace(ui, text, "") || changed
+                changed = replace(ui, text, "", secret) || changed
             }
             case .SelectAll => {
                 editing.anchor = 0
@@ -460,18 +461,19 @@ edit :: fn(ui : ptr[mut Ui], id : ID, text : ptr[mut u8[..]], secret : bool) -> 
                     changed = replace(ui, text, "") || changed
                 }
             }
-            case .Undo => changed = undo(ui, text, false) || changed
-            case .Redo => changed = undo(ui, text, true) || changed
+            // A secret one keeps nothing to undo, so nothing typed in it is left behind to bring back
+            case .Undo => changed = !secret && undo(ui, text, false) || changed
+            case .Redo => changed = !secret && undo(ui, text, true) || changed
             case .Enter => runtime.array_add(&ui.events, Event.{kind = .Submitted, id = id})
             case .Escape => set_focus(ui, 0)
             case _ => {}
         }
     }
     if ui.typed.count > 0 {
-        changed = replace(ui, text, string_of_bytes(ui.typed[0..<ui.typed.count])) || changed
+        changed = replace(ui, text, string_of_bytes(ui.typed[0..<ui.typed.count]), secret) || changed
     }
     if ui.pasted.count > 0 {
-        changed = replace(ui, text, string_of_bytes(ui.pasted[0..<ui.pasted.count])) || changed
+        changed = replace(ui, text, string_of_bytes(ui.pasted[0..<ui.pasted.count]), secret) || changed
     }
     return changed
 }
@@ -520,18 +522,22 @@ copied :: fn(ui : ptr[mut Ui], id : ID, text : u8[]) {
  * Replace the selection, or insert at the cursor, with text: what can be undone kept first, what could be redone
  * dropped.
  *
+ * @param secret Whether it's a secret field's text: nothing's kept to undo, and the copy made on the way is wiped.
  * @return Whether the text changed.
  */
-replace :: fn(ui : ptr[mut Ui], text : ptr[mut u8[..]], replacement : string) -> bool {
+replace :: fn(ui : ptr[mut Ui], text : ptr[mut u8[..]], replacement : string, secret : bool = false) -> bool {
     low :: low_end(&ui.editing)
     high :: high_end(&ui.editing)
     inserted :: string_bytes(replacement)
     if low == high && inserted.count == 0 {
         return false
     }
-    remember(ui, contents(text))
+    if !secret {
+        remember(ui, contents(text))
+    }
     made : u8[..]
     defer runtime.array_free(&made)
+    defer wipe(made[0..<made.count])
     for byte in slice(contents(text), 0, low) {
         runtime.array_add(&made, byte)
     }
@@ -622,8 +628,19 @@ undo :: fn(ui : ptr[mut Ui], text : ptr[mut u8[..]], again : bool) -> bool {
     return true
 }
 
-/** Drop the editing state, as its field lost focus or went: its cursor, selection and undo. */
+/** Wipe bytes, as a copy of text that may be secret is before it's freed or used again. */
+wipe :: fn(bytes : mut u8[]) {
+    if bytes.count > 0 {
+        intrinsics.secure_zero(&bytes[0], bytes.count)
+    }
+}
+
+/** Drop the editing state, as its field lost focus or went: its cursor, selection and undo, what undo kept wiped. */
 stop_editing :: fn(ui : ptr[mut Ui]) {
+    for &kept in ui.editing.undo {
+        wipe(kept.text[0..<kept.text.count])
+        runtime.array_reset(&kept.text)
+    }
     ui.editing.id = 0
     ui.editing.cursor = 0
     ui.editing.anchor = 0

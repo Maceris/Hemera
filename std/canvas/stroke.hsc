@@ -34,6 +34,11 @@ Cap :: enum {
 MAX_DASHES :: 16
 /** The most steps a stroke's dashes are walked in; past them, a path too long for its pattern stops being dashed. */
 MAX_DASH_STEPS :: 1 << 20
+/**
+ * The most points a stroke's outline has: many dashes or corners, each with a wide round cap or join, would otherwise
+ * make gigabytes of polygons. Past them, what's left of the stroke isn't drawn.
+ */
+MAX_STROKE_POINTS :: 1 << 22
 
 /** How a path is stroked. */
 Stroke :: struct {
@@ -243,7 +248,7 @@ unit :: fn(v : Point) -> Point {
  * A closed polygon added, turned counter-clockwise in pixels (positive area, y down), so the non-zero rule unions them.
  */
 add_polygon :: fn(into : ptr[mut Path], corners : Point[]) {
-    if corners.count < 3 {
+    if corners.count < 3 || into.points.count + corners.count > MAX_STROKE_POINTS {
         return void
     }
     area := cast[f32](0)
@@ -278,7 +283,7 @@ add_polygon :: fn(into : ptr[mut Path], corners : Point[]) {
 
 /** A circle as a polygon, enough sides that it strays from the circle by no more than the tolerance. */
 add_circle :: fn(into : ptr[mut Path], centre : Point, radius : f32) {
-    if !(radius > 0) {
+    if !(radius > 0) || into.points.count + 256 > MAX_STROKE_POINTS {
         return void
     }
     // A side's chord is within TOLERANCE of the arc when its angle is 2 acos(1 - TOLERANCE / radius)
