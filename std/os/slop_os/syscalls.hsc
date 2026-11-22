@@ -1337,6 +1337,16 @@ Syscalls :: struct {
      * @return Its kind.
      */
     memory_kind : fn(memory : Memory) -> Result[MemoryKind, HandleError],
+    /**
+     * Tell whether two handles in the caller's table are to the same object: how a server checks a handle it's given
+     * against one it holds, as a loader's record of the executable it loaded into a process against the executable a
+     * program was installed with. Nothing else about either object is said.
+     *
+     * @param a A handle, of any kind; no right is needed.
+     * @param b Another, of any kind; no right is needed. The same handle as a is the same object.
+     * @return True if they're to one object; false if not, as handles to objects of different kinds never are.
+     */
+    handle_same : fn(a : Handle, b : Handle) -> Result[bool, HandleError],
 }
 
 // What process_set_control_flow is told a process's code was built for (the SlopOS repository's decisions/0186)
