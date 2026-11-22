@@ -117,3 +117,18 @@ calls_functions_declared_in_functions #test :: fn(t: ptr[mut testing.T]) -> test
     testing.expect_eq(t, apply(helper, 9), 10, "a function declared in a function can be passed on and called")
     return .Ok
 }
+
+// is_none, is_some, is_ok and is_error bind tighter than && and || (docs/operators.md, Operator precedence)
+tests_bind_tighter_than_and_and_or #test :: fn(t: ptr[mut testing.T]) -> testing.Outcome {
+    good :: made(true)
+    bad :: made(false)
+    nothing : int? = null
+    something : int? = 3
+    testing.expect(t, good is_ok && something is_some, "each side of && is tested on its own")
+    testing.expect(t, bad is_ok || nothing is_none, "the right side of || is tested when the left's false")
+    testing.expect(t, !(bad is_ok || something is_none), "neither side holds, so the parenthesized || is false")
+    either :: bad is_error || good is_error
+    testing.expect(t, either, "a test's value is a bool, which || takes")
+    testing.expect(t, good is_ok && bad is_error && nothing is_none, "&& joins three tests")
+    return .Ok
+}

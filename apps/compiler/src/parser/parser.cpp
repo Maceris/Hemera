@@ -2640,11 +2640,7 @@ namespace hemera::parser {
 		}
 
 		const TokenType current = current_token(state).type;
-		if (TokenType::KEYWORD_IS_NONE == current
-			|| TokenType::KEYWORD_IS_SOME == current
-			|| TokenType::KEYWORD_IS_OK == current
-			|| TokenType::KEYWORD_IS_ERROR == current
-			|| TokenType::KEYWORD_OR_BREAK == current
+		if (TokenType::KEYWORD_OR_BREAK == current
 			|| TokenType::KEYWORD_OR_CONTINUE == current
 			) {
 			ast::Node& result = next_as_node(state, ast::NodeType::UNARY_OPERATOR);
@@ -2736,7 +2732,7 @@ namespace hemera::parser {
 	}
 
 	ExprResult expr_lvl_5(ParserState* state) {
-		ExprResult lhs = expr_lvl_6(state);
+		ExprResult lhs = expr_tests(state);
 
 		if (!lhs.success) {
 			return { false };
@@ -2752,6 +2748,31 @@ namespace hemera::parser {
 				return ExprResult{ false };
 			}
 			result.children.push_back(rhs.result);
+			return ExprResult{ true, &result };
+		}
+
+		return lhs;
+	}
+
+	/*
+	 * The tests, is_none, is_some, is_ok and is_error, after a comparison's operand: they bind tighter than && and ||,
+	 * so a is_error || b is_error tests each, and looser than a comparison, whose bool none of them takes.
+	 */
+	ExprResult expr_tests(ParserState* state) {
+		ExprResult lhs = expr_lvl_6(state);
+
+		if (!lhs.success) {
+			return { false };
+		}
+
+		const TokenType current = current_token(state).type;
+		if (TokenType::KEYWORD_IS_NONE == current
+			|| TokenType::KEYWORD_IS_SOME == current
+			|| TokenType::KEYWORD_IS_OK == current
+			|| TokenType::KEYWORD_IS_ERROR == current
+			) {
+			ast::Node& result = next_as_node(state, ast::NodeType::UNARY_OPERATOR);
+			result.children.push_back(lhs.result);
 			return ExprResult{ true, &result };
 		}
 

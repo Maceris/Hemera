@@ -101,6 +101,7 @@ namespace hemera::parser {
 	ExprResult expr_lvl_3(ParserState* state);
 	ExprResult expr_lvl_4(ParserState* state);
 	ExprResult expr_lvl_5(ParserState* state);
+	ExprResult expr_tests(ParserState* state);
 	ExprResult expr_lvl_6(ParserState* state);
 	ExprResult expr_lvl_7(ParserState* state);
 	ExprResult expr_lvl_8(ParserState* state);

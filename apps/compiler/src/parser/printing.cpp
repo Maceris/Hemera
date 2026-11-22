@@ -40,14 +40,16 @@ namespace hemera::ast {
 		enum Level : int {
 			ANY = 0,
 			ASSIGNMENT = 1,
-			// or_else, or_return, is_none, is_some, or_break, or_continue, and if
+			// or_else, or_return, or_break, or_continue, and if
 			FALLBACK = 2,
 			RANGE = 3,
 			OR = 4,
 			AND = 5,
-			COMPARISON = 6,
-			SUM = 7,
-			PRODUCT = 8,
+			// is_none, is_some, is_ok and is_error, after a comparison's operand
+			TEST = 6,
+			COMPARISON = 7,
+			SUM = 8,
+			PRODUCT = 9,
 			PREFIX = 10,
 			ATOM = 11,
 		};
@@ -283,6 +285,13 @@ namespace hemera::ast {
 					|| is_token(node, TokenType::OPERATOR_BITWISE_XOR) || is_token(node, TokenType::OPERATOR_NOT));
 		}
 
+		// is_none, is_some, is_ok or is_error, with its operand.
+		bool is_test(const Node* node) {
+			return NodeType::UNARY_OPERATOR == node->node_type && !node->children.empty()
+				&& (is_token(node, TokenType::KEYWORD_IS_NONE) || is_token(node, TokenType::KEYWORD_IS_SOME)
+					|| is_token(node, TokenType::KEYWORD_IS_OK) || is_token(node, TokenType::KEYWORD_IS_ERROR));
+		}
+
 		int level_of(const Node* node) {
 			if (node->node_type == NodeType::BINARY_OPERATOR) {
 				return binary_level(node->value.type);
@@ -290,6 +299,9 @@ namespace hemera::ast {
 			else if (node->node_type == NodeType::UNARY_OPERATOR) {
 				if (is_prefix(node) || is_token(node, TokenType::SYM_QUESTION)) {
 					return PREFIX;
+				}
+				if (is_test(node)) {
+					return TEST;
 				}
 				if (is_token(node, TokenType::SYM_AMPERSAND)) {
 					return ATOM;
@@ -2593,7 +2605,7 @@ namespace hemera::ast {
 					right = OR;
 				}
 				else if (AND == level) {
-					left = COMPARISON;
+					left = TEST;
 					right = AND;
 				}
 				else if (COMPARISON == level) {
@@ -2691,7 +2703,8 @@ namespace hemera::ast {
 					const bool needs_parentheses = level_of(operand) < PREFIX || is_token(operand, TokenType::SYM_QUESTION);
 					return d.concat({ needs_parentheses ? parenthesized(expression(operand, ANY)) : expression(operand, PREFIX), text("?") });
 				}
-				return d.concat({ expression(operand, RANGE), text(" "), text(operator_text(op)) });
+				// A test's operand is a comparison's; or_break's and or_continue's, a range's
+				return d.concat({ expression(operand, is_test(node) ? COMPARISON : RANGE), text(" "), text(operator_text(op)) });
 			}
 
 			// cast[T](x), bit_cast[T](x) or auto_cast(x), and a chain after it.

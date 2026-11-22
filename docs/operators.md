@@ -434,18 +434,23 @@ unmap(page) or_else log_warn("the page wasn't mapped")
 
 ```
 Precedence   Operator
-    11       cast  auto_cast  bit_cast  |>  .  []
-    10       +  -  ~  !  ?  (unary versions)
-     9       ()
-     8       *  /  %  %%  &  <<  >>  >>>
-     7       +  -  |  ~
-     6       ==  !=  <  >  <=  >=
+    12       cast  auto_cast  bit_cast  |>  .  []
+    11       +  -  ~  !  ?  (unary versions)
+    10       ()
+     9       *  /  %  %%  &  <<  >>  >>>
+     8       +  -  |  ~
+     7       ==  !=  <  >  <=  >=
+     6       is_none  is_some  is_ok  is_error
      5       &&
      4       ||
      3       ..=  ..<
-     2       if  is_none  is_some  is_ok  is_error  or_break  or_continue  or_else  or_return
+     2       if  or_break  or_continue  or_else  or_return
      1       = += &&= &= |= ~= /= <<= %= *= ||= %%= >>= >>>= -=
 ```
+
+`is_none`, `is_some`, `is_ok` and `is_error` bind tighter than `&&` and `||`, so `a is_error || b is_none` tests `a`
+and `b` each on its own. Their operand is anything a comparison's can be, like `lookup(key) is_none` or
+`entry.result is_ok`; a test of a comparison, or of another test, needs parentheses.
 
 Unary operators have the highest precedence.
 
