@@ -1024,6 +1024,21 @@ TEST(FrontEnd, AllowsStackPointersThatDontEscape)
 	EXPECT_TRUE(errors.empty()) << codes(errors);
 }
 
+/*
+ * Structs held on the heap by themselves or each other, and one held there while its slow body is made on another
+ * thread: checking for #owned and #scoped fields neither goes round forever nor reads a body being made
+ */
+TEST(FrontEnd, AllowsStructsHeldOnTheHeapBeforeTheyreMade)
+{
+	hemera::disable_reporting_printing();
+	StringCacheGuard string_cache;
+	FrontEndFixture fixture;
+
+	std::vector<hemera::ErrorCode> errors = process_package(fixture, scenario("held_on_heap_ok"));
+
+	EXPECT_TRUE(errors.empty()) << codes(errors);
+}
+
 // docs/types.md, Constraints: generics used with what they need
 TEST(FrontEnd, AllowsSatisfiedConstraints)
 {

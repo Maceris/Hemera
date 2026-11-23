@@ -54,7 +54,7 @@ namespace hemera {
 		, count{ count }
 	{
 		if (ArrayType::STATIC == array_type) {
-			complete = element_type->complete;
+			complete = element_type->complete.load();
 			size = element_type->size * count;
 			alignment = element_type->alignment;
 			contains_pointers = element_type->contains_pointers;
@@ -785,7 +785,21 @@ namespace hemera {
 		return writable(type);
 	}
 
-	bool is_owned(TypeInfo const* type) {
+	/*
+	 * Whether a walk through what type holds in place goes on into its fields or payloads: not when it's been
+	 * there, as through Node { kids : Node[..] }, nor into a struct or union that isn't complete, whose fields
+	 * another thread may be making, clearing and adding to, as when a dynamic array holds it before its body
+	 * is made. Its #owned, #scoped and the like are known from its declaration; its body checks its fields.
+	 */
+	static bool walks_into(TypeInfo const* base, std::vector<TypeInfo const*>& seen) {
+		if (!base->complete || std::find(seen.begin(), seen.end(), base) != seen.end()) {
+			return false;
+		}
+		seen.push_back(base);
+		return true;
+	}
+
+	static bool is_owned(TypeInfo const* type, std::vector<TypeInfo const*>& seen) {
 		type = get_base_type(type);
 		if (type == nullptr) {
 			return false;
@@ -795,17 +809,23 @@ namespace hemera {
 			if (structure->is_owned) {
 				return true;
 			}
+			if (!walks_into(type, seen)) {
+				return false;
+			}
 			for (const StructMember& member : structure->members) {
-				if (is_owned(member.member_type)) {
+				if (is_owned(member.member_type, seen)) {
 					return true;
 				}
 			}
 			return false;
 		}
 		if (TypeInfoVariant::UNION == type->variant) {
+			if (!walks_into(type, seen)) {
+				return false;
+			}
 			for (const UnionVariant& variant : static_cast<TypeInfoUnion const*>(type)->variants) {
 				for (TypeInfo* payload : variant.types) {
-					if (is_owned(payload)) {
+					if (is_owned(payload, seen)) {
 						return true;
 					}
 				}
@@ -815,12 +835,17 @@ namespace hemera {
 		if (TypeInfoVariant::ARRAY == type->variant) {
 			// A view borrows its elements; a static or dynamic array holds them
 			auto array = static_cast<TypeInfoArray const*>(type);
-			return ArrayType::VIEW != array->array_type && is_owned(array->element_type);
+			return ArrayType::VIEW != array->array_type && is_owned(array->element_type, seen);
 		}
 		return false;
 	}
 
-	TypeInfo const* scoped_part(TypeInfo const* type) {
+	bool is_owned(TypeInfo const* type) {
+		std::vector<TypeInfo const*> seen;
+		return is_owned(type, seen);
+	}
+
+	static TypeInfo const* scoped_part(TypeInfo const* type, std::vector<TypeInfo const*>& seen) {
 		TypeInfo const* found = get_base_type(type);
 		if (found == nullptr) {
 			return nullptr;
@@ -830,17 +855,23 @@ namespace hemera {
 			if (structure->is_scoped) {
 				return found;
 			}
+			if (!walks_into(found, seen)) {
+				return nullptr;
+			}
 			for (const StructMember& member : structure->members) {
-				if (TypeInfo const* part = scoped_part(member.member_type)) {
+				if (TypeInfo const* part = scoped_part(member.member_type, seen)) {
 					return part;
 				}
 			}
 			return nullptr;
 		}
 		if (TypeInfoVariant::UNION == found->variant) {
+			if (!walks_into(found, seen)) {
+				return nullptr;
+			}
 			for (const UnionVariant& variant : static_cast<TypeInfoUnion const*>(found)->variants) {
 				for (TypeInfo* payload : variant.types) {
-					if (TypeInfo const* part = scoped_part(payload)) {
+					if (TypeInfo const* part = scoped_part(payload, seen)) {
 						return part;
 					}
 				}
@@ -850,9 +881,14 @@ namespace hemera {
 		if (TypeInfoVariant::ARRAY == found->variant) {
 			// A view only points to its elements; a static array holds them in place, and a dynamic one on the heap
 			auto array = static_cast<TypeInfoArray const*>(found);
-			return ArrayType::VIEW != array->array_type ? scoped_part(array->element_type) : nullptr;
+			return ArrayType::VIEW != array->array_type ? scoped_part(array->element_type, seen) : nullptr;
 		}
 		return nullptr;
+	}
+
+	TypeInfo const* scoped_part(TypeInfo const* type) {
+		std::vector<TypeInfo const*> seen;
+		return scoped_part(type, seen);
 	}
 
 	static TypeInfo const* thread_bound_part(TypeInfo const* type, std::vector<TypeInfo const*>& seen) {

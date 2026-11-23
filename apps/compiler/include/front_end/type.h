@@ -1,5 +1,6 @@
 #pragma once
 
+#include <atomic>
 #include <cstdint>
 #include <string>
 #include <vector>
@@ -77,9 +78,10 @@ namespace hemera {
 		bool contains_pointers = false;
 		/// <summary>
 		/// Its size and alignment are known. A declared struct, union, enum or alias exists before
-		/// it's resolved, so pointers can refer to it, but its layout is only known after.
+		/// it's resolved, so pointers can refer to it, but its layout is only known after. Set last, once its
+		/// members or variants are final: another thread reads them only after seeing it set.
 		/// </summary>
-		bool complete = true;
+		std::atomic<bool> complete = true;
 		size_t size;
 		size_t alignment;
 
@@ -543,13 +545,16 @@ namespace hemera {
 
 	/// <summary>
 	/// Whether a value of type has one owner (docs/memory.md, Owned Types): a struct marked #owned, or
-	/// anything holding one in place, in a static or dynamic array, or in a union's payload.
+	/// anything holding one in place, in a static or dynamic array, or in a union's payload. A struct or
+	/// union that isn't complete yet, like one a dynamic array holds while another thread makes its body,
+	/// counts by its own #owned alone: its fields aren't final.
 	/// </summary>
 	bool is_owned(TypeInfo const* type);
 
 	/// <summary>
 	/// The #scoped struct a value of type holds in place, in a static or dynamic array, or in a union's
 	/// payload, or null if there's none (docs/memory.md, Scoped Structs): only a #scoped struct can hold one.
+	/// A struct or union that isn't complete yet counts by its own #scoped alone, as with is_owned.
 	/// </summary>
 	TypeInfo const* scoped_part(TypeInfo const* type);
 
