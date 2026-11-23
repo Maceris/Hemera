@@ -624,6 +624,13 @@ LaunchEvents :: struct {
          */
         libraries : LaunchLibrary[],
         /**
+         * Rights the launcher's handle to the process has beside those to watch and end it (the process manager's
+         * Load's rights): of RIGHT_PROCESS_READ_MEMORY, RIGHT_PROCESS_WRITE_STATE and RIGHT_PROCESS_INTERCEPT. A launch
+         * with faults has the first two besides, to read what its intercept stops. 0 for none; never the right to
+         * start threads in it.
+         */
+        process_rights : slop_os.Rights,
+        /**
          * Handles given beside the entry's parameters, each under its label, for the program's libraries or its
          * runtime to find by it (slop_os.find_grant) rather than its entry; the program's once it's started, as the
          * entry's are, and still the caller's if the launch fails before the Load is sent. A label past
@@ -679,7 +686,12 @@ LaunchEvents :: struct {
 
     /** A program launch started, in a process the caller owns, with a budget split off its own. */
     Launched :: struct {
-        /** The program's process, a handle the caller owns: to watch, to kill, or to close. */
+        /**
+         * The program's process, the owning handle, the caller's: to watch, to kill, or to close, which ends it. Its
+         * rights are those the process manager gives a launcher (RIGHT_PROCESS_KILL, RIGHT_PROCESS_INSPECT,
+         * RIGHT_DUPLICATE, RIGHT_TRANSFER) and LaunchOptions.process_rights; never RIGHT_PROCESS_THREADS. NO_HANDLE for a
+         * program that ended before the process manager answered, its end reported on LaunchOptions.watch.
+         */
         process : slop_os.Process,
         /** The program's budget, split off the caller's, a handle the caller owns. */
         budget : slop_os.MemoryBudget,
@@ -881,8 +893,8 @@ LaunchEvents :: struct {
      *     the program as the grant "arguments", or closed.
      * @param options What the launch does beyond its grants (LaunchOptions).
      * @return The started program's process, budget, first thread and image's address, and its faults' intercept.
-     * @error NoBudget The caller's budget couldn't pay for the program's budget, process or address space, or the
-     *     watch or the fault intercept couldn't be made.
+     * @error NoBudget The caller's budget couldn't pay for the program's budget, a port couldn't be duplicated for the
+     *     watch or the intercept, or the manager couldn't make the watch or the intercept.
      * @error BadGrants The grants don't fit a Load, a label is too long, or the process or its budget couldn't be
      *     duplicated.
      * @error ManagerGone The manager couldn't be sent the Load, or didn't answer it.
@@ -918,7 +930,13 @@ LaunchEvents :: struct {
         threads :: if options.lifecycle is_some { cast[u64](2) } else { cast[u64](1) }
         child :: slop_os.memory_budget_create(block.budget, budget + slop_os.shadow_stacks_budget(threads))
             or_return .Error(.NoBudget)
-        load := process_manager.Load.{name = label_from(name)}
+        load := process_manager.Load.{
+            name = label_from(name),
+            cpu_budget = cast[slop_os.CpuBudget](slop_os.NO_HANDLE),
+            watch_port = cast[slop_os.Port](slop_os.NO_HANDLE),
+            intercept_port = cast[slop_os.Port](slop_os.NO_HANDLE),
+            rights = options.process_rights,
+        }
         process := cast[slop_os.Process](slop_os.NO_HANDLE)
         watch : LaunchWatch? = null
         faults : LaunchedFaults? = null
@@ -943,30 +961,21 @@ LaunchEvents :: struct {
                 }
             }
         }
-        process = slop_os.process_create(child) or_return .Error(.NoBudget)
+        // A port the manager binds for the launcher before the program starts: one it may bind with, and move
+        port_rights :: cast[slop_os.Rights](cast[u32](slop_os.RIGHT_PORT_BIND) | cast[u32](slop_os.RIGHT_TRANSFER))
         match options.watch {
             case Some(watching) => {
-                slop_os.port_bind(
-                    watching.port,
-                    cast[slop_os.Handle](process),
-                    slop_os.SIGNAL_TERMINATED,
-                    watching.key,
-                    .Once
-                )
-                    or_return .Error(.NoBudget)
+                load.watch_port = cast[slop_os.Port](slop_os.handle_duplicate(cast[slop_os.Handle](watching.port), port_rights)
+                    or_return .Error(.NoBudget))
+                load.watch_key = watching.key
                 watch = watching
             }
             case None => {}
         }
         match options.cpu_budget {
-            case Some(cpu) => {
-                put :: slop_os.process_set_cpu_budget(process, cpu)
-                _ = slop_os.handle_close(cast[slop_os.Handle](cpu))
-                put or_return .Error(.NoCpuBudget)
-            }
+            case Some(cpu) => load.cpu_budget = cpu
             case None => {}
         }
-        load.space = slop_os.address_space_create(child) or_return .Error(.NoBudget)
         match options.faults {
             case Some(reported) => {
                 points :: if reported.points != 0 {
@@ -979,21 +988,19 @@ LaunchEvents :: struct {
                     slop_os.STOP_FAULT | slop_os.STOP_FAULT_LIMITED
                 }
                 calls :: if reported.debugging || reported.points != 0 { ~cast[u64](0) } else { cast[u64](0) }
-                intercept :: slop_os.intercept_attach(process, reported.port, reported.key, calls, points)
-                    or_return .Error(.NoBudget)
-                faults = LaunchedFaults.{intercept = intercept, space = cast[slop_os.AddressSpace](slop_os.NO_HANDLE)}
-                // No right but to move it on, as to a debugger attached later (process_read_memory needs none)
-                kept :: slop_os.handle_duplicate(cast[slop_os.Handle](load.space), slop_os.RIGHT_TRANSFER)
-                    or_return .Error(.BadGrants)
-                faults = LaunchedFaults.{intercept = intercept, space = cast[slop_os.AddressSpace](kept)}
+                load.intercept_port = cast[slop_os.Port](
+                    slop_os.handle_duplicate(cast[slop_os.Handle](reported.port), port_rights) or_return .Error(.NoBudget)
+                )
+                load.intercept_key = reported.key
+                load.intercept_calls = calls
+                load.intercept_points = points
+                // What its intercept stops, read: its memory, and its threads' state
+                load.rights = cast[slop_os.Rights](cast[u32](load.rights)
+                    | cast[u32](slop_os.RIGHT_PROCESS_READ_MEMORY)
+                    | cast[u32](slop_os.RIGHT_PROCESS_WRITE_STATE))
             }
             case None => {}
         }
-        process_rights :: cast[slop_os.Rights](cast[u32](slop_os.RIGHT_PROCESS_THREADS)
-            | cast[u32](slop_os.RIGHT_DUPLICATE)
-            | cast[u32](slop_os.RIGHT_TRANSFER))
-        load.process = cast[slop_os.Process](slop_os.handle_duplicate(cast[slop_os.Handle](process), process_rights)
-            or_return .Error(.BadGrants))
         budget_rights :: cast[slop_os.Rights](cast[u32](slop_os.RIGHT_BUDGET_CHARGE)
             | cast[u32](slop_os.RIGHT_DUPLICATE)
             | cast[u32](slop_os.RIGHT_TRANSFER))
@@ -1123,9 +1130,12 @@ LaunchEvents :: struct {
         match message_of[process_manager.Response](&into)^ {
             case Loaded(loaded) => {
                 started = true
+                if cast[slop_os.Handle](loaded.intercept) != slop_os.NO_HANDLE {
+                    faults = LaunchedFaults.{intercept = loaded.intercept, space = loaded.space}
+                }
                 return .Ok(
                     Launched.{
-                        process = process,
+                        process = loaded.process,
                         budget = child,
                         thread = loaded.thread,
                         image = loaded.image,
@@ -1134,6 +1144,12 @@ LaunchEvents :: struct {
                     }
                 )
             }
+            case NotLoaded(why) => return .Error(
+                if why == .NoCpuBudget {
+                    LaunchError.NoCpuBudget
+                }
+                else if why == .NoWatch { LaunchError.NoBudget } else { LaunchError.NotLoaded }
+            )
             case _ => return .Error(.NotLoaded)
         }
     }
@@ -1160,10 +1176,11 @@ LaunchEvents :: struct {
     ) {
         if !sent {
             for handle in slop_os.Handle.[
-                cast[slop_os.Handle](load.process),
-                cast[slop_os.Handle](load.space),
                 cast[slop_os.Handle](load.budget),
-                cast[slop_os.Handle](load.executable)
+                cast[slop_os.Handle](load.executable),
+                cast[slop_os.Handle](load.cpu_budget),
+                cast[slop_os.Handle](load.watch_port),
+                cast[slop_os.Handle](load.intercept_port)
             ] {
                 if handle != slop_os.NO_HANDLE {
                     _ = slop_os.handle_close(handle)

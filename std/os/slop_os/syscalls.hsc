@@ -1347,6 +1347,18 @@ Syscalls :: struct {
      * @return True if they're to one object; false if not, as handles to objects of different kinds never are.
      */
     handle_same : fn(a : Handle, b : Handle) -> Result[bool, HandleError],
+    /**
+     * Drop rights from a handle in place, owning or not: what it allows from now on is only those of its rights in
+     * rights, which can't be added back. How a server moves on a handle that may only move, as a channel's end without
+     * RIGHT_DUPLICATE, or an owning handle without the rights its new holder isn't to have.
+     *
+     * @param handle A handle, of any kind; no right is needed.
+     * @param rights The rights it keeps, of those it has; one it hasn't isn't added.
+     * @return Nothing, once it's restricted.
+     * @error InvalidHandle Not a handle in the caller's table, or one already closed.
+     * @error ObjectGone The object was destroyed.
+     */
+    handle_restrict : fn(handle : Handle, rights : Rights) -> Result[void, HandleError],
 }
 
 // What process_set_control_flow is told a process's code was built for (the SlopOS repository's decisions/0186)
