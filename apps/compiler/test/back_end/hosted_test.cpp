@@ -623,6 +623,17 @@ TEST(Hosted, Fonts)
 }
 
 /*
+ * std/audio: samples decoded and encoded in each format, mixed, clipped and remixed; resampled, a tone keeping its
+ * frequency and level, what's above the lower rate's half not folding back, the same however it's blocked; WAV files
+ * written and read, as others write them, refused when they aren't, and any bytes read without harm.
+ */
+TEST(Hosted, Audio)
+{
+	const HostedOutput checked = run_hosted("audio", hemera::TargetStackCheck::Off, 0, "", false, false, false, {}, true);
+	EXPECT_NE(checked.output.find("10 tests: 10 passed, 0 failed"), std::string::npos) << checked.output;
+}
+
+/*
  * Float-to-integer casts saturate, NaN to 0, scalars and vectors, at compile time and run time, optimized or not; and
  * intrinsics.to_integer_unchecked converts within range as a cast does.
  */
