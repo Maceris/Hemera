@@ -54,6 +54,22 @@ Request :: union {
      * Steered, or NotSteered and why; on any other connection, NotSteered(NotAllowed).
      */
     Steer(Steer),
+    /**
+     * On a steering connection only (decisions/0195, 18d): which program the manager loaded holds the other end of
+     * a channel whose one end is given, moving with the request, which the manager closes (channel_peer_owned_by).
+     * Answered with Identified, or NotSteered: NoProgram if none does, NotAllowed on any other connection.
+     */
+    Identify(slop_os.Channel),
+}
+
+/** A program the manager loaded, as Identified says. */
+Identity :: struct {
+    /** Its process, with RIGHT_PROCESS_INSPECT and RIGHT_TRANSFER, which moves to the requester. */
+    process : slop_os.Process,
+    /** The executable it was loaded from, with RIGHT_MEMORY_READ and RIGHT_TRANSFER, which moves to the requester. */
+    executable : slop_os.Memory,
+    /** Whether it's been steered (Steer): what it does may be its steerer's, not its executable's. */
+    steered : bool,
 }
 
 /** A program to steer, as Steer asks for it. */
@@ -210,6 +226,8 @@ Response :: union {
     NotLoaded(LoadStatus),
     /** Steer's answer: the program's steering handles. */
     Steered(Steering),
+    /** Identify's answer: the program that holds the channel's other end. */
+    Identified(Identity),
     /** Steer's answer when it's refused. */
     NotSteered(NotSteered),
     /** The answer to a request the manager doesn't know, as from a newer client; every protocol has it. */
@@ -227,6 +245,7 @@ is_idempotent :: fn(request : ptr[Request]) -> bool {
         case Load(_) => true
         case Connect(_) => true
         case Steer(_) => true
+        case Identify(_) => true
     }
 }
 
@@ -289,6 +308,36 @@ steer :: fn(
     }
     return match os.message_of[Response](&into)^ {
         case Steered(steering) => .Ok(steering)
+        case NotSteered(why) => .Error(why)
+        case _ => .Error(.Failed)
+    }
+}
+
+/**
+ * Ask the process manager, on a steering connection, which program it loaded holds a channel's other end, and wait.
+ *
+ * @param end A steering connection to the manager, kept by the caller.
+ * @param port A port bound to end, waited on for the answer.
+ * @param channel The caller's end of the channel, which stays the caller's: a duplicate goes with the request.
+ * @return The program, its handles the caller's (Identity); or why not: NoProgram if no program it loaded holds it,
+ *     NotAllowed, or Failed, as when the duplicate couldn't be made or the manager didn't answer.
+ */
+identify :: fn(end : slop_os.Channel, port : slop_os.Port, channel : slop_os.Channel) -> Result[Identity, NotSteered] {
+    copy :: slop_os.handle_duplicate(cast[slop_os.Handle](channel), slop_os.RIGHT_TRANSFER) or_return .Error(.Failed)
+    out := os.Outgoing.{}
+    request :: os.begin[Request](&out)
+    request^ = .Identify(cast[slop_os.Channel](copy))
+    if send_request(end, port, &out) is_some {
+        _ = slop_os.handle_close(copy)
+        return .Error(.Failed)
+    }
+    into := os.Incoming.{}
+    match receive_response(end, port, &into, true) {
+        case Received => {}
+        case _ => return .Error(.Failed)
+    }
+    return match os.message_of[Response](&into)^ {
+        case Identified(identity) => .Ok(identity)
         case NotSteered(why) => .Error(why)
         case _ => .Error(.Failed)
     }

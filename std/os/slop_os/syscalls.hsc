@@ -1369,6 +1369,22 @@ Syscalls :: struct {
      * @error ObjectGone The object was destroyed.
      */
     handle_restrict : fn(handle : Handle, rights : Rights) -> Result[void, HandleError],
+    /**
+     * Tell whether a process itself, not one in its subtree, holds the other end of a channel whose one end the caller
+     * holds: how a server learns which program it's speaking with (the SlopOS repository's decisions/0195, 18d), the
+     * end having moved to it, its owning handle without RIGHT_DUPLICATE, as no copy could be kept on the way. Nothing
+     * else of either is said.
+     *
+     * @param end The caller's end, of any rights.
+     * @param process The process, which needs RIGHT_PROCESS_INSPECT.
+     * @return True if the other end's owning handle is in the process's table; false if it's another's, its child's
+     *     among them, the kernel's, gone, or in flight in a message.
+     * @error InvalidHandle Either isn't a handle in the caller's table.
+     * @error ObjectGone Either's object was destroyed.
+     * @error WrongKind end isn't a channel's, or process isn't a process's.
+     * @error MissingRight process lacks RIGHT_PROCESS_INSPECT.
+     */
+    channel_peer_owned_by : fn(end : Channel, process : Process) -> Result[bool, ControlError],
 }
 
 // What process_set_control_flow is told a process's code was built for (the SlopOS repository's decisions/0186)

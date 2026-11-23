@@ -1006,8 +1006,12 @@ LaunchEvents :: struct {
             | cast[u32](slop_os.RIGHT_TRANSFER))
         load.budget = cast[slop_os.MemoryBudget](slop_os.handle_duplicate(cast[slop_os.Handle](child), budget_rights)
             or_return .Error(.BadGrants))
-        // To execute too, where the caller may, so the manager can map its read-only segments straight from it
+        /*
+         * To execute too, where the caller may, so the manager can map its read-only segments straight from it; and to
+         * duplicate, so the manager can say what a program was loaded from (decisions/0195, 18d)
+         */
         executable_rights :: cast[slop_os.Rights](cast[u32](slop_os.RIGHT_MEMORY_READ)
+            | cast[u32](slop_os.RIGHT_DUPLICATE)
             | cast[u32](slop_os.RIGHT_TRANSFER))
         executing :: cast[slop_os.Rights](cast[u32](executable_rights) | cast[u32](slop_os.RIGHT_MEMORY_EXECUTE))
         load.executable = cast[slop_os.Memory](slop_os.handle_duplicate(cast[slop_os.Handle](executable), executing)
