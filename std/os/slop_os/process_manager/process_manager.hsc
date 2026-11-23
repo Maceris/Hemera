@@ -68,7 +68,10 @@ Identity :: struct {
     process : slop_os.Process,
     /** The executable it was loaded from, with RIGHT_MEMORY_READ and RIGHT_TRANSFER, which moves to the requester. */
     executable : slop_os.Memory,
-    /** Whether it's been steered (Steer): what it does may be its steerer's, not its executable's. */
+    /**
+     * Whether it's been steered (Steer), or was launched with an intercept that stops it at its calls, not only at its
+     * faults, as a debugger's launch is held: what it does may be its steerer's, not its executable's.
+     */
     steered : bool,
 }
 
