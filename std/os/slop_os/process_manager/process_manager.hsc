@@ -8,8 +8,11 @@ import slop_os from "std:os/slop_os"
  * each program it loads, charged to the requester's budget, and gives the requester the process's owning handle, so
  * the program is the requester's and outlives the manager; but with only the rights to watch it and end it, and to
  * read it where the Load asks (rights), never to start threads in it. What the requester wants before the program's
- * first instruction, the manager does for it: its CPU budget, a watch on its end, an intercept of it. It serves each
- * client one request at a time, in order; std/os's launch speaks it. Its messages' code is generated
+ * first instruction, the manager does for it: its CPU budget, a watch on its end, an intercept of it, which reports
+ * the program's faults and samples it, but can't steer it (RIGHT_INTERCEPT_STEER). Steering a program, as a debugger
+ * or a recorder does, is given only on the user's say (decisions/0195, 18b): Steer, which the manager answers only on
+ * the connections of its steering listener, whose end the system's supervisor holds and gives on to the session
+ * manager. It serves each client one request at a time, in order; std/os's launch speaks it. Its messages' code is generated
  * (os.protocol_code), so a handle in one moves with it.
  */
 
@@ -26,12 +29,13 @@ PROTOCOL :: slop_os.Protocol.{name = "process_manager", major_version = 4, lendi
  * The bytes of each of the rings a connection to the manager needs, each way, so a Load fits in one message
  * (channel_create's ring bytes).
  */
-RING_BYTES : u32 : 4096
+RING_BYTES : u32 : 8192
 
 /**
- * The most grants a Load gives the new program: with the Load's own four handles, within the 64 a message carries.
+ * The most grants a Load gives the new program: with the Load's own five handles, within the 64 a message carries, and
+ * with the builder's own six, within the 64 process_give_handles takes.
  */
-MAX_GRANTS :: 48
+MAX_GRANTS :: 56
 
 /** What a client asks of the process manager. */
 Request :: union {
@@ -40,8 +44,55 @@ Request :: union {
      * Answered with Loaded, or NotLoaded and why.
      */
     Load(Load),
-    /** Serve another client, on the end given, which moves to the manager. Not answered. */
+    /**
+     * Serve another client, on the end given, which moves to the manager; one sent on a steering connection is a
+     * steering connection too. Not answered.
+     */
     Connect(os.Channel[ProcessManager]),
+    /**
+     * On a steering connection only: steer a program the manager loaded, which the user has allowed. Answered with
+     * Steered, or NotSteered and why; on any other connection, NotSteered(NotAllowed).
+     */
+    Steer(Steer),
+}
+
+/** A program to steer, as Steer asks for it. */
+Steer :: struct {
+    /**
+     * A handle to the program's process with RIGHT_PROCESS_KILL, as its launcher has, which the manager finds the
+     * program by (handle_same) and closes; moved with the request.
+     */
+    process : slop_os.Process,
+    /**
+     * A port its stops go to from now, with RIGHT_PORT_BIND and RIGHT_TRANSFER: the intercept it had is detached
+     * and a new one attached there, stopping at faults; NO_HANDLE to keep the one it has, or attach none.
+     */
+    port : slop_os.Port,
+    /** The new intercept's key, with port. */
+    key : u64,
+}
+
+/** A program steered, as Steered gives it. */
+Steering :: struct {
+    /** Its intercept, with RIGHT_INTERCEPT_STEER, a handle that moves to the requester; NO_HANDLE without one. */
+    intercept : slop_os.Intercept,
+    /**
+     * Its process, with RIGHT_PROCESS_INSPECT, _READ_MEMORY, _WRITE_STATE, _KILL and RIGHT_TRANSFER, never
+     * RIGHT_PROCESS_THREADS or _INTERCEPT; moves to the requester.
+     */
+    process : slop_os.Process,
+    /** Its address space, with RIGHT_TRANSFER alone, for process_read_memory and process_write_memory. */
+    space : slop_os.AddressSpace,
+}
+
+/** Why a Steer was refused. */
+NotSteered :: enum #backed_by(u32) {
+    /** Not a steering connection. */
+    NotAllowed = 1,
+    /** No program the manager loaded, live, that handle's to, or a handle without RIGHT_PROCESS_KILL. */
+    NoProgram = 2,
+    /** The intercept couldn't be attached, or a handle not made, as with a port without the right. */
+    Failed = 3,
 }
 
 /**
@@ -81,8 +132,8 @@ Load :: struct {
     intercept_points : u32,
     /**
      * Rights the requester's handle to the process has beside RIGHT_PROCESS_KILL, RIGHT_PROCESS_INSPECT,
-     * RIGHT_DUPLICATE and RIGHT_TRANSFER: of RIGHT_PROCESS_READ_MEMORY, RIGHT_PROCESS_WRITE_STATE and
-     * RIGHT_PROCESS_INTERCEPT; the rest are never given. 0 for none.
+     * RIGHT_DUPLICATE and RIGHT_TRANSFER: RIGHT_PROCESS_READ_MEMORY; the rest are never given, but through Steer.
+     * 0 for none.
      */
     rights : slop_os.Rights,
     /** The executable, a memory object holding the program's file, with RIGHT_MEMORY_READ. */
@@ -133,7 +184,10 @@ Started :: struct {
      * process is gone: its end was reported on the Load's watch.
      */
     process : slop_os.Process,
-    /** The intercept the Load asked for, the owning handle, which moves to the requester; NO_HANDLE for none. */
+    /**
+     * The intercept the Load asked for, which moves to the requester, without RIGHT_INTERCEPT_STEER: the manager keeps
+     * its owning handle while the program runs. NO_HANDLE for none.
+     */
     intercept : slop_os.Intercept,
     /**
      * With the intercept, the program's address space, with RIGHT_TRANSFER alone, for process_read_memory, which
@@ -154,6 +208,10 @@ Response :: union {
     Loaded(Started),
     /** The answer to Load when it failed, and why. */
     NotLoaded(LoadStatus),
+    /** Steer's answer: the program's steering handles. */
+    Steered(Steering),
+    /** Steer's answer when it's refused. */
+    NotSteered(NotSteered),
     /** The answer to a request the manager doesn't know, as from a newer client; every protocol has it. */
     Unsupported,
 }
@@ -168,12 +226,73 @@ is_idempotent :: fn(request : ptr[Request]) -> bool {
     return match request^ {
         case Load(_) => true
         case Connect(_) => true
+        case Steer(_) => true
     }
 }
 
 #insert os.protocol_code(Request, Response)
 
 #assert cast[u32](size_of(Request)) <= slop_os.channel_max_payload(RING_BYTES)
+
+/**
+ * Ask the process manager to steer a program it loaded, on a steering connection, once the user's allowed it, and wait
+ * for its answer.
+ *
+ * @param end A steering connection to the manager, kept by the caller.
+ * @param port A port bound to end, waited on for the answer.
+ * @param process A handle to the program's process with RIGHT_PROCESS_KILL and RIGHT_DUPLICATE, as its launcher has,
+ *     which stays the caller's: a duplicate goes with the request.
+ * @param stops A port the program's stops go to from now, with RIGHT_PORT_BIND and RIGHT_TRANSFER, which moves with the
+ *     request, the caller's no longer, sent or not: its intercept is replaced by one there, stopping at faults; null to
+ *     keep the intercept it has.
+ * @param key The new intercept's key, with stops.
+ * @return Its steering handles, the caller's (Steering); or why not: NotAllowed, as on a connection that isn't a
+ *     steering one, NoProgram, or Failed, as when a handle couldn't be duplicated or the manager didn't answer.
+ */
+steer :: fn(
+    end : slop_os.Channel,
+    port : slop_os.Port,
+    process : slop_os.Process,
+    stops : slop_os.Port?,
+    key : u64
+) -> Result[Steering, NotSteered] {
+    out := os.Outgoing.{}
+    request :: os.begin[Request](&out)
+    given := Steer.{port = cast[slop_os.Port](slop_os.NO_HANDLE), key = key}
+    given.process = cast[slop_os.Process](slop_os.handle_duplicate(
+        cast[slop_os.Handle](process),
+        cast[slop_os.Rights](cast[u32](slop_os.RIGHT_PROCESS_KILL) | cast[u32](slop_os.RIGHT_TRANSFER))
+    ) or_else slop_os.NO_HANDLE)
+    if cast[slop_os.Handle](given.process) == slop_os.NO_HANDLE {
+        match stops {
+            case Some(stopping) => _ = slop_os.handle_close(cast[slop_os.Handle](stopping))
+            case None => {}
+        }
+        return .Error(.Failed)
+    }
+    match stops {
+        case Some(stopping) => given.port = stopping
+        case None => {}
+    }
+    request^ = .Steer(given)
+    if send_request(end, port, &out) is_some {
+        _ = slop_os.handle_close(cast[slop_os.Handle](given.process))
+        if cast[slop_os.Handle](given.port) != slop_os.NO_HANDLE {
+            _ = slop_os.handle_close(cast[slop_os.Handle](given.port))
+        }
+        return .Error(.Failed)
+    }
+    into := os.Incoming.{}
+    match receive_response(end, port, &into, true) {
+        case Received => {}
+        case _ => return .Error(.Failed)
+    }
+    return match os.message_of[Response](&into)^ {
+        case Steered(steering) => .Ok(steering)
+        case NotSteered(why) => .Error(why)
+        case _ => .Error(.Failed)
+    }
+}
 
 /**
  * Make a new connection to the process manager a connection reaches, with a Connect.

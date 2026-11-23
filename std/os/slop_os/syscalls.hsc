@@ -125,6 +125,13 @@ RIGHT_MEMORY_WRITE : Rights : 1 << 9
 RIGHT_MEMORY_EXECUTE : Rights : 1 << 10
 /** An IRQ: may acknowledge it, unmasking a level-triggered line. */
 RIGHT_IRQ_ACK : Rights : 1 << 8
+/**
+ * An intercept: may steer its subtree (the SlopOS repository's decisions/0195, 18b): change where it stops
+ * (intercept_set), and let a thread go on from a system call's stop or a new thread's, or skip its call
+ * (intercept_resume). Without it, its holder reports faults and samples: it lets a thread go on only from a fault, or
+ * kills it. An intercept's owning handle has it, as every owning handle has every right.
+ */
+RIGHT_INTERCEPT_STEER : Rights : 1 << 8
 /** A process, over its whole subtree (decisions/0017): list its threads and read their registers. */
 RIGHT_PROCESS_INSPECT : Rights : 1 << 8
 /** A process: read its memory. */
@@ -690,12 +697,14 @@ Syscalls :: struct {
     /**
      * Let a stopped thread go on.
      *
-     * @param intercept The intercept; no right is needed.
+     * @param intercept The intercept; RIGHT_INTERCEPT_STEER for Continue other than from a fault, and for Skip.
      * @param thread The stopped thread's ID, as intercept_next gave it.
      * @param action What it does: Continue, Skip (only at a system call's entry), or Kill.
      * @error NoSuchThread No thread with that ID the intercept stopped.
      * @error NotStopped The thread isn't stopped, Skip somewhere other than a system call's entry, or an action that
      *     isn't one.
+     * @error MissingRight Continue other than from a fault, or Skip, without RIGHT_INTERCEPT_STEER: the thread stays
+     *     stopped.
      */
     intercept_resume : fn(intercept : Intercept, thread : u64, action : InterceptAction) -> Result[void, ControlError],
     /**
@@ -1194,9 +1203,10 @@ Syscalls :: struct {
      * Change where an intercept stops threads, as intercept_attach's calls and points say; threads stopped already
      * stay stopped until they're let go.
      *
-     * @param intercept The intercept; no right is needed.
+     * @param intercept The intercept, which needs RIGHT_INTERCEPT_STEER.
      * @param calls Which system calls stop at entry or exit from now: a bit per call number below 64 (syscall_bit).
      * @param points STOP_ bits: where threads stop from now.
+     * @error MissingRight The intercept's handle lacks RIGHT_INTERCEPT_STEER.
      */
     intercept_set : fn(intercept : Intercept, calls : u64, points : u32) -> Result[void, ControlError],
     /**
