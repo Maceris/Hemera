@@ -165,22 +165,55 @@ namespace hemera {
 	}
 
 	/*
+	 * Waits until every struct and union a walk of type reaches, as far as reach says, is complete, so a check that
+	 * reads their fields and variants, their #secret or #thread_bound, reads them final: a value's type, like a
+	 * call's result or what a dynamic array or pointer holds, may only have needed to be declared, and another thread
+	 * may still be making its body. FAILED when one of them failed, which is reported already. One with no declaration
+	 * to wait for, like an anonymous struct whose holder's body is still making it, is passed over, and the checks
+	 * don't look into it.
+	 */
+	static Progress require_reached_complete(Walk& walk, const ast::Node* where, TypeInfo const* type, Reach reach) {
+		std::vector<TypeInfo const*> unwaitable;
+		while (true) {
+			std::vector<TypeInfo const*> passed = unwaitable;
+			TypeInfo* missing = incomplete_reached(type, reach, passed);
+			if (missing == nullptr) {
+				return Progress::DONE;
+			}
+			Progress progress = require_laid_out(walk, where, missing);
+			if (progress != Progress::DONE) {
+				return progress;
+			}
+			if (!missing->complete) {
+				unwaitable.push_back(missing);
+			}
+		}
+	}
+
+	/*
 	 * Whether a value can become an any: not when it holds or reaches a secret, a #secret field in it or a pointer to
 	 * one, since an any is formatted, logged and kept where its type is lost (docs/memory.md, Secrets). A secret value
-	 * itself is require_secret_fits's to refuse.
+	 * itself is require_secret_fits's to refuse. Waits for what the value's type reaches to be complete.
 	 */
-	static bool require_no_secret_in_any(Checker& checker, const Value& value, TypeInfo const* type, const ast::Node* where,
+	static Progress require_no_secret_in_any(Checker& checker, const Value& value, TypeInfo const* type, const ast::Node* where,
 		std::string_view what) {
 
 		TypeInfo const* held = type != nullptr ? get_base_type(type) : nullptr;
 		if (held == nullptr || TypeInfoVariant::ANY != held->variant || ValueKind::VALUE != value.kind || value.is_secret
-			|| value.type == nullptr || is_secret_type(value.type) || !holds_secret(value.type)) {
-			return true;
+			|| value.type == nullptr) {
+			return Progress::DONE;
+		}
+		Progress progress = require_reached_complete(checker.walk, where, value.type, Reach::EVERYWHERE);
+		if (progress != Progress::DONE) {
+			return Progress::FAILED == progress ? Progress::DONE : progress;
+		}
+		if (is_secret_type(value.type) || !holds_secret(value.type)) {
+			return Progress::DONE;
 		}
 		error_at(checker, ErrorCode::E4037, where, std::format(
 			"{} is an any, and this holds or points to a secret, which would be formatted or logged with its type lost; "
 			"pass what's public in it, or compiler.declassify what's public by design", what));
-		return false;
+		return Progress::DONE;
 	}
 
 	static std::string text_of(InternedString value) {
@@ -1083,17 +1116,29 @@ namespace hemera {
 	}
 
 	/*
-	 * A value with a relative pointer in it can't be one of its own (docs/types.md, Relative Pointers): what's
-	 * reported, for what it would be, or false if type has none.
+	 * A value with a relative pointer in it can't be one of its own (docs/types.md, Relative Pointers): reported, for
+	 * what it would be, with reported set; left false if type has none. Waits for what type holds in place to be
+	 * complete first.
 	 */
-	static bool report_relative(Checker& checker, ast::Node* where, TypeInfo const* type, std::string_view what) {
-		if (type == nullptr || !holds_relative(type)) {
-			return false;
+	static Progress report_relative(Checker& checker, ast::Node* where, TypeInfo const* type, std::string_view what,
+		bool& reported) {
+
+		reported = false;
+		if (type == nullptr) {
+			return Progress::DONE;
+		}
+		Progress progress = require_reached_complete(checker.walk, where, type, Reach::IN_PLACE);
+		if (progress != Progress::DONE) {
+			return Progress::FAILED == progress ? Progress::DONE : progress;
+		}
+		if (!holds_relative(type)) {
+			return Progress::DONE;
 		}
 		error_at(checker, ErrorCode::E4040, where, std::format(
 			"{} would be a copy of {}, which has a relative pointer in it: one means something only where it's stored, so set it "
 			"there (docs/types.md, Relative Pointers)", what, to_string(type)));
-		return true;
+		reported = true;
+		return Progress::DONE;
 	}
 
 	/*
@@ -2044,17 +2089,21 @@ namespace hemera {
 	/*
 	 * A value given to a #crosses_threads parameter, like a new thread's data, can't reach anything
 	 * #thread_bound: checked by the value's own type, even when it's passed as an any
-	 * (docs/multitasking.md, Values That Stay on Their Thread).
+	 * (docs/multitasking.md, Values That Stay on Their Thread). Waits for everything the value reaches to be complete.
 	 */
-	static void require_stays(Checker& checker, const Value& value, const FunctionInput& input, TypeInfoFunction const* function,
+	static Progress require_stays(Checker& checker, const Value& value, const FunctionInput& input, TypeInfoFunction const* function,
 		const ast::Node* where) {
 
 		if (!input.crosses_threads || ValueKind::VALUE != value.kind) {
-			return;
+			return Progress::DONE;
+		}
+		Progress progress = require_reached_complete(checker.walk, where, value.type, Reach::EVERYWHERE);
+		if (progress != Progress::DONE) {
+			return Progress::FAILED == progress ? Progress::DONE : progress;
 		}
 		TypeInfo const* bound = thread_bound_part(value.type);
 		if (bound == nullptr) {
-			return;
+			return Progress::DONE;
 		}
 		const std::string given = to_string(value.type);
 		const std::string reason = same_type(bound, value.type) ? std::format("{} is #thread_bound", given)
@@ -2062,6 +2111,7 @@ namespace hemera {
 		error_at(checker, ErrorCode::E4036, where, std::format("{}, so it can't be given to {}, which goes to another thread",
 			reason, input.name != nullptr ? text_of(input.name) : std::string("a parameter")));
 		(void)function;
+		return Progress::DONE;
 	}
 
 	Progress check_type_default(WorkThreadData& executor, const FunctionInput& input);
@@ -2158,9 +2208,15 @@ namespace hemera {
 					require_fit(checker, value, input.type, argument, std::format("{}", text_of(input.name)));
 					if (!checker.intrinsic_arguments) {
 						require_secret_fits(checker, value.is_secret, input.type, false, argument, std::format("{}", text_of(input.name)));
-						require_no_secret_in_any(checker, value, input.type, argument, std::format("{}", text_of(input.name)));
+						progress = require_no_secret_in_any(checker, value, input.type, argument, std::format("{}", text_of(input.name)));
+						if (progress != Progress::DONE) {
+							return progress;
+						}
 					}
-					require_stays(checker, value, input, function, argument);
+					progress = require_stays(checker, value, input, function, argument);
+					if (progress != Progress::DONE) {
+						return progress;
+					}
 					continue;
 				}
 				checked_already = true;
@@ -2179,10 +2235,15 @@ namespace hemera {
 			if (!checker.intrinsic_arguments) {
 				require_secret_fits(checker, value.is_secret, expected, false, argument,
 					input.name != nullptr ? std::format("{}", text_of(input.name)) : std::string("the parameter"));
-				require_no_secret_in_any(checker, value, expected, argument,
+				Progress progress = require_no_secret_in_any(checker, value, expected, argument,
 					input.name != nullptr ? std::format("{}", text_of(input.name)) : std::string("the parameter"));
+				if (progress != Progress::DONE) {
+					return progress;
+				}
 			}
-			require_stays(checker, value, input, function, argument);
+			if (Progress progress = require_stays(checker, value, input, function, argument); progress != Progress::DONE) {
+				return progress;
+			}
 			if (takes_format(parameter) && positional.node != nullptr && ast::NodeType::LITERAL == positional.node->node_type
 				&& TokenType::LITERAL_STRING == positional.node->value.type) {
 				format_literal = positional.node;
@@ -2245,7 +2306,10 @@ namespace hemera {
 				return progress;
 			}
 			require_fit(checker, value, function->input[index].type, argument, text_of(name));
-			require_stays(checker, value, function->input[index], function, argument);
+			progress = require_stays(checker, value, function->input[index], function, argument);
+			if (progress != Progress::DONE) {
+				return progress;
+			}
 		}
 		for (size_t i = 0; i < function->input.size(); ++i) {
 			if (!given[i] && !function->input[i].has_default && !function->input[i].is_varargs) {
@@ -3283,6 +3347,14 @@ namespace hemera {
 			}
 			// A secret's members and elements are secrets, but not how many it has, or where a view's or dynamic array's
 			// elements are (docs/memory.md, Secrets). What a pointer points to counts, like key.bytes through a ptr[Key]
+			if (!value.is_secret && ValueKind::VALUE == value.kind) {
+				// What it points to is read for its #secret, which its body sets, and an optional's for its variants
+				progress = require_reached_complete(checker.walk, child, value.type, Reach::POINTER_CHAIN);
+				if (Progress::PARKED == progress) {
+					return progress;
+				}
+				progress = Progress::DONE;
+			}
 			const bool was_secret = value.is_secret || (ValueKind::VALUE == value.kind && reaches_secret(value.type));
 			TypeInfo const* held_array = ValueKind::VALUE == value.kind ? base_of(value.type) : nullptr;
 			const bool elements_at = held_array != nullptr && TypeInfoVariant::ARRAY == held_array->variant
@@ -4498,7 +4570,14 @@ namespace hemera {
 		if (checker.record != nullptr) {
 			store_checked(checker.record->heads[node], typed(target));
 		}
-		if (ValueKind::POISONED == value.kind || report_relative(checker, node, target, "this cast")) {
+		bool relative = false;
+		if (ValueKind::POISONED != value.kind) {
+			progress = report_relative(checker, node, target, "this cast", relative);
+			if (progress != Progress::DONE) {
+				return progress;
+			}
+		}
+		if (ValueKind::POISONED == value.kind || relative) {
 			result = typed(target);
 			return apply_postfix(checker, node, rest, result);
 		}
@@ -4507,6 +4586,15 @@ namespace hemera {
 		 * A pointer to a secret made a pointer to what isn't one would read it as public (docs/memory.md,
 		 * Secrets). rawptr is the way past this, on purpose, where it shows.
 		 */
+		if (is_pointer(source) && is_pointer(target)) {
+			for (TypeInfo const* each : { static_cast<TypeInfo const*>(source), static_cast<TypeInfo const*>(target) }) {
+				progress = require_reached_complete(checker.walk, node, each, Reach::POINTER_CHAIN);
+				if (Progress::PARKED == progress) {
+					return progress;
+				}
+			}
+			progress = Progress::DONE;
+		}
 		if (is_pointer(source) && is_pointer(target) && reaches_secret(source) && !reaches_secret(target)
 			&& static_cast<TypeInfoPointer const*>(base_of(target))->base_type != nullptr) {
 			error_at(checker, ErrorCode::E4037, node, std::format("a cast from {} to {} would read a secret as public",
@@ -4627,7 +4715,11 @@ namespace hemera {
 		if (progress != Progress::DONE) {
 			return progress;
 		}
-		report_relative(checker, node, type, "this literal");
+		bool relative = false;
+		progress = report_relative(checker, node, type, "this literal", relative);
+		if (progress != Progress::DONE) {
+			return progress;
+		}
 		TypeInfo const* base = base_of(type);
 		ast::Node* list = nullptr;
 		for (ast::Node* child : node->children) {
@@ -5716,7 +5808,14 @@ namespace hemera {
 				"what's assigned to");
 			if (TokenType::INVALID == op) {
 				// A relative pointer's place takes the pointer it's set to; anything else with one in it isn't copied
-				if (target_values[i].stored_type == nullptr && report_relative(checker, targets[i], types[i], "this assignment")) {
+				bool relative = false;
+				if (target_values[i].stored_type == nullptr) {
+					Progress progress = report_relative(checker, targets[i], types[i], "this assignment", relative);
+					if (progress != Progress::DONE) {
+						return progress;
+					}
+				}
+				if (relative) {
 					continue;
 				}
 				require_fit(checker, value, types[i], targets[i], "this assignment");
@@ -5903,7 +6002,12 @@ namespace hemera {
 				value.is_mutable = false;
 			}
 			if (ValueKind::VALUE == value.kind && !parts.is_constant) {
-				report_relative(checker, parts.names[i], value.type, std::format("variable {}", text_of(parts.names[i]->value.value)));
+				bool relative = false;
+				Progress progress = report_relative(checker, parts.names[i], value.type,
+					std::format("variable {}", text_of(parts.names[i]->value.value)), relative);
+				if (progress != Progress::DONE) {
+					return progress;
+				}
 			}
 			declare_local(checker, parts.names[i], parts.names[i]->value.value, value);
 			if (nested_function && !checker.scopes.back().locals.empty()) {
@@ -7380,11 +7484,19 @@ namespace hemera {
 			return defaults;
 		}
 		for (const FunctionInput& input : type->input) {
-			report_relative(checker, function_node, input.type, input.name != nullptr
-				? std::format("parameter {}", text_of(input.name)) : std::string("a parameter"));
+			bool relative = false;
+			Progress progress = report_relative(checker, function_node, input.type, input.name != nullptr
+				? std::format("parameter {}", text_of(input.name)) : std::string("a parameter"), relative);
+			if (progress != Progress::DONE) {
+				return progress;
+			}
 		}
 		for (const FunctionOutput& output : type->output) {
-			report_relative(checker, function_node, output.type, "a result");
+			bool relative = false;
+			Progress progress = report_relative(checker, function_node, output.type, "a result", relative);
+			if (progress != Progress::DONE) {
+				return progress;
+			}
 		}
 		check_variadic_boundaries(checker, function_node, type);
 		push_scope(checker);
@@ -7608,7 +7720,14 @@ namespace hemera {
 			&& *function->package_path == *intern(options->input.string());
 		if (slop_os_entry) {
 			for (const FunctionInput& input : type->input) {
-				if (entry_grant_of(input.type).kind.empty() && !is_entry_value_type(input.type)) {
+				if (!entry_grant_of(input.type).kind.empty()) {
+					continue;
+				}
+				Progress progress = require_reached_complete(walk, function->node, input.type, Reach::EVERYWHERE);
+				if (Progress::PARKED == progress) {
+					return progress;
+				}
+				if (Progress::DONE == progress && !is_entry_value_type(input.type)) {
 					error_at(checker, ErrorCode::E4014, function->node, std::format(
 						"{} is given to the program, as a handle or as a value written for it, so it can't be a function, a type, an any or a rawptr, as {} is or holds",
 						text_of(input.name), to_string(input.type)));
@@ -7619,9 +7738,17 @@ namespace hemera {
 		checker.own_tree = function->generic != nullptr && function->node != function->generic->node;
 		// A secret parameter or result is working with secrets, used or not (docs/memory.md, Secrets)
 		for (const FunctionInput& input : type->input) {
+			if (Progress progress = require_reached_complete(walk, function->node, input.type, Reach::POINTER_CHAIN);
+				Progress::PARKED == progress) {
+				return progress;
+			}
 			checker.saw_secret = checker.saw_secret || reaches_secret(input.type);
 		}
 		for (const FunctionOutput& output : type->output) {
+			if (Progress progress = require_reached_complete(walk, function->node, output.type, Reach::POINTER_CHAIN);
+				Progress::PARKED == progress) {
+				return progress;
+			}
 			checker.saw_secret = checker.saw_secret || reaches_secret(output.type);
 		}
 		/*

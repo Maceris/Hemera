@@ -66,6 +66,13 @@ namespace hemera {
 	Progress require_complete(Walk& walk, ast::Node* where, TypeInfo* type);
 
 	/// <summary>
+	/// require_complete for a type the walk reaches rather than names: where, which may be a use of something else,
+	/// like an argument naming a local, is only where a cycle through this wait is reported, so it isn't bound to
+	/// the type's declaration. FAILED when that declaration failed, which is reported already.
+	/// </summary>
+	Progress require_laid_out(Walk& walk, const ast::Node* where, TypeInfo* type);
+
+	/// <summary>
 	/// Requires every alias among a generic's arguments to know what it names, parking the walk's work until each is
 	/// resolved: an instance is keyed by what its arguments' aliases name, which an alias only declared doesn't know
 	/// yet, so two different ones would share an instance (instance_of).

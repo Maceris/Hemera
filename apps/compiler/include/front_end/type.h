@@ -560,9 +560,38 @@ namespace hemera {
 
 	/// <summary>
 	/// The #thread_bound type a value of type can reach, through its fields, arrays, unions, pointers and views,
-	/// or null if there's none: then it can be given to another thread.
+	/// or null if there's none: then it can be given to another thread. Every struct and union it reaches is
+	/// complete first (incomplete_reached, Reach::EVERYWHERE); one that isn't counts as not #thread_bound.
 	/// </summary>
 	TypeInfo const* thread_bound_part(TypeInfo const* type);
+
+	/// <summary>
+	/// How far a walk of what a type holds goes, for incomplete_reached.
+	/// </summary>
+	enum class Reach {
+		/// <summary>
+		/// What it holds in place: its fields, its union payloads and its static arrays' elements (holds_relative).
+		/// </summary>
+		IN_PLACE,
+		/// <summary>
+		/// Through pointers and arrays to what they hold, and that type itself, but not its fields or variants
+		/// (reaches_secret, is_secret_type).
+		/// </summary>
+		POINTER_CHAIN,
+		/// <summary>
+		/// Everything it holds or reaches: fields, union payloads, every kind of array's elements and what pointers
+		/// point to (thread_bound_part, holds_secret, is_entry_value_type).
+		/// </summary>
+		EVERYWHERE,
+	};
+
+	/// <summary>
+	/// The first struct or union a walk of type reaches, as far as reach says, that isn't complete yet, whose fields
+	/// or variants another thread may still be making; null when every one is. passed holds the ones the walk
+	/// treats as complete without looking, and gets every one it went into added; it may start empty. The walk
+	/// goes into each type once, so a type that holds itself, like Node { kids : Node[..] }, ends.
+	/// </summary>
+	TypeInfo* incomplete_reached(TypeInfo const* type, Reach reach, std::vector<TypeInfo const*>& passed);
 
 	/// <summary>
 	/// Whether values of type are secrets: a #secret struct or distinct alias, an alias of one, or an
@@ -578,7 +607,8 @@ namespace hemera {
 
 	/// <summary>
 	/// Whether a value of type holds a secret anywhere in it: is one, or has one in a field, an element or an optional's
-	/// value, or points to one (docs/memory.md, Secrets), which an any can't carry.
+	/// value, or points to one (docs/memory.md, Secrets), which an any can't carry. What it reaches is complete first
+	/// (incomplete_reached, Reach::EVERYWHERE); a struct or union that isn't is not looked into.
 	/// </summary>
 	bool holds_secret(TypeInfo const* type);
 
@@ -624,7 +654,8 @@ namespace hemera {
 
 	/// <summary>
 	/// Whether a value of type has a relative pointer in it, in a field or element rather than through a
-	/// pointer: it means something only where it's stored, so it's never a value of its own.
+	/// pointer: it means something only where it's stored, so it's never a value of its own. What it holds in place
+	/// is complete first (incomplete_reached, Reach::IN_PLACE); a struct or union that isn't is not looked into.
 	/// </summary>
 	bool holds_relative(TypeInfo const* type);
 
@@ -665,7 +696,8 @@ namespace hemera {
 	/// <summary>
 	/// Whether a SlopOS entry's parameter that isn't a handle can be given as a value (docs/compilation.md, Entry
 	/// Parameters): any type a schema describes and a value can be written for elsewhere, so not a function, a type,
-	/// an any, a rawptr, or a type holding one.
+	/// an any, a rawptr, or a type holding one. What it reaches is complete first (incomplete_reached,
+	/// Reach::EVERYWHERE); a struct or union that isn't is not looked into.
 	/// </summary>
 	bool is_entry_value_type(TypeInfo const* type);
 

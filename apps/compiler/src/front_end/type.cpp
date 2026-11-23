@@ -288,6 +288,10 @@ namespace hemera {
 			auto array = static_cast<TypeInfoArray const*>(type);
 			return ArrayType::STATIC == array->array_type && holds_relative(array->element_type);
 		}
+		// Fields and variants are read once they're final: the checks wait for that (incomplete_reached)
+		if (!type->complete) {
+			return false;
+		}
 		if (TypeInfoVariant::STRUCT == type->variant) {
 			for (const StructMember& member : static_cast<TypeInfoStruct const*>(type)->members) {
 				if (holds_relative(member.member_type)) {
@@ -623,6 +627,9 @@ namespace hemera {
 		if (TypeInfoVariant::ARRAY == base->variant) {
 			return holds_secret_within(static_cast<TypeInfoArray const*>(base)->element_type, depth + 1);
 		}
+		if (!base->complete) {
+			return false;
+		}
 		if (TypeInfoVariant::STRUCT == base->variant) {
 			for (const StructMember& member : static_cast<TypeInfoStruct const*>(base)->members) {
 				if (holds_secret_within(member.member_type, depth + 1)) {
@@ -764,6 +771,9 @@ namespace hemera {
 			if (TypeInfoVariant::ARRAY == variant) {
 				return writable(static_cast<TypeInfoArray const*>(each)->element_type);
 			}
+			if (!each->complete) {
+				return true;
+			}
 			if (TypeInfoVariant::STRUCT == variant) {
 				for (const StructMember& member : static_cast<TypeInfoStruct const*>(each)->members) {
 					if (!writable(member.member_type)) {
@@ -899,6 +909,9 @@ namespace hemera {
 		seen.push_back(base);
 		if (TypeInfoVariant::STRUCT == base->variant) {
 			auto structure = static_cast<TypeInfoStruct const*>(base);
+			if (!structure->complete) {
+				return nullptr;
+			}
 			if (structure->is_thread_bound) {
 				return type;
 			}
@@ -908,7 +921,7 @@ namespace hemera {
 				}
 			}
 		}
-		else if (TypeInfoVariant::UNION == base->variant) {
+		else if (TypeInfoVariant::UNION == base->variant && base->complete) {
 			for (const UnionVariant& variant : static_cast<TypeInfoUnion const*>(base)->variants) {
 				for (TypeInfo* payload : variant.types) {
 					if (TypeInfo const* found = thread_bound_part(payload, seen)) {
@@ -929,6 +942,58 @@ namespace hemera {
 	TypeInfo const* thread_bound_part(TypeInfo const* type) {
 		std::vector<TypeInfo const*> seen;
 		return thread_bound_part(type, seen);
+	}
+
+	TypeInfo* incomplete_reached(TypeInfo const* type, Reach reach, std::vector<TypeInfo const*>& passed) {
+		// Through aliases, each of which knows what it names and its layout once it's complete
+		while (type != nullptr && TypeInfoVariant::ALIAS == type->variant) {
+			if (!type->complete) {
+				return const_cast<TypeInfo*>(type);
+			}
+			type = static_cast<TypeInfoAlias const*>(type)->base_type;
+		}
+		if (type == nullptr || std::find(passed.begin(), passed.end(), type) != passed.end()) {
+			return nullptr;
+		}
+		const TypeInfoVariant variant = type->variant;
+		if (TypeInfoVariant::STRUCT == variant || TypeInfoVariant::UNION == variant) {
+			if (!type->complete) {
+				return const_cast<TypeInfo*>(type);
+			}
+			passed.push_back(type);
+			if (Reach::POINTER_CHAIN == reach) {
+				return nullptr;
+			}
+			if (TypeInfoVariant::STRUCT == variant) {
+				for (const StructMember& member : static_cast<TypeInfoStruct const*>(type)->members) {
+					if (TypeInfo* found = incomplete_reached(member.member_type, reach, passed)) {
+						return found;
+					}
+				}
+				return nullptr;
+			}
+			for (const UnionVariant& each : static_cast<TypeInfoUnion const*>(type)->variants) {
+				for (TypeInfo const* payload : each.types) {
+					if (TypeInfo* found = incomplete_reached(payload, reach, passed)) {
+						return found;
+					}
+				}
+			}
+			return nullptr;
+		}
+		if (TypeInfoVariant::ARRAY == variant) {
+			auto array = static_cast<TypeInfoArray const*>(type);
+			if (Reach::IN_PLACE == reach && ArrayType::STATIC != array->array_type) {
+				return nullptr;
+			}
+			passed.push_back(type);
+			return incomplete_reached(array->element_type, reach, passed);
+		}
+		if (TypeInfoVariant::POINTER == variant && Reach::IN_PLACE != reach) {
+			passed.push_back(type);
+			return incomplete_reached(static_cast<TypeInfoPointer const*>(type)->base_type, reach, passed);
+		}
+		return nullptr;
 	}
 
 	bool same_type(TypeInfo const* a, TypeInfo const* b) {

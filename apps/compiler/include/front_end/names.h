@@ -574,6 +574,13 @@ namespace hemera {
 	void check_provisional_uses(GlobalThreadData& global_data);
 
 	/// <summary>
+	/// Called once all work is done, with every type complete: reports each struct that holds an owner without
+	/// saying #owned (E4035), and each that holds a #scoped struct without being #scoped (E4014), in the order of
+	/// where they're declared (docs/memory.md, Owned Types and Scoped Structs).
+	/// </summary>
+	void check_held_fields(GlobalThreadData& global_data);
+
+	/// <summary>
 	/// The file a work target refers to, or null.
 	/// </summary>
 	FileInfo* find_file(ProgramInfo* program_info, InternedString package_path,

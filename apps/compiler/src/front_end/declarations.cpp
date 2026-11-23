@@ -1,6 +1,7 @@
 #include <algorithm>
 #include <format>
 #include <memory>
+#include <tuple>
 
 #include "error/reporting.h"
 #include "front_end/checking.h"
@@ -1817,30 +1818,60 @@ namespace hemera {
 			}
 		}
 		/*
-		 * Holding an owner makes a struct owned (docs/memory.md, Owned Types). One of its own, not an
-		 * instance of a generic, says so, with the function that releases it.
+		 * Whether it holds an owner or a #scoped struct is checked once every type is complete (check_held_fields):
+		 * through a dynamic array or a generic's instance, what it holds needn't be yet, and whether it's #owned
+		 * or #scoped, and what's in it, would depend on which thread got there first.
 		 */
-		if (!type->is_owned && type->instance == nullptr && !has_owned_directive(node)) {
-			for (const StructMember& member : type->members) {
-				if (is_owned(member.member_type)) {
-					return type_error(walk, ErrorCode::E4035, node, std::format("{} holds {}, which is #owned, so it's owned too: "
-						"say so, with the function that releases it, like #owned(release_{})", name_text(type->name),
-						to_string(member.member_type), name_text(type->name)));
-				}
-			}
-		}
-		// A #scoped struct is only ever held by another #scoped one (docs/memory.md, Scoped Structs)
-		if (!type->is_scoped) {
-			for (const StructMember& member : type->members) {
-				if (TypeInfo const* scoped = scoped_part(member.member_type)) {
-					return type_error(walk, ErrorCode::E4014, node, std::format("{} holds {}, which is #scoped, so it can only be held by "
-						"a #scoped struct: mark {} #scoped, or hold a pointer to it", name_text(type->name), to_string(scoped),
-						name_text(type->name)));
-				}
-			}
+		const bool says_owned = !type->is_owned && type->instance == nullptr && !has_owned_directive(node);
+		if (says_owned || !type->is_scoped) {
+			ProgramInfo* program = walk.executor.program_info;
+			std::scoped_lock<std::mutex> lock(program->held_fields_mutex);
+			program->held_fields.push_back(HeldFields{ type, node, walk.file_path, says_owned });
 		}
 		lay_out_struct(type);
 		return Progress::DONE;
+	}
+
+	void check_held_fields(GlobalThreadData& global_data) {
+		ProgramInfo* program = global_data.program_info;
+		std::vector<HeldFields> held;
+		{
+			std::scoped_lock<std::mutex> lock(program->held_fields_mutex);
+			held.swap(program->held_fields);
+		}
+		// Reported in the order they're declared, whichever thread made each
+		std::sort(held.begin(), held.end(), [](const HeldFields& a, const HeldFields& b) {
+			return std::make_tuple(std::string_view(a.file_path), a.node->value.line_number, a.node->value.column_number)
+				< std::make_tuple(std::string_view(b.file_path), b.node->value.line_number, b.node->value.column_number);
+		});
+		for (const HeldFields& each : held) {
+			TypeInfoStruct const* type = each.type;
+			/*
+			 * Holding an owner makes a struct owned (docs/memory.md, Owned Types). One of its own, not an
+			 * instance of a generic, says so, with the function that releases it.
+			 */
+			if (each.says_owned) {
+				for (const StructMember& member : type->members) {
+					if (is_owned(member.member_type)) {
+						report_at(ErrorCode::E4035, each.file_path, &program->made_nodes, each.node, std::format("{} holds {}, which is "
+							"#owned, so it's owned too: say so, with the function that releases it, like #owned(release_{})",
+							name_text(type->name), to_string(member.member_type), name_text(type->name)));
+						break;
+					}
+				}
+			}
+			// A #scoped struct is only ever held by another #scoped one (docs/memory.md, Scoped Structs)
+			if (!type->is_scoped) {
+				for (const StructMember& member : type->members) {
+					if (TypeInfo const* scoped = scoped_part(member.member_type)) {
+						report_at(ErrorCode::E4014, each.file_path, &program->made_nodes, each.node, std::format("{} holds {}, which "
+							"is #scoped, so it can only be held by a #scoped struct: mark {} #scoped, or hold a pointer to it",
+							name_text(type->name), to_string(scoped), name_text(type->name)));
+						break;
+					}
+				}
+			}
+		}
 	}
 
 	// docs/types.md, Unions: variants, each with the types of its values.

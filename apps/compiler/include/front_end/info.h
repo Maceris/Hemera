@@ -37,6 +37,25 @@ namespace hemera {
 		const Declaration* declaration;
 	};
 
+	/// <summary>
+	/// A struct whose body is made, waiting for the checks on what its fields hold, which look through dynamic arrays
+	/// and generic instances into types that needn't be complete when its body is: once every type is, they see
+	/// the same whichever thread made which first (check_held_fields).
+	/// </summary>
+	struct HeldFields {
+		TypeInfoStruct const* type;
+		/// <summary>
+		/// Its declaration, where an error about it is reported.
+		/// </summary>
+		const ast::Node* node;
+		std::string file_path;
+		/// <summary>
+		/// Whether it has to say #owned if it holds an owner: it's one of its own, not an instance of a generic, and
+		/// has no #owned, which a condition may have made false.
+		/// </summary>
+		bool says_owned;
+	};
+
 	enum class IdentifierKind : uint8_t {
 		UNKNOWN,
 		CONSTANT,
@@ -293,6 +312,12 @@ namespace hemera {
 		/// </summary>
 		std::vector<StackCheck> stack_checks;
 		std::mutex stack_checks_mutex;
+
+		/// <summary>
+		/// Every struct waiting for the checks on what its fields hold, and their mutex.
+		/// </summary>
+		std::vector<HeldFields> held_fields;
+		std::mutex held_fields_mutex;
 
 		ProgramInfo(mlir::MLIRContext* mlir_context, 
 			mlir::OpBuilder* mlir_op_builder,

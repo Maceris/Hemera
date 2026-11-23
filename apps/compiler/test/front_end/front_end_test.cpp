@@ -911,6 +911,15 @@ TEST(FrontEnd, ReportsBodyErrors)
 		{ "mut_argument_read_only", hemera::ErrorCode::E4016 },
 		{ "read_only_held", hemera::ErrorCode::E4015 },
 		{ "owned_not_marked", hemera::ErrorCode::E4035 },
+		/*
+		 * Reached through a dynamic array, whose elements' bodies a slow #insert holds back, or round a cycle: the same
+		 * whichever thread gets there first
+		 */
+		{ "owned_held_slow_instance", hemera::ErrorCode::E4035 },
+		{ "owned_conditional_slow_instance", hemera::ErrorCode::E4035 },
+		{ "owned_held_in_cycle", hemera::ErrorCode::E4035 },
+		{ "thread_bound_slow_instance", hemera::ErrorCode::E4036 },
+		{ "secret_in_slow_body", hemera::ErrorCode::E4037 },
 		{ "stack_unrestricted_result_function", hemera::ErrorCode::E4015 },
 		{ "bounds_unchecked", hemera::ErrorCode::E4031 },
 		{ "bounds_past_static", hemera::ErrorCode::E4031 },

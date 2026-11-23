@@ -1506,14 +1506,18 @@ namespace hemera {
 		return check_locked(walk, names, where, declaration, need);
 	}
 
-	Progress require_complete(Walk& walk, ast::Node* where, TypeInfo* type) {
+	/*
+	 * require_complete, and with record, where is a use of the type's declaration, bound to it for the walk and
+	 * recorded for the name index; without, where is only where to say a cycle is, if it's part of one.
+	 */
+	static Progress require_complete(Walk& walk, ast::Node* where, TypeInfo* type, bool record) {
 		if (type == nullptr || type->complete) {
 			return Progress::DONE;
 		}
 		// A generic argument written with mut is laid out as what it aliases, once that is
 		if (is_mutable_argument(type)) {
 			auto alias = static_cast<TypeInfoAlias*>(type);
-			Progress progress = require_complete(walk, where, alias->base_type);
+			Progress progress = require_complete(walk, where, alias->base_type, record);
 			if (progress == Progress::DONE && alias->base_type->complete) {
 				NameRegistry& names = walk.executor.program_info->names;
 				std::scoped_lock<std::mutex> lock(names.types_mutex);
@@ -1530,7 +1534,26 @@ namespace hemera {
 			// Made complete by its own construction, like an array of complete elements
 			return Progress::DONE;
 		}
-		return check_locked(walk, names, where, iter->second, Need::RESOLVED);
+		Declaration* declaration = iter->second;
+		if (record) {
+			return check_locked(walk, names, where, declaration, Need::RESOLVED);
+		}
+		if (declaration->failed) {
+			return Progress::FAILED; // already reported
+		}
+		if (!declaration->resolved) {
+			park_locked(walk, names, resolved_key(declaration), where, declaration->name, nullptr);
+			return Progress::PARKED;
+		}
+		return Progress::DONE;
+	}
+
+	Progress require_complete(Walk& walk, ast::Node* where, TypeInfo* type) {
+		return require_complete(walk, where, type, true);
+	}
+
+	Progress require_laid_out(Walk& walk, const ast::Node* where, TypeInfo* type) {
+		return require_complete(walk, const_cast<ast::Node*>(where), type, false);
 	}
 
 	Progress require_aliases_resolved(Walk& walk, ast::Node* where, const std::vector<TypeInfo*>& arguments) {

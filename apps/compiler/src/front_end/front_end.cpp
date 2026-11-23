@@ -232,6 +232,8 @@ namespace hemera {
 			}
 			else {
 				check_provisional_uses(data);
+				// What structs hold, now that every type they reach is complete
+				check_held_fields(data);
 				// Pointers to the stack, in every body at once, now that all are checked (stack_pointers.h)
 				check_all_stack_pointers(data.program_info->stack_checks);
 			}
