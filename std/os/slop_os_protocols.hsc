@@ -426,6 +426,8 @@ FieldKind :: enum {
     Handle,
     /** A Relative, whose items have to be inside the message. */
     Relative,
+    /** An integer field with #at_most, which has to be at most it (docs/types.md, Bounded Fields). */
+    AtMost,
 }
 
 /** What a message's type needs checked, and its handles: one per field that needs either. */
@@ -442,6 +444,9 @@ FieldCheck :: struct {
     values : u128[],
     /** A typed channel's protocol tag, 0 for a plain handle or another kind. */
     tag : u64,
+    /** An AtMost field's bound, and whether the field's signed, so a negative value's under it whatever its bits. */
+    at_most : u64,
+    is_signed : bool,
 }
 
 /**
@@ -645,6 +650,18 @@ checks_of :: fn(fields : FieldCheck[], fixed : usize) -> compiler.Code {
                 }
             })
         }
+        else if field.kind == .AtMost {
+            // A signed field's negative value is under its bound whatever its bits are
+            sign :: if field.is_signed && field.size > 0 { cast[u64](1) << cast[u64](8 * field.size - 1) } else { cast[u64](0) }
+            array_add(&made, #code {
+                {
+                    value :: os.read_message(message, #insert offset, #insert field.size)
+                    if value & #insert sign == 0 && value > #insert field.at_most {
+                        return .Invalid
+                    }
+                }
+            })
+        }
         else if field.kind == .Handle {
             array_add(&made, #code {
                 if !os.index_takes(message, #insert offset, handle_count, &named) {
@@ -773,6 +790,20 @@ collect :: fn(type : ptr[compiler.TypeInfo], offset : usize, fields : ptr[mut Fi
         }
         for member in structure.members {
             collect(member.member_type, offset + member.offset, fields)
+            // A field with #at_most, which the reader's code trusts, as it does an enum's value
+            if member.has_at_most {
+                integer :: cast[ptr[compiler.TypeInfoInteger]](member.member_type)
+                array_add(
+                    fields,
+                    FieldCheck.{
+                        kind = .AtMost,
+                        offset = offset + member.offset,
+                        size = member.member_type.size,
+                        at_most = member.at_most,
+                        is_signed = member.member_type.variant == .INTEGER && integer.is_signed,
+                    }
+                )
+            }
         }
         return void
     }

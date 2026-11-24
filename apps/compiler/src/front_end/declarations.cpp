@@ -1626,6 +1626,72 @@ namespace hemera {
 		return false;
 	}
 
+	/*
+	 * A field's #at_most(n) (docs/types.md, Bounds Checking): n is a fixed array field's count, written items.count, or
+	 * a constant at least 0, and the field an integer whose default, if it has one, is at most it.
+	 */
+	static Progress field_bound(Walk& walk, TypeInfoStruct* type, size_t index, ast::Node* directive) {
+		std::vector<ast::Node*> arguments;
+		for (ast::Node* child : directive->children) {
+			if (ast::NodeType::PAREN_GROUP != child->node_type) {
+				arguments.push_back(child);
+			}
+		}
+		StructMember& member = type->members[index];
+		TypeInfo const* field = get_base_type(member.member_type);
+		if (field == nullptr || TypeInfoVariant::INTEGER != field->variant) {
+			return type_error(walk, ErrorCode::E4014, directive, std::format("#at_most is for an integer field, and {} is a {}",
+				name_text(member.name), to_string(member.member_type)));
+		}
+		if (arguments.size() != 1) {
+			return type_error(walk, ErrorCode::E4014, directive, "#at_most takes one thing: a fixed array field's count, or a constant");
+		}
+		ast::Node* argument = arguments[0];
+		// items.count: a fixed array field of this struct
+		const bool counted = ast::NodeType::IDENTIFIER == argument->node_type && argument->children.size() == 2
+			&& ast::NodeType::DOT_ACCESS == argument->children[0]->node_type
+			&& ast::NodeType::IDENTIFIER == argument->children[1]->node_type
+			&& is_text(argument->children[1]->value.value, "count");
+		uint64_t bound = 0;
+		if (counted) {
+			const StructMember* array = nullptr;
+			for (const StructMember& other : type->members) {
+				if (other.name == argument->value.value && !other.is_using) {
+					array = &other;
+				}
+			}
+			TypeInfo const* held = array != nullptr ? get_base_type(array->member_type) : nullptr;
+			if (held == nullptr || TypeInfoVariant::ARRAY != held->variant
+				|| ArrayType::STATIC != static_cast<TypeInfoArray const*>(held)->array_type) {
+				return type_error(walk, ErrorCode::E4014, argument, std::format(
+					"#at_most({}.count) needs {} to be a fixed array field of this struct, whose count can't change",
+					name_text(argument->value.value), name_text(argument->value.value)));
+			}
+			bound = static_cast<TypeInfoArray const*>(held)->count;
+			member.at_most_of = argument->value.value;
+		}
+		else {
+			ConstantValue value;
+			Progress progress = evaluate_in(walk, argument, value);
+			if (progress != Progress::DONE) {
+				return progress;
+			}
+			if (ConstantValue::Kind::INTEGER != value.kind || value.integer < 0) {
+				return type_error(walk, ErrorCode::E4014, argument,
+					"#at_most takes a fixed array field's count, like items.count, or a constant at least 0");
+			}
+			bound = static_cast<uint64_t>(value.integer);
+		}
+		if (member.has_value && StructMember::Default::INTEGER == member.default_kind
+			&& member.default_integer > 0 && static_cast<uint64_t>(member.default_integer) > bound) {
+			return type_error(walk, ErrorCode::E4014, directive, std::format("{}'s default, {}, is past its #at_most, {}",
+				name_text(member.name), member.default_integer, bound));
+		}
+		member.has_at_most = true;
+		member.at_most = bound;
+		return Progress::DONE;
+	}
+
 	// docs/types.md, Structs: fields, using, anonymous structs, and #packed, #align, #union, #scoped, #unrestricted.
 	static Progress struct_body(Walk& walk, ast::Node* node, TypeInfoStruct* type) {
 		Progress inserted = insert_members(walk, node);
@@ -1633,6 +1699,8 @@ namespace hemera {
 			return inserted;
 		}
 		type->members.clear();
+		// Fields with #at_most, by their index in members, and the directive
+		std::vector<std::pair<size_t, ast::Node*>> bounded;
 		for (ast::Node* child : node->children) {
 			const ast::NodeType child_type = child->node_type;
 			if (ast::NodeType::DIRECTIVE == child_type) {
@@ -1790,6 +1858,18 @@ namespace hemera {
 				else {
 					type->members.push_back(with_default(names_node->value.value, false));
 				}
+				// #at_most(n) on its name, worked out once every member's known, as n may be a later one's count
+				if (ast::NodeType::IDENTIFIER == names_node->node_type && !named_using) {
+					for (ast::Node* directive : names_node->children) {
+						if (ast::NodeType::DIRECTIVE == directive->node_type && is_text(directive->value.value, "#at_most")) {
+							bounded.emplace_back(type->members.size() - 1, directive);
+						}
+						else if (ast::NodeType::DIRECTIVE == directive->node_type) {
+							return type_error(walk, ErrorCode::E4014, directive,
+								std::format("a field takes #at_most, not {}", name_text(directive->value.value)));
+						}
+					}
+				}
 			}
 			else if (ast::NodeType::USING == child_type && !child->children.empty()) {
 				// using Name, or using package.Name: the walker bound the last part
@@ -1815,6 +1895,12 @@ namespace hemera {
 				used.member_type = included;
 				used.is_using = true;
 				type->members.push_back(used);
+			}
+		}
+		for (const auto& [index, directive] : bounded) {
+			Progress progress = field_bound(walk, type, index, directive);
+			if (progress != Progress::DONE) {
+				return progress;
 			}
 		}
 		/*

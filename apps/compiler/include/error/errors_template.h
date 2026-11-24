@@ -103,6 +103,7 @@ E4044,Reserved package name
 E4045,Denied warning
 E4046,Invalid warning list
 E4047,Unknown build target
+E4048,Field bound not kept
 // E5000-E5999 Lowering MLIR to LLVM IR
 E5000,Unsupported target
 E5001,Building code gen pipeline failed

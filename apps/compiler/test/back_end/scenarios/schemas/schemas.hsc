@@ -477,3 +477,22 @@ leaves_output_alone_when_memory_runs_out #test :: fn(t: ptr[mut testing.T]) -> t
         testing.require_le(t, fail_at, 1000, "writing needs fewer than 1000 allocations, so it ends without failing")?
     }
 }
+
+/** A count kept beside its fixed array, at most its count (docs/types.md, Bounded Fields). */
+Kept :: struct {
+    name : u8[32],
+    count #at_most(name.count) : usize,
+}
+
+reads_bounded_fields_only_within_their_bounds #test :: fn(t: ptr[mut testing.T]) -> testing.Outcome {
+    bytes : u8[..]
+    defer runtime.array_free(&bytes)
+    schema.write_value(Kept.{count = 3}, &bytes)
+    testing.expect(t, schema.read_value[Kept](bytes[0..<bytes.count]) is_some, "a count within its #at_most is read back")
+    // The count's low byte, after the 32 of the name, made 40: from a program that isn't the writer, past its bound
+    if bytes.count > 32 {
+        bytes[32] = 40
+    }
+    testing.expect(t, schema.read_value[Kept](bytes[0..<bytes.count]) is_none, "one past its #at_most isn't")
+    return .Ok
+}

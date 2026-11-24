@@ -481,8 +481,39 @@ a count. `if offset + 4 <= bytes.count` proves nothing about `offset`, since a h
 * Relations between more than two values that aren't bounded by constants, like `i + j < n`, beyond a sum compared and
   indexed as it is, or products of two variables. Compute the index into a
   local and compare that, or loop with an index that counts the way the code needs.
-* Invariants of a data structure, like a struct's array having one entry per frame. Compare against the array's own
-  count, rather than a field that's meant to equal it.
+* Invariants of a data structure, like a struct's array having one entry per frame, beyond a field's bound (below).
+  Compare against the array's own count, rather than a field that's meant to equal it.
+
+#### Bounded Fields
+
+A struct's integer field can say what it's at most, with `#at_most` after its name: a fixed array field's count, or a
+constant. Every store to it, and every struct literal that gives it, is proven to keep it (E4048 when it isn't), and
+then wherever it's read it's known, through pointers and after calls, as the count beside an array usually is:
+
+```
+Name :: struct {
+    bytes : u8[32],
+    count #at_most(bytes.count) : usize,
+}
+
+text :: fn(name : ptr[Name]) -> u8[] {
+    return name.bytes[0..<name.count]   // in bounds: count is at most 32
+}
+
+add :: fn(name : ptr[mut Name], byte : u8) {
+    if name.count < name.bytes.count {
+        name.bytes[name.count] = byte
+        name.count += 1                 // proven at most 32
+    }
+}
+```
+
+* What bounds it can't change: a fixed array's count, or a constant at least 0. A view's or a dynamic array's count can
+  shrink, so it can't bound a field (E4014), nor can a field have a default past its bound.
+* Its address can't be taken (E4048), since what's stored through the pointer couldn't be proven.
+* A value of the struct made from raw bytes, like a message cast from what a channel gave, or `---`, is trusted to keep
+  it, as an enum's value is trusted to be one of its members. A protocol's validator checks it, as it checks enums
+  (`compiler.StructMember`'s `has_at_most` and `at_most` say it).
 
 ## Floats
 

@@ -552,7 +552,8 @@ schema_try_write_value_at :: fn(
  *     empty, when there isn't the memory for the copy, when a distance points past what was written, when a string or
  *     view that isn't empty is null (an empty one is read as null, wherever its writer said it pointed), when a C string has no 0 byte before the end of what was written, when what a
  *     pointer points to doesn't come after the value and all that pointers before it point to, as the writer lays
- *     them out, so no byte is read as two things, when a union's tag names no variant, or when pointers go more than
+ *     them out, so no byte is read as two things, when a union's tag names no variant, when a field with #at_most is
+ *     past it (docs/types.md, Bounded Fields), or when pointers go more than
  *     SCHEMA_MAX_DEPTH deep; the copy is freed then. What the writer writes as 0 is read as 0 whatever the bytes say,
  *     as they may come from a program that isn't the writer:
  *     a rawptr, a relative pointer, a function, a type value, an any, a #union struct holding pointers, and a dynamic
@@ -682,7 +683,8 @@ schema_relocate_word :: fn(
  * @param next Where in copy what the next pointer points to can start, at or after it, past what's been reached so
  *     far; moved past each thing a pointer points to.
  * @return Whether every distance fit inside the copy, each after what came before it; false too when the value runs
- *     past the copy's end, when a union's tag names no variant, or when it's too deep. Distances made pointers before
+ *     past the copy's end, when a union's tag names no variant, when a field with #at_most is past it, or when it's
+ *     too deep. Distances made pointers before
  *     a failure stay pointers.
  */
 schema_relocate :: fn(
@@ -759,6 +761,17 @@ schema_relocate :: fn(
         for member in structure.members {
             if !schema_relocate(copy, at + member.offset, member.member_type, depth, next) {
                 return false
+            }
+            // A field with #at_most past it, which code reading the value trusts it isn't (docs/types.md, Bounded Fields)
+            if member.has_at_most {
+                size :: member.member_type.size
+                value :: schema_read_word(copy, at + member.offset) & schema_mask_of(size)
+                integer :: cast[ptr[compiler.TypeInfoInteger]](schema_unaliased(member.member_type))
+                signed :: integer.variant == .INTEGER && integer.is_signed
+                negative :: signed && size > 0 && value & (cast[u64](1) << cast[u64](8 * size - 1)) != 0
+                if !negative && value > member.at_most {
+                    return false
+                }
             }
         }
         return true

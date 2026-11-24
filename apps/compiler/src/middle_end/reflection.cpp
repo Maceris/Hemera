@@ -518,6 +518,8 @@ namespace hemera {
 					write_number(at, member_layout, "offset", member.offset);
 					write_number(at, member_layout, "has_value", member.has_value);
 					write_number(at, member_layout, "is_using", member.is_using);
+					write_number(at, member_layout, "has_at_most", member.has_at_most);
+					write_number(at, member_layout, "at_most", member.at_most);
 				});
 				write_number(record, layout, "alignment", type->alignment);
 				write_number(record, layout, "is_scoped", structure->is_scoped);

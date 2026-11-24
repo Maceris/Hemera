@@ -75,6 +75,14 @@ StructMember :: struct {
     has_value : bool,
     /** Declared with using, so its own members are reached as the struct's. */
     is_using : bool,
+    /**
+     * Whether it's an integer field with #at_most (docs/types.md, Bounds Checking), so its value is at most at_most:
+     * the bounds proof keeps it so wherever the field's stored, and what reads a value from raw bytes, as a protocol's
+     * validator does, checks it.
+     */
+    has_at_most : bool,
+    /** What it's at most, when has_at_most; 0 otherwise. */
+    at_most : u64,
 }
 
 /** Which kind of type a TypeInfo describes, and so which struct to cast it to for the rest. */

@@ -944,6 +944,14 @@ TEST(FrontEnd, ReportsBodyErrors)
 		{ "bounds_if_value_past", hemera::ErrorCode::E4031 },
 		// A call to what calls a function that writes through its pointer forgets what's known through it
 		{ "bounds_call_writes", hemera::ErrorCode::E4031 },
+		// docs/types.md, Bounded Fields: what's stored past a field's #at_most, its address, and the directive misused
+		{ "bounds_at_most_store", hemera::ErrorCode::E4048 },
+		{ "bounds_at_most_grows", hemera::ErrorCode::E4048 },
+		{ "bounds_at_most_address", hemera::ErrorCode::E4048 },
+		{ "bounds_at_most_literal", hemera::ErrorCode::E4048 },
+		{ "at_most_not_integer", hemera::ErrorCode::E4014 },
+		{ "at_most_view", hemera::ErrorCode::E4014 },
+		{ "at_most_default", hemera::ErrorCode::E4014 },
 		{ "generic_value_variable", hemera::ErrorCode::E4010 },
 		{ "generic_value_given_type", hemera::ErrorCode::E4010 },
 		{ "generic_value_kind", hemera::ErrorCode::E4014 },

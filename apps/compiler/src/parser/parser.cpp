@@ -2291,10 +2291,15 @@ namespace hemera::parser {
 		return true;
 	}
 
-	// name : type, or a, b, c : type, with an optional = default value
+	// name : type, or a, b, c : type, with an optional = default value; a single name may have directives, like #at_most(n)
 	bool struct_member(ParserState* state, ast::Node& parent) {
 		ast::Node& name = next_as_node(state, ast::NodeType::IDENTIFIER);
 		ast::Node* names = &name;
+		while (expect(state, TokenType::DIRECTIVE)) {
+			if (!directive_with_arguments(state, &name).success) {
+				return false;
+			}
+		}
 
 		while (expect(state, TokenType::SYM_COMMA)) {
 			if (names == &name) {

@@ -349,6 +349,14 @@ namespace hemera {
 		/// Included with using, so its own members can be used as the struct's.
 		/// </summary>
 		bool is_using = false;
+		/// <summary>
+		/// From #at_most(n) on an integer field (docs/types.md, Bounds Checking): what it's at most, at_most, which the
+		/// bounds proof knows wherever it's read and proves wherever it's stored. at_most_of names the fixed array
+		/// whose count it is, for #at_most(items.count); null for a constant.
+		/// </summary>
+		bool has_at_most = false;
+		uint64_t at_most = 0;
+		InternedString at_most_of = nullptr;
 		int64_t default_integer = 0;
 		std::string default_member;
 		enum class Default : uint8_t { INTEGER, FLOAT, TEXT, DECLARATION } default_kind = Default::INTEGER;

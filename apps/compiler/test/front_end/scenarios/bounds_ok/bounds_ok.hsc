@@ -319,3 +319,39 @@ kept_across_calls :: fn(counted: ptr[Counted], values: int[]) -> int {
     }
     return counted.items[counted.count] + total
 }
+
+// A count kept beside its fixed array, declared at most its count: known wherever it's read
+Kept :: struct {
+    name : u8[32],
+    count #at_most(name.count) : usize,
+}
+
+Levelled :: struct {
+    level #at_most(7) : u8,
+}
+
+writes :: fn(into: mut u8[]) {
+    if into.count > 0 {
+        into[0] = 1
+    }
+}
+
+kept_bounded :: fn(kept: ptr[mut Kept], given: u8[], other: mut u8[]) -> usize {
+    for byte, i in given {
+        if i < kept.name.count {
+            kept.name[i] = byte
+            kept.count = i + 1
+        }
+    }
+    // Known after a call that writes, as it's the field's own bound
+    writes(other)
+    if kept.count < kept.name.count {
+        kept.count += 1
+    }
+    made := Kept.{count = 3}
+    return kept.name[0..<kept.count].count + made.name[0..<made.count].count
+}
+
+by_level :: fn(levelled: Levelled, table: u32[8]) -> u32 {
+    return table[levelled.level]
+}

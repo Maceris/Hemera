@@ -133,6 +133,36 @@ namespace hemera {
 			return std::nullopt;
 		}
 
+		/*
+		 * What a struct's integer field is at most, from its #at_most (docs/types.md, Bounds Checking): through a pointer
+		 * to the struct, and through its using members and anonymous structs, as the field's reached; none for a field
+		 * without it, or what isn't a struct.
+		 */
+		std::optional<int64_t> field_at_most(TypeInfo const* container, InternedString name) {
+			TypeInfo const* type = container != nullptr ? base(container) : nullptr;
+			if (type != nullptr && TypeInfoVariant::POINTER == type->variant) {
+				TypeInfo const* pointee = static_cast<TypeInfoPointer const*>(type)->base_type;
+				type = pointee != nullptr ? base(pointee) : nullptr;
+			}
+			if (type == nullptr || TypeInfoVariant::STRUCT != type->variant || name == nullptr) {
+				return std::nullopt;
+			}
+			auto structure = static_cast<TypeInfoStruct const*>(type);
+			for (const StructMember& member : structure->members) {
+				if (member.name == name && !member.is_using) {
+					return member.has_at_most ? std::optional<int64_t>(static_cast<int64_t>(member.at_most)) : std::nullopt;
+				}
+			}
+			for (const StructMember& member : structure->members) {
+				if (member.is_using) {
+					if (auto found = field_at_most(member.member_type, name)) {
+						return found;
+					}
+				}
+			}
+			return std::nullopt;
+		}
+
 		// The largest of an enum's values, which a value of it can be at most: it's one of its members.
 		std::optional<int64_t> enum_maximum(TypeInfo const* type) {
 			type = base(type);
@@ -406,7 +436,7 @@ namespace hemera {
 			bool silent = false;
 		};
 
-		void report(Analysis& analysis, const ast::Node* where, const std::string& details) {
+		void report(Analysis& analysis, const ast::Node* where, const std::string& details, ErrorCode code = ErrorCode::E4031) {
 			if (analysis.quiet > 0 || !analysis.reported.insert(where).second) {
 				return;
 			}
@@ -414,7 +444,7 @@ namespace hemera {
 				++analysis.errors;
 				return;
 			}
-			report_at(ErrorCode::E4031, analysis.file_path, analysis.checked.made, where, details);
+			report_at(code, analysis.file_path, analysis.checked.made, where, details);
 			++analysis.errors;
 		}
 
@@ -846,6 +876,8 @@ namespace hemera {
 			std::optional<Value> count;
 			Value value;
 			bool never_returns = false;
+			// For a struct's field with #at_most, what it's at most, which a store to it must keep
+			std::optional<int64_t> at_most;
 		};
 
 		Value evaluate(Analysis& analysis, Facts& facts, ast::Node* node);
@@ -1086,6 +1118,19 @@ namespace hemera {
 						else if (is_variant(found->type, TypeInfoVariant::INTEGER) && next.local != nullptr && !next.pathless) {
 							next.value = of_term(bounded_by_type(analysis, path_term(analysis, next, next.path + "#", is_unsigned(found->type)),
 								found->type));
+						}
+						// A field with #at_most is at most that wherever it's read, as every store to it is proven to keep it
+						if (is_variant(found->type, TypeInfoVariant::INTEGER)) {
+							next.at_most = field_at_most(current.type, arguments[0]->value.value);
+							if (next.at_most.has_value()) {
+								if (next.value.known && ZERO != next.value.term && 0 == next.value.offset && 0 == next.value.spread) {
+									add(facts, next.value.term, ZERO, *next.at_most);
+								}
+								else if (!next.value.known) {
+									next.value.at_most = *next.at_most;
+									next.value.nonnegative = next.value.nonnegative || is_unsigned(found->type);
+								}
+							}
 						}
 					}
 				}
@@ -1404,6 +1449,7 @@ namespace hemera {
 		}
 
 		ast::Node* else_of(ast::Node* if_node);
+		bool fits(const Analysis& analysis, const Facts& facts, const Value& value, int64_t most);
 
 		/*
 		 * Whether a branch's last statement is the value it gives, as an if expression's is: an expression, not a
@@ -1478,6 +1524,16 @@ namespace hemera {
 				return evaluate(analysis, facts, node->children[0]);
 			}
 			if (ast::NodeType::UNARY_OPERATOR == type) {
+				// &field of one with #at_most: what's stored through the pointer couldn't be proven to keep it
+				if (TokenType::SYM_AMPERSAND == node->value.type && !node->children.empty()) {
+					Facts reading = facts;
+					const Chain taken = evaluate_chain(analysis, reading, node->children[0]);
+					if (taken.at_most.has_value()) {
+						report(analysis, node, std::format(
+							"its address can't be taken, as it's #at_most({}) and what's stored through a pointer isn't proven",
+							*taken.at_most), ErrorCode::E4048);
+					}
+				}
 				if (TokenType::OPERATOR_MINUS == node->value.type && !node->children.empty()) {
 					Value operand = evaluate(analysis, facts, node->children[0]);
 					return operand.known && ZERO == operand.term ? constant(-operand.offset) : Value{};
@@ -1597,6 +1653,14 @@ namespace hemera {
 				return Value{};
 			}
 			if (ast::NodeType::STRUCT_LITERAL == type || ast::NodeType::ARRAY_LITERAL == type) {
+				// A struct's: each field with #at_most it gives, proven at most that, by name or in order
+				const CheckedNode* literal = found_at(analysis, node);
+				TypeInfo const* structure = ast::NodeType::STRUCT_LITERAL == type && literal != nullptr && literal->type != nullptr
+					? base(literal->type) : nullptr;
+				if (structure != nullptr && TypeInfoVariant::STRUCT != structure->variant) {
+					structure = nullptr;
+				}
+				size_t position = 0;
 				for (ast::Node* child : node->children) {
 					if (ast::NodeType::LIST != child->node_type) {
 						continue;
@@ -1604,7 +1668,25 @@ namespace hemera {
 					for (ast::Node* element : child->children) {
 						const bool named = ast::NodeType::BINARY_OPERATOR == element->node_type && is_assign(element)
 							&& element->children.size() == 2;
-						evaluate(analysis, facts, named ? element->children[1] : element);
+						const Value given = evaluate(analysis, facts, named ? element->children[1] : element);
+						if (structure == nullptr) {
+							continue;
+						}
+						InternedString field = nullptr;
+						if (named) {
+							field = element->children[0]->value.value;
+						}
+						else {
+							const auto& members = static_cast<TypeInfoStruct const*>(structure)->members;
+							field = position < members.size() && !members[position].is_using ? members[position].name : nullptr;
+							++position;
+						}
+						const std::optional<int64_t> most = field_at_most(structure, field);
+						if (most.has_value() && !fits(analysis, facts, given, *most)) {
+							report(analysis, element, std::format(
+								"{} is #at_most({}), and what it's given isn't proven to be: check it against that first",
+								text_of(field), *most), ErrorCode::E4048);
+						}
 					}
 				}
 			}
@@ -1613,6 +1695,14 @@ namespace hemera {
 
 		// ---------------------------------------------------------------------------------------------
 		// Conditions
+
+		// Whether a value is proven at most a constant, as a store to a field with #at_most needs.
+		bool fits(const Analysis& analysis, const Facts& facts, const Value& value, int64_t most) {
+			if (value.known) {
+				return proves(analysis, facts, value.term, ZERO, most - value.offset - value.spread);
+			}
+			return value.at_most.has_value() && *value.at_most <= most;
+		}
 
 		// x <= y + k, for every value x and y can be: x at its most, y at its least.
 		void at_most(Facts& facts, const Value& x, const Value& y, int64_t k) {
@@ -2057,6 +2147,12 @@ namespace hemera {
 				if (!plain_local) {
 					// A field, an element or through a pointer: the target's indexes are checked
 					const Chain chain = evaluate_chain(analysis, facts, target);
+					// A field with #at_most given a value: proven at most that, before the store forgets anything
+					if (chain.at_most.has_value() && is_assign(node) && !fits(analysis, facts, value, *chain.at_most)) {
+						report(analysis, target, std::format(
+							"it's #at_most({}), and what it's given isn't proven to be: check it against that first",
+							*chain.at_most), ErrorCode::E4048);
+					}
 					/*
 					 * An integer field reached from a local, like array.count, is a term of its own,
 					 * which this store changes in a way that's known: added to, or given a constant or
@@ -2069,6 +2165,13 @@ namespace hemera {
 						&& value.known && ZERO == value.term && 0 == value.spread;
 					if (moved) {
 						shift(analysis, facts, stored, TokenType::OPERATOR_ASSIGN_ADD == op ? value.offset : -value.offset);
+					}
+					// Added to or the like: what it is now, proven at most its #at_most
+					if (chain.at_most.has_value() && !is_assign(node)
+						&& !(moved && proves(analysis, facts, stored, ZERO, *chain.at_most))) {
+						report(analysis, target, std::format(
+							"it's #at_most({}), and what it becomes isn't proven to be: check it against that first",
+							*chain.at_most), ErrorCode::E4048);
 					}
 					auto changed = [&](Term term) {
 						if (moved && term == stored) {

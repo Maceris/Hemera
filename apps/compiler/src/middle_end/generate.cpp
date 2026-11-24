@@ -4380,6 +4380,8 @@ namespace hemera {
 					described.number("offset", member.offset);
 					described.flag("has_value", member.has_value);
 					described.flag("is_using", member.is_using);
+					described.flag("has_at_most", member.has_at_most);
+					described.number("at_most", member.at_most);
 					return described.whole;
 				});
 				info.number("alignment", type->alignment);
