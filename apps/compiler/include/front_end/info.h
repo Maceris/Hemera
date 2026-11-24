@@ -37,6 +37,11 @@ namespace hemera {
 		const Declaration* declaration;
 		// Whether its body had errors: not checked, and taken to give back no pointer from its parameters
 		bool failed = false;
+		/*
+		 * Whether its indexes weren't all proven where it was checked, without knowing which calls write nothing: proven
+		 * again, and reported, once every body is (check_pending_bounds)
+		 */
+		bool bounds_pending = false;
 	};
 
 	/// <summary>

@@ -472,8 +472,12 @@ a count. `if offset + 4 <= bytes.count` proves nothing about `offset`, since a h
 
 * What other functions do. A count a function computed and another relies on, or a value one returns, is unknown to
   the caller: check it, or state it with `runtime.assert`, which documents the contract and checks it at run time.
-* Memory reached through a pointer, after anything that could write it: a call, or a store through a pointer.
-  `info.cpus.count` is forgotten across a call; a copy of the view in a local, `cpus :: info.cpus`, isn't.
+* Memory reached through a pointer, after anything that could write it: a store through a pointer, or a call to a
+  function that may write memory, by a store outside its own locals or a call to one that may, a call through a
+  function value, a foreign function or an intrinsic among them. `info.cpus.count` is forgotten across such a call; a
+  copy of the view in a local, `cpus :: info.cpus`, isn't. Which functions write nothing is known once every body is
+  checked, so a function proven only with it is proven then, as pointers into the stack are, after compile-time code
+  has run.
 * Relations between more than two values that aren't bounded by constants, like `i + j < n`, beyond a sum compared and
   indexed as it is, or products of two variables. Compute the index into a
   local and compare that, or loop with an index that counts the way the code needs.

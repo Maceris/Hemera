@@ -285,3 +285,37 @@ kept_count :: fn(named: ptr[mut Named], given: u8[]) -> usize {
     }
     return named.name[0..<named.count].count
 }
+
+Counted :: struct {
+    items : int[8],
+    count : usize,
+}
+
+// Writes no memory but its own locals: a call to it keeps what's known through pointers
+sum_of :: fn(values: int[]) -> int {
+    total := 0
+    for value in values {
+        total += value
+    }
+    return total
+}
+
+// Two that call each other, writing nothing either
+is_even :: fn(n: u32) -> bool {
+    return if n == 0 { true } else { is_odd(n - 1) }
+}
+
+is_odd :: fn(n: u32) -> bool {
+    return if n == 0 { false } else { is_even(n - 1) }
+}
+
+kept_across_calls :: fn(counted: ptr[Counted], values: int[]) -> int {
+    if counted.count >= counted.items.count {
+        return 0
+    }
+    total := sum_of(values)
+    if is_even(3) {
+        total += 1
+    }
+    return counted.items[counted.count] + total
+}

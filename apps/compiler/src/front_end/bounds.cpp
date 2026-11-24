@@ -400,10 +400,18 @@ namespace hemera {
 			 * that keeps loosening is tried before it's dropped (widen), like a counter kept below a fixed array's count
 			 */
 			std::set<int64_t> thresholds = {};
+			// The functions that write no memory but their own locals, which a call to keeps what's known; null for none
+			const std::unordered_set<const Declaration*>* writes_nothing = nullptr;
+			// Whether what isn't proven is only counted, not reported, as where a body's first checked
+			bool silent = false;
 		};
 
 		void report(Analysis& analysis, const ast::Node* where, const std::string& details) {
 			if (analysis.quiet > 0 || !analysis.reported.insert(where).second) {
+				return;
+			}
+			if (analysis.silent) {
+				++analysis.errors;
 				return;
 			}
 			report_at(ErrorCode::E4031, analysis.file_path, analysis.checked.made, where, details);
@@ -1092,8 +1100,13 @@ namespace hemera {
 					else {
 						values = evaluate_arguments(analysis, facts, arguments);
 					}
-					// What the call may have written; runtime.assert writes nothing when it returns
-					if (ValueKind::BUILTIN_FUNCTION != current.kind && !asserts) {
+					/*
+					 * What the call may have written; runtime.assert writes nothing when it returns, nor does a function
+					 * found to write no memory but its own locals (check_pending_bounds)
+					 */
+					const bool writes_nothing = analysis.writes_nothing != nullptr && found->called_declaration != nullptr
+						&& analysis.writes_nothing->contains(found->called_declaration);
+					if (ValueKind::BUILTIN_FUNCTION != current.kind && !asserts && !writes_nothing) {
 						forget_memory(analysis, facts);
 					}
 					next.pathless = true;
@@ -2546,13 +2559,159 @@ namespace hemera {
 
 	}
 
-	bool check_bounds(const CheckedBody& checked, ast::Node* body, TypeInfoFunction const* type, const std::string& file_path) {
+	bool check_bounds(const CheckedBody& checked, ast::Node* body, TypeInfoFunction const* type, const std::string& file_path,
+		const std::unordered_set<const Declaration*>* writes_nothing, bool reporting) {
+
 		Analysis analysis{ checked, type, file_path, { TermInfo{} }, {}, {}, {}, 0, {}, 0, {}, {} };
+		analysis.writes_nothing = writes_nothing;
+		analysis.silent = !reporting;
 		find_address_taken(analysis, body);
 		find_deferred_writes(analysis, body, false);
 		Facts facts;
 		walk_block(analysis, facts, body);
 		return analysis.errors == 0;
+	}
+
+	namespace {
+
+		// What a body may write, as check_pending_bounds needs it: whether it stores outside its own locals, and what it calls.
+		struct Writes {
+			bool stores = false;
+			std::vector<const Declaration*> calls;
+		};
+
+		/*
+		 * Whether an assignment's target is in the function's own locals: a local, or a field or a fixed array's element of
+		 * one, reached without going through a pointer, a view, a string or a call.
+		 */
+		bool stores_locally(const CheckedBody& checked, ast::Node* target) {
+			auto found_of = [&](const ast::Node* node) -> const CheckedNode* {
+				auto iter = checked.nodes.find(node);
+				return iter == checked.nodes.end() ? nullptr : &iter->second;
+			};
+			// The local it starts at, as assigned_in finds it
+			auto head = checked.heads.find(target);
+			const CheckedNode* root = head != checked.heads.end() ? &head->second : found_of(target);
+			if (root == nullptr || root->local == nullptr) {
+				return false;
+			}
+			if (target->children.empty()) {
+				return true;
+			}
+			if (head == checked.heads.end()) {
+				return false;
+			}
+			// Each step's container a struct or a fixed array, held in the local itself
+			auto in_place = [](TypeInfo const* type) {
+				TypeInfo const* held = type != nullptr ? base(type) : nullptr;
+				return held != nullptr && (TypeInfoVariant::STRUCT == held->variant
+					|| (TypeInfoVariant::ARRAY == held->variant && static_count(held).has_value()));
+			};
+			TypeInfo const* container = root->type;
+			// The steps after the name, as evaluate_chain takes them
+			for (size_t i = head->second.next; i < target->children.size(); ++i) {
+				ast::Node* child = target->children[i];
+				std::vector<ast::Node*> arguments;
+				while (i + 1 < target->children.size() && !is_postfix_marker(target->children[i + 1])) {
+					arguments.push_back(target->children[++i]);
+				}
+				const ast::NodeType type = child->node_type;
+				if ((ast::NodeType::DOT_ACCESS != type && ast::NodeType::ARRAY_DIMENSION != type) || !in_place(container)) {
+					return false;
+				}
+				ast::Node* where = ast::NodeType::DOT_ACCESS == type && !arguments.empty() ? arguments[0] : child;
+				const CheckedNode* step = found_of(where);
+				if (step == nullptr) {
+					return false;
+				}
+				container = step->type;
+			}
+			return true;
+		}
+
+		void scan_writes(const CheckedBody& checked, ast::Node* node, Writes& writes) {
+			if (ast::NodeType::FUNCTION == node->node_type) {
+				// A function declared inside is one of its own
+				return;
+			}
+			if (is_assignment(node) && !node->children.empty()) {
+				ast::Node* left = node->children[0];
+				std::vector<ast::Node*> targets;
+				if (ast::NodeType::LIST == left->node_type) {
+					targets.assign(left->children.begin(), left->children.end());
+				}
+				else {
+					targets.push_back(left);
+				}
+				for (ast::Node* target : targets) {
+					if (!is_wildcard(target) && !stores_locally(checked, target)) {
+						writes.stores = true;
+					}
+				}
+			}
+			if (ast::NodeType::PAREN_GROUP == node->node_type) {
+				auto iter = checked.nodes.find(node);
+				const CheckedNode* found = iter == checked.nodes.end() ? nullptr : &iter->second;
+				// A call: of a declared function, or through a value, which may be anything
+				if (found != nullptr && found->called != nullptr && !is_runtime_assert(found)) {
+					if (found->called_declaration != nullptr) {
+						writes.calls.push_back(found->called_declaration);
+					}
+					else {
+						writes.stores = true;
+					}
+				}
+			}
+			for (ast::Node* child : node->children) {
+				scan_writes(checked, child, writes);
+			}
+		}
+
+	}
+
+	bool check_pending_bounds(const std::vector<StackCheck>& functions) {
+		/*
+		 * Which functions write no memory but their own locals: each whose body stores nowhere else, and calls only
+		 * functions that don't either. All are taken to, then those that store or call what may are taken out until
+		 * nothing changes, so functions that call each other and store nowhere stay. One without a checked body, a
+		 * foreign function, an intrinsic or a call through a value, may write anything.
+		 */
+		std::unordered_map<const Declaration*, Writes> scanned;
+		std::unordered_set<const Declaration*> writes_nothing;
+		for (const StackCheck& function : functions) {
+			if (function.failed || function.checked == nullptr || function.declaration == nullptr) {
+				continue;
+			}
+			Writes writes;
+			scan_writes(*function.checked, function.body, writes);
+			scanned[function.declaration] = std::move(writes);
+			writes_nothing.insert(function.declaration);
+		}
+		bool changed = true;
+		while (changed) {
+			changed = false;
+			for (const auto& [declaration, writes] : scanned) {
+				if (!writes_nothing.contains(declaration)) {
+					continue;
+				}
+				bool writes_somewhere = writes.stores;
+				for (const Declaration* called : writes.calls) {
+					writes_somewhere = writes_somewhere || !writes_nothing.contains(called);
+				}
+				if (writes_somewhere) {
+					writes_nothing.erase(declaration);
+					changed = true;
+				}
+			}
+		}
+		bool clean = true;
+		for (const StackCheck& function : functions) {
+			if (function.bounds_pending && !function.failed && function.checked != nullptr) {
+				clean = check_bounds(*function.checked, function.body, function.type, function.file_path, &writes_nothing, true)
+					&& clean;
+			}
+		}
+		return clean;
 	}
 
 }

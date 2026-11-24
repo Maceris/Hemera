@@ -7792,13 +7792,17 @@ namespace hemera {
 				check_function_documentation(checker.walk.file_path, parts.name, function_node_, type, true,
 					checker.walk.executor.global_data->options);
 			}
+			/*
+			 * And that every index is in bounds (docs/types.md, Bounds Checking): here, as a call forgets what's known
+			 * through pointers; what isn't proven so is proven again once every body is checked, knowing which calls
+			 * write nothing, and only then reported (check_pending_bounds)
+			 */
+			const bool proven = check_bounds(*checked, body, type, checker.walk.file_path, nullptr, false);
 			{
 				ProgramInfo* program = checker.walk.executor.program_info;
 				std::scoped_lock<std::mutex> lock(program->stack_checks_mutex);
-				program->stack_checks.push_back(StackCheck{ checked, body, type, checker.walk.file_path, function });
+				program->stack_checks.push_back(StackCheck{ checked, body, type, checker.walk.file_path, function, false, !proven });
 			}
-			// And that every index is in bounds (docs/types.md, Bounds Checking)
-			check_bounds(*checked, body, type, checker.walk.file_path);
 			/*
 			 * And that each owner is released or moved (docs/memory.md, Owned Types), except in base/compiler's
 			 * forget, duplicate and take, which are how owners are made and ended outside the rules

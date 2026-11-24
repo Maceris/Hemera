@@ -13,6 +13,7 @@
 #include "util/logger.h"
 #include "front_end/front_end.h"
 #include "front_end/names.h"
+#include "front_end/bounds.h"
 #include "front_end/stack_pointers.h"
 #include "middle_end/build_cache.h"
 
@@ -236,6 +237,8 @@ namespace hemera {
 				check_held_fields(data);
 				// Pointers to the stack, in every body at once, now that all are checked (stack_pointers.h)
 				check_all_stack_pointers(data.program_info->stack_checks);
+				// Indexes not proven where their bodies were checked, now knowing which calls write nothing (bounds.h)
+				check_pending_bounds(data.program_info->stack_checks);
 			}
 		}
 		return true;
