@@ -6594,6 +6594,26 @@ namespace hemera {
 			result = value(LLVM::CtPopOp::create(b, l, arguments[0].getType(), arguments[0]), result_type);
 			return true;
 		}
+		// LLVM's *.with.overflow, signed or not as the type is, its overflow bit alone: the sum's the plain operator's
+		if (name == "add_overflows" || name == "subtract_overflows" || name == "multiply_overflows") {
+			const bool is_signed_type = !function->input.empty() && is_signed(function->input[0].type);
+			mlir::Type pair = LLVM::LLVMStructType::getLiteral(b.getContext(), { arguments[0].getType(), b.getI1Type() });
+			mlir::Value checked;
+			if (name == "add_overflows") {
+				checked = is_signed_type ? static_cast<mlir::Value>(LLVM::SAddWithOverflowOp::create(b, l, pair, arguments[0], arguments[1]))
+					: static_cast<mlir::Value>(LLVM::UAddWithOverflowOp::create(b, l, pair, arguments[0], arguments[1]));
+			}
+			else if (name == "subtract_overflows") {
+				checked = is_signed_type ? static_cast<mlir::Value>(LLVM::SSubWithOverflowOp::create(b, l, pair, arguments[0], arguments[1]))
+					: static_cast<mlir::Value>(LLVM::USubWithOverflowOp::create(b, l, pair, arguments[0], arguments[1]));
+			}
+			else {
+				checked = is_signed_type ? static_cast<mlir::Value>(LLVM::SMulWithOverflowOp::create(b, l, pair, arguments[0], arguments[1]))
+					: static_cast<mlir::Value>(LLVM::UMulWithOverflowOp::create(b, l, pair, arguments[0], arguments[1]));
+			}
+			result = value(LLVM::ExtractValueOp::create(b, l, checked, 1), result_type);
+			return true;
+		}
 		return false;
 	}
 

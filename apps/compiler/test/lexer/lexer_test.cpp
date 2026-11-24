@@ -272,8 +272,8 @@ TEST(LexerTests, VeryLongLine)
 	hemera::reset_reporting_storage();
 }
 
-// The errors lexing text reports, in order, each as "(line,column) code"
-static std::vector<std::string> text_errors(const std::string& text) {
+// What lexing text reports of one kind, "error" or "warning", in order, each as "(line,column) code"
+static std::vector<std::string> text_reports(const std::string& text, const std::string& kind) {
 	hemera::reset_reporting_storage();
 	StringCacheGuard string_cache;
 	Allocator<> alloc;
@@ -284,17 +284,28 @@ static std::vector<std::string> text_errors(const std::string& text) {
 	hemera::lexer::lex(input_stream, output, alloc, "text", true);
 	hemera::set_report_scope(nullptr);
 	hemera::reset_reporting_storage();
-	std::vector<std::string> errors;
+	std::vector<std::string> reports;
 	std::istringstream lines(scope.output + scope.errors_output);
+	// The compiler's own codes, printed as hemera:E2008
+	const std::string marker = "): " + kind + " hemera:";
 	for (std::string line; std::getline(lines, line);) {
 		const size_t open = line.find('(');
-		// The compiler's own codes, printed as hemera:E2008
-		const size_t error = line.find("): error hemera:");
-		if (open != std::string::npos && error != std::string::npos) {
-			errors.push_back(line.substr(open, error + 1 - open) + " " + line.substr(error + 16, 5));
+		const size_t at = line.find(marker);
+		if (open != std::string::npos && at != std::string::npos) {
+			reports.push_back(line.substr(open, at + 1 - open) + " " + line.substr(at + marker.size(), 5));
 		}
 	}
-	return errors;
+	return reports;
+}
+
+// The errors lexing text reports, in order, each as "(line,column) code"
+static std::vector<std::string> text_errors(const std::string& text) {
+	return text_reports(text, "error");
+}
+
+// The warnings lexing text reports, in order, each as "(line,column) code"
+static std::vector<std::string> text_warnings(const std::string& text) {
+	return text_reports(text, "warning");
 }
 
 /*
@@ -325,6 +336,22 @@ TEST(LexerTests, BidirectionalControls)
 	EXPECT_EQ(text_errors("a :: \"x\xE2\x81\xA6\""), (Errors{ "(1,7) E2009" }));
 	EXPECT_EQ(text_errors("// \xD8\x9C \xE2\x80\x8F"), (Errors{ "(1,3) E2009", "(1,6) E2009" }));
 	EXPECT_EQ(text_errors("a :: \"\\u{202E}\""), Errors{});
+}
+
+/*
+ * A backslash before a character that isn't one of the escapes is that character alone, warned of (W2003) where the
+ * backslash is, in strings and characters; the escapes, and \, " and ' that need one, aren't
+ */
+TEST(LexerTests, UnknownEscapes)
+{
+	using Reports = std::vector<std::string>;
+	EXPECT_EQ(text_warnings("a :: \"\\n\\t\\r\\0\\\\\\\"\\'\\u{41}\""), Reports{});
+	EXPECT_EQ(text_warnings("a :: '\\n'\nb :: '\\''"), Reports{});
+	EXPECT_EQ(text_warnings("a :: \"\\x00\""), (Reports{ "(1,6) W2003" }));
+	EXPECT_EQ(text_warnings("a :: \"ok\\e[\""), (Reports{ "(1,8) W2003" }));
+	EXPECT_EQ(text_warnings("a :: '\\a'"), (Reports{ "(1,6) W2003" }));
+	// Only a warning: the string still lexes, the character alone in it
+	EXPECT_EQ(text_errors("a :: \"\\x00\""), Reports{});
 }
 
 TEST(LexerTests, UnicodeEscapes)

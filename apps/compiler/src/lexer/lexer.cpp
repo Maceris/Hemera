@@ -196,6 +196,26 @@ namespace hemera::lexer {
 		}
 	}
 
+	/*
+	 * Warns of a backslash and the character after it, just taken, in a quoted string or character, that isn't one of
+	 * the escapes docs/types.md lists (W2003): it's the character alone, so "\x00" is the text x00, which is seldom
+	 * what was meant. \u is taken apart, and the characters that need a backslash, \, " and ', aren't warned of.
+	 */
+	static void check_escape(Tokenizer& tokenizer, char escaped, std::string_view file_path) {
+		switch (escaped) {
+		case 'n': case 't': case 'r': case '0': case '\\': case '"': case '\'':
+			return;
+		default:
+			break;
+		}
+		const uint16_t column = static_cast<uint16_t>(tokenizer.column_number >= 2 ? tokenizer.column_number - 2 : 0);
+		const unsigned char byte = static_cast<unsigned char>(escaped);
+		const std::string shown = byte >= 0x20 && byte < 0x7f ? std::string(1, escaped) : std::string("that character");
+		report_warning(WarningCode::W2003, file_path, tokenizer.line_number, column,
+			std::format("\\{} isn't an escape: it's {} alone (\\n, \\t, \\r, \\0, \\u{{...}}, \\\\, \\\" and \\' are)",
+				shown, shown));
+	}
+
 	Token next(Tokenizer& tokenizer, std::istream& input_stream,
 		Allocator<> string_alloc, std::string_view file_path) {
 
@@ -615,8 +635,9 @@ namespace hemera::lexer {
 				goto switch_start;
 			}
 			break;
-		case State::literal_char_backslash:
-			switch (next_char(tokenizer, input_stream)) {
+		case State::literal_char_backslash: {
+			const char escaped = next_char(tokenizer, input_stream);
+			switch (escaped) {
 			case 0:
 			case '\n':
 			case 0x01: case 0x02: case 0x03: case 0x04: case 0x05:
@@ -630,9 +651,11 @@ namespace hemera::lexer {
 				report_error(ErrorCode::E2003, file_path, tokenizer.line_number, tokenizer.column_number);
 				goto switch_start;
 			default:
+				check_escape(tokenizer, escaped, file_path);
 				state = State::literal_char;
 				goto switch_start;
 			}
+		}
 		case State::literal_string:
 			switch (next_char(tokenizer, input_stream)) {
 			case '"':
@@ -656,8 +679,9 @@ namespace hemera::lexer {
 				goto switch_start;
 			}
 			break;
-		case State::literal_string_backslash:
-			switch (next_char(tokenizer, input_stream)) {
+		case State::literal_string_backslash: {
+			const char escaped = next_char(tokenizer, input_stream);
+			switch (escaped) {
 			case 0:
 			case '\n':
 			case 0x01: case 0x02: case 0x03: case 0x04: case 0x05:
@@ -675,9 +699,11 @@ namespace hemera::lexer {
 				state = State::literal_string;
 				goto switch_start;
 			default:
+				check_escape(tokenizer, escaped, file_path);
 				state = State::literal_string;
 				goto switch_start;
 			}
+		}
 		case State::minus:
 			switch (peek_char(tokenizer)) {
 			case '>':

@@ -320,13 +320,16 @@ try_receive :: fn(
 }
 
 /**
- * Receive the next message from a channel end, as try_receive does, waiting on port until one comes.
+ * Receive the next message from a channel end, as try_receive does, waiting on port until one comes, or a deadline.
  *
  * @param end The end it's read from, which stays the caller's.
- * @param port A port bound to end (port_for), waited on with no deadline; the packets it gives are dropped.
+ * @param port A port bound to end (port_for), waited on until deadline; the packets it gives are dropped.
  * @param buffer Where the message's bytes go; it should hold the largest message expected.
  * @param handles Where the handles that came with it go, now the caller's to close.
+ * @param deadline When to give up, in the monotonic clock's nanoseconds; NO_DEADLINE, the default, to wait for as long
+ *     as it takes.
  * @return The message's size and how many handles came with it.
+ * @error Empty None came by deadline.
  * @error ObjectGone Waiting on port failed.
  * @error BufferTooSmall The message doesn't fit in buffer.
  * @error PeerClosed The other end is closed.
@@ -337,7 +340,8 @@ receive :: fn(
     end : slop_os.Channel,
     port : slop_os.Port,
     buffer : mut u8[],
-    handles : mut slop_os.Handle[]
+    handles : mut slop_os.Handle[],
+    deadline : u64 = slop_os.NO_DEADLINE
 ) -> Result[Received, slop_os.ChannelError] {
     loop {
         match try_receive(end, buffer, handles) {
@@ -347,7 +351,10 @@ receive :: fn(
                     return .Error(error)
                 }
                 packets : slop_os.Packet[4]
-                _ = slop_os.port_wait(port, packets, slop_os.NO_DEADLINE) or_return .Error(.ObjectGone)
+                woken :: slop_os.port_wait(port, packets, deadline) or_return .Error(.ObjectGone)
+                if woken == 0 {
+                    return .Error(.Empty)
+                }
             }
         }
     }

@@ -35,6 +35,8 @@ namespace hemera {
 		TypeInfoFunction const* type;
 		std::string file_path;
 		const Declaration* declaration;
+		// Whether its body had errors: not checked, and taken to give back no pointer from its parameters
+		bool failed = false;
 	};
 
 	/// <summary>

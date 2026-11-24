@@ -336,18 +336,25 @@ decode_handle :: fn(into : ptr[mut Incoming], offset : usize, tag : u64) -> bool
  * @param port A port bound to end (port_for), waited on when wait is true.
  * @param into Where the message goes: zeroed first, so it's zeros past its size; its handles are the caller's.
  * @param wait Whether to wait for a message when there's none yet.
- * @return Received with the message in into; Empty when there's none and wait is false; Failed with the kernel's
- *     error otherwise.
+ * @param deadline When a wait gives up, in the monotonic clock's nanoseconds; NO_DEADLINE, the default, for never.
+ * @return Received with the message in into; Empty when there's none and wait is false, or none came by deadline;
+ *     Failed with the kernel's error otherwise.
  */
-arrive :: fn(end : slop_os.Channel, port : slop_os.Port, into : ptr[mut Incoming], wait : bool) -> Arrival {
+arrive :: fn(
+    end : slop_os.Channel,
+    port : slop_os.Port,
+    into : ptr[mut Incoming],
+    wait : bool,
+    deadline : u64 = slop_os.NO_DEADLINE
+) -> Arrival {
     into^ = Incoming.{}
     buffer :: view_of(cast[ptr[mut u8]](&into.words[0]), MESSAGE_BYTES)
     handles :: view_of(&into.handles[0], into.handles.count)
     received := Received.{}
     if wait {
-        match receive(end, port, buffer, handles) {
+        match receive(end, port, buffer, handles, deadline) {
             case Ok(got) => received = got
-            case Error(error) => return .Failed(error)
+            case Error(error) => return if error == .Empty { Arrival.Empty } else { Arrival.Failed(error) }
         }
     }
     else {
@@ -563,16 +570,18 @@ side_code :: fn(T : type, side : string) -> compiler.Code {
         }
 
         /*
-         * The next message into into, waiting for one if wait: Received once it's checked, its handles in place.
+         * The next message into into, waiting for one if wait, until deadline (the monotonic clock's nanoseconds,
+         * NO_DEADLINE for never): Received once it's checked, its handles in place; Empty if none came by then.
          * Anything else leaves nothing in into, its handles closed.
          */
         #insert compiler.name("receive_", side) :: fn(
             end : slop_os.Channel,
             port : slop_os.Port,
             into : ptr[mut os.Incoming],
-            wait : bool
+            wait : bool,
+            deadline : u64 = slop_os.NO_DEADLINE
         ) -> os.Arrival {
-            arrived :: os.arrive(end, port, into, wait)
+            arrived :: os.arrive(end, port, into, wait, deadline)
             match arrived {
                 case Received => {}
                 case _ => return arrived

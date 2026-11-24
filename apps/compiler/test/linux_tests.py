@@ -117,6 +117,9 @@ TESTS = [
     # Float-to-int casts saturating, NaN to 0, and the unchecked conversion; built unoptimized too
     ("float_casts", [], 42),
     ("float_casts_unoptimized", ["-O0"], 42),
+    # Overflow told by intrinsics and std:math's checked arithmetic; built unoptimized too
+    ("checked_arithmetic", [], 42),
+    ("checked_arithmetic_unoptimized", ["-O0"], 42),
     # A struct literal past a selection DAG node's operands, stored a part at a time; built unoptimized too
     ("large_literals", [], 42),
     ("large_literals_unoptimized", ["-O0"], 42),
@@ -152,6 +155,7 @@ SCENARIO_OF = {
     "assertion_debug": "assertion",
     "fuzz_magic": "fuzz_targets",
     "float_casts_unoptimized": "float_casts",
+    "checked_arithmetic_unoptimized": "checked_arithmetic",
     "large_literals_unoptimized": "large_literals",
 }
 

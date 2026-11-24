@@ -634,6 +634,16 @@ TEST(Hosted, Audio)
 }
 
 /*
+ * add_overflows, subtract_overflows and multiply_overflows say when signed and unsigned arithmetic overflows, and
+ * std:math's checked_ ones give null then, at compile time and run time, optimized or not.
+ */
+TEST(Hosted, CheckedArithmetic)
+{
+	run_hosted("checked_arithmetic", hemera::TargetStackCheck::Off, 42);
+	run_hosted("checked_arithmetic", hemera::TargetStackCheck::Off, 42, "", false, false, false, {}, false, "", "", false, "", true);
+}
+
+/*
  * Float-to-integer casts saturate, NaN to 0, scalars and vectors, at compile time and run time, optimized or not; and
  * intrinsics.to_integer_unchecked converts within range as a cast does.
  */

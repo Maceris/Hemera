@@ -1641,6 +1641,10 @@ namespace hemera {
 		for (size_t round = 0; round < 64; ++round) {
 			bool changed = false;
 			for (const StackCheck& function : functions) {
+				// One whose body had errors gives back nothing: its errors are reported, and its callers' aren't made up
+				if (function.failed) {
+					continue;
+				}
 				analyze(function, sources, false, found);
 				std::vector<bool>& known = sources[function.declaration];
 				for (size_t i = 0; i < found.size() && i < known.size(); ++i) {
@@ -1656,7 +1660,9 @@ namespace hemera {
 		}
 		bool clean = true;
 		for (const StackCheck& function : functions) {
-			clean = analyze(function, sources, true, found) && clean;
+			if (!function.failed) {
+				clean = analyze(function, sources, true, found) && clean;
+			}
 		}
 		return clean;
 	}

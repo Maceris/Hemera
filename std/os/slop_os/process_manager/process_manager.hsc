@@ -60,6 +60,13 @@ Request :: union {
      * Answered with Identified, or NotSteered: NoProgram if none does, NotAllowed on any other connection.
      */
     Identify(slop_os.Channel),
+    /**
+     * On a steering connection only: which program the manager loaded a launcher's handle is to, as Steer finds it
+     * (handle_same), so a prompt to steer it names it by its executable, not by its launcher's word. The handle, with
+     * RIGHT_PROCESS_KILL, moves with the request, and the manager closes it. Answered with Identified, or NotSteered:
+     * NoProgram for none, or a handle without the right; NotAllowed on any other connection.
+     */
+    IdentifyProcess(slop_os.Process),
 }
 
 /** A program the manager loaded, as Identified says. */
@@ -249,6 +256,7 @@ is_idempotent :: fn(request : ptr[Request]) -> bool {
         case Connect(_) => true
         case Steer(_) => true
         case Identify(_) => true
+        case IdentifyProcess(_) => true
     }
 }
 
@@ -330,6 +338,44 @@ identify :: fn(end : slop_os.Channel, port : slop_os.Port, channel : slop_os.Cha
     out := os.Outgoing.{}
     request :: os.begin[Request](&out)
     request^ = .Identify(cast[slop_os.Channel](copy))
+    if send_request(end, port, &out) is_some {
+        _ = slop_os.handle_close(copy)
+        return .Error(.Failed)
+    }
+    into := os.Incoming.{}
+    match receive_response(end, port, &into, true) {
+        case Received => {}
+        case _ => return .Error(.Failed)
+    }
+    return match os.message_of[Response](&into)^ {
+        case Identified(identity) => .Ok(identity)
+        case NotSteered(why) => .Error(why)
+        case _ => .Error(.Failed)
+    }
+}
+
+/**
+ * Ask the process manager, on a steering connection, which program it loaded a launcher's handle is to, and wait.
+ *
+ * @param end A steering connection to the manager, kept by the caller.
+ * @param port A port bound to end, waited on for the answer.
+ * @param process A handle to the program's process with RIGHT_PROCESS_KILL and RIGHT_DUPLICATE, as its launcher has,
+ *     which stays the caller's: a duplicate goes with the request.
+ * @return The program, its handles the caller's (Identity); or why not: NoProgram if the manager loaded none it's to,
+ *     NotAllowed, or Failed, as when the duplicate couldn't be made or the manager didn't answer.
+ */
+identify_process :: fn(
+    end : slop_os.Channel,
+    port : slop_os.Port,
+    process : slop_os.Process
+) -> Result[Identity, NotSteered] {
+    copy :: slop_os.handle_duplicate(
+        cast[slop_os.Handle](process),
+        cast[slop_os.Rights](cast[u32](slop_os.RIGHT_PROCESS_KILL) | cast[u32](slop_os.RIGHT_TRANSFER))
+    ) or_return .Error(.Failed)
+    out := os.Outgoing.{}
+    request :: os.begin[Request](&out)
+    request^ = .IdentifyProcess(cast[slop_os.Process](copy))
     if send_request(end, port, &out) is_some {
         _ = slop_os.handle_close(copy)
         return .Error(.Failed)

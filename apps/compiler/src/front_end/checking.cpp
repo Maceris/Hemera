@@ -2871,7 +2871,7 @@ namespace hemera {
 		static constexpr std::string_view NAMES[] = {
 			"splat", "select", "rotate_lanes", "reduce_add", "reduce_and", "reduce_or", "reduce_xor", "any_true", "all_true",
 			"rotate_left", "rotate_right", "byte_swap", "leading_zeros", "trailing_zeros", "count_ones",
-			"square_root", "floor", "ceil", "trunc", "round_even", "fused_multiply_add", "minimum", "maximum", "copy_sign",
+			"add_overflows", "subtract_overflows", "multiply_overflows", "square_root", "floor", "ceil", "trunc", "round_even", "fused_multiply_add", "minimum", "maximum", "copy_sign",
 			"to_integer_unchecked",
 		};
 		if (declaration == nullptr || declaration->package_path == nullptr
@@ -2980,6 +2980,15 @@ namespace hemera {
 					to_string(target), describe(given)));
 			}
 			result = plain_function_type(checker.walk, { own }, target);
+			return Progress::DONE;
+		}
+		// Whether an integer operation would overflow its type, the first argument's (docs/operators.md, Integer overflow)
+		if (name == "add_overflows" || name == "subtract_overflows" || name == "multiply_overflows") {
+			TypeInfo* own = type != nullptr ? type : default_type(given);
+			if (own == nullptr || vector != nullptr || !is_integer(own)) {
+				return fail(arguments[0], std::format("takes two integers of one type, not {}", describe(given)));
+			}
+			result = plain_function_type(checker.walk, { own, own }, BUILTIN_bool);
 			return Progress::DONE;
 		}
 		if (name == "rotate_left" || name == "rotate_right" || name == "byte_swap" || name == "leading_zeros"
@@ -7799,6 +7808,16 @@ namespace hemera {
 			if (!primitive) {
 				check_ownership(*checked, function_node_, body, type, checker.walk.file_path);
 			}
+		}
+		else if (progress == Progress::DONE && type != nullptr) {
+			/*
+			 * A body with errors isn't checked for what points into the stack, but its callers are: it's taken to give
+			 * back nothing, rather than everything it's given, which would report every caller passing it a pointer
+			 * into its stack, hiding the error that matters
+			 */
+			ProgramInfo* program = checker.walk.executor.program_info;
+			std::scoped_lock<std::mutex> lock(program->stack_checks_mutex);
+			program->stack_checks.push_back(StackCheck{ nullptr, body, type, checker.walk.file_path, function, true });
 		}
 		if (early && progress != Progress::PARKED) {
 			finish_early_check(registry, function, progress != Progress::DONE || thread_error_count() != errors_before);

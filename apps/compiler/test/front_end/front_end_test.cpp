@@ -861,6 +861,8 @@ TEST(FrontEnd, ReportsBodyErrors)
 		{ "secret_field_in_any", hemera::ErrorCode::E4037 },
 		{ "link_name_alone", hemera::ErrorCode::E4014 },
 		{ "stack_return_local", hemera::ErrorCode::E4030 },
+		// A body with errors isn't taken to give back what it's given, so its callers aren't reported too
+		{ "stack_after_undeclared", hemera::ErrorCode::E4008 },
 		{ "stack_outlives_block", hemera::ErrorCode::E4030 },
 		{ "stack_pointer_to_holder", hemera::ErrorCode::E4030 },
 		{ "stack_escaping_argument", hemera::ErrorCode::E4030 },

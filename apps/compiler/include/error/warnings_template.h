@@ -11,6 +11,7 @@ W0000,TBD warning
 W2000,Name looks like another
 W2001,Name mixes scripts
 W2002,Uncommon character in a name
+W2003,Escape that isn't one
 // W3000-W3999 Parser
 // W4000-W4999 Lowering to MLIR and compile time execution
 W4000,Redundant generic argument

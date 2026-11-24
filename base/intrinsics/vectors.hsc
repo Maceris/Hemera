@@ -145,3 +145,33 @@ trailing_zeros : fn[T](value : T) -> T : ---
  * @return How many bits are 1, from 0 to the width in bits; of type T.
  */
 count_ones : fn[T](value : T) -> T : ---
+
+/**
+ * Tell whether adding two integers overflows their type: whether a + b, which wraps, isn't the true sum. Signed or
+ * not as T is; one instruction and a flag, and the add beside it shares the work (docs/operators.md, Integer overflow).
+ *
+ * @tparam T An integer type, of both.
+ * @param a The first.
+ * @param b The second.
+ * @return Whether the true sum is past T's range.
+ */
+add_overflows : fn[T](a : T, b : T) -> bool : ---
+/**
+ * Tell whether subtracting one integer from another overflows their type: whether a - b, which wraps, isn't the true
+ * difference, as 0 - 1 for an unsigned T.
+ *
+ * @tparam T An integer type, of both.
+ * @param a What's subtracted from.
+ * @param b What's subtracted.
+ * @return Whether the true difference is past T's range.
+ */
+subtract_overflows : fn[T](a : T, b : T) -> bool : ---
+/**
+ * Tell whether multiplying two integers overflows their type: whether a * b, which wraps, isn't the true product.
+ *
+ * @tparam T An integer type, of both.
+ * @param a The first.
+ * @param b The second.
+ * @return Whether the true product is past T's range.
+ */
+multiply_overflows : fn[T](a : T, b : T) -> bool : ---

@@ -490,6 +490,15 @@ For signed integers, the operators `+`, `-`, `*`, `/`, and `<<` are computed as 
 two`s compliment binary representation of the integer value. Overflow will not cause a runtime panic.
 For example, `x < x + 1` cannot be assumed to always be true.
 
+Whether `+`, `-` or `*` would overflow is told by `intrinsics.add_overflows(a, b)`, `subtract_overflows` and
+`multiply_overflows`, signed or not as the operands' type is, from LLVM's `*.with.overflow`: one instruction and a flag,
+with the operation beside it sharing the work. `std:math`'s `checked_add`, `checked_subtract` and `checked_multiply`
+give the result as an optional, null when it would overflow:
+
+```
+total := checked_add(a, b) or_return .Error(.TooBig)
+```
+
 ## Floating-point operators
 
 For floating-point, complex, quaternion, or other floating-point embedded types:
