@@ -30,8 +30,11 @@
  *
  * A loop's head keeps what holds every time around: starting from everything known before it, it
  * goes around quietly, keeping what coming back around still gives (loosened a few times, like
- * i <= n - 1 to i <= n, then dropped if it keeps loosening), until that settles; then once more,
- * reporting.
+ * i <= n - 1 to i <= n, then to the constants the body compares against, and dropped if it keeps
+ * loosening past them), until that settles; then once more, reporting.
+ *
+ * An if expression's integer value is a term of its own, which each branch says is its value. A store
+ * into one field of what a local reaches keeps what's known of the others, whose bytes are apart.
  *
  * Integers wrap, so i + 1 is only known to be one more than i, and a comparison of i + 1 only says
  * something about i, when i is bounded by a count or a constant already. A sum of two terms, like at + i,
@@ -226,7 +229,75 @@ namespace hemera {
 			bool is_count = false;
 			// The most its type holds, for an unsigned type narrower than 64 bits
 			std::optional<int64_t> maximum;
+			// A path's steps from its local, like ^.name[L3] or ^.count#; empty for other kinds
+			std::string path = {};
 		};
+
+		/*
+		 * Whether two paths from one local reach memory that can't overlap: they part at two members of one struct whose
+		 * bytes are apart (member_bytes), like ^.name@0+32[L3] and ^.count@32+8#. Anything else, an element at another
+		 * index, one path inside the other, or a member whose place isn't known, may be the same memory.
+		 */
+		/*
+		 * Where a struct's member is, as a path's step writes it: @offset+size in bytes, for a member the struct has
+		 * itself, a #union's too, whose are all at 0; nothing for one it doesn't, like one an anonymous struct brings
+		 * in, or a type that isn't a struct, which disjoint_paths then takes to overlap anything.
+		 */
+		std::string member_bytes(TypeInfo const* container, InternedString name) {
+			TypeInfo const* type = container != nullptr ? base(container) : nullptr;
+			if (type != nullptr && TypeInfoVariant::POINTER == type->variant) {
+				TypeInfo const* pointee = static_cast<TypeInfoPointer const*>(type)->base_type;
+				type = pointee != nullptr ? base(pointee) : nullptr;
+			}
+			if (type == nullptr || TypeInfoVariant::STRUCT != type->variant) {
+				return {};
+			}
+			for (const StructMember& member : static_cast<TypeInfoStruct const*>(type)->members) {
+				if (member.name == name && member.member_type != nullptr) {
+					return std::format("@{}+{}", member.offset, base(member.member_type)->size);
+				}
+			}
+			return {};
+		}
+
+		bool disjoint_paths(std::string_view a, std::string_view b) {
+			auto next_step = [](std::string_view path, size_t at) {
+				size_t end = at + 1;
+				if (path[at] == '[') {
+					end = path.find(']', at);
+					end = end == std::string_view::npos ? path.size() : end + 1;
+				}
+				else if (path[at] == '.') {
+					while (end < path.size() && path[end] != '.' && path[end] != '[' && path[end] != '^' && path[end] != '#') {
+						++end;
+					}
+				}
+				return path.substr(at, end - at);
+			};
+			size_t i = 0;
+			while (i < a.size() && i < b.size()) {
+				const std::string_view left = next_step(a, i);
+				const std::string_view right = next_step(b, i);
+				if (left != right) {
+					// Two members, each with where it is: apart when their bytes are
+					auto bytes = [](std::string_view step, uint64_t& start, uint64_t& size) {
+						const size_t at = step.find('@');
+						const size_t plus = step.find('+');
+						if (step.empty() || step[0] != '.' || at == std::string_view::npos || plus == std::string_view::npos || plus < at) {
+							return false;
+						}
+						start = std::strtoull(std::string(step.substr(at + 1, plus - at - 1)).c_str(), nullptr, 10);
+						size = std::strtoull(std::string(step.substr(plus + 1)).c_str(), nullptr, 10);
+						return true;
+					};
+					uint64_t left_start = 0, left_size = 0, right_start = 0, right_size = 0;
+					return bytes(left, left_start, left_size) && bytes(right, right_start, right_size)
+						&& (left_start + left_size <= right_start || right_start + right_size <= left_start);
+				}
+				i += left.size();
+			}
+			return false;
+		}
 
 		// What's known: a - b <= c for each (a, b). Unreachable code knows everything.
 		struct Facts {
@@ -324,6 +395,11 @@ namespace hemera {
 			std::unordered_set<const void*> deferred_writes = {};
 			// How many such reads there have been, which numbers each one's term
 			size_t unknown_reads = 0;
+			/*
+			 * The constants the body compares against, a step either side, and their negations: where a loop's bound
+			 * that keeps loosening is tried before it's dropped (widen), like a counter kept below a fixed array's count
+			 */
+			std::set<int64_t> thresholds = {};
 		};
 
 		void report(Analysis& analysis, const ast::Node* where, const std::string& details) {
@@ -353,7 +429,8 @@ namespace hemera {
 			const Term term = analysis.terms.size();
 			const bool is_count = TermKind::COUNT == kind || (TermKind::PATH == kind && !path.ends_with('#'));
 			analysis.terms.push_back(TermInfo{ kind, local, nonnegative || is_count,
-				TermKind::PATH == kind && path.find('^') != std::string::npos, is_count, std::nullopt });
+				TermKind::PATH == kind && path.find('^') != std::string::npos, is_count, std::nullopt,
+				TermKind::PATH == kind ? path : std::string() });
 			analysis.term_keys[{ kind, key }] = term;
 			return term;
 		}
@@ -992,7 +1069,8 @@ namespace hemera {
 						next.pathless = current.pathless;
 						next.indexed_by = current.indexed_by;
 						// Through a pointer, what it points to
-						next.path = current.path + (is_variant(current.type, TypeInfoVariant::POINTER) ? "^." : ".") + member;
+						next.path = current.path + (is_variant(current.type, TypeInfoVariant::POINTER) ? "^." : ".") + member
+							+ member_bytes(current.type, arguments[0]->value.value);
 						if (member == "count" && is_indexable(current.type)) {
 							next.value = count_of(analysis, current);
 						}
@@ -1312,6 +1390,54 @@ namespace hemera {
 				|| TokenType::OPERATOR_LESS_THAN_OR_EQUAL == op || TokenType::OPERATOR_GREATER_THAN_OR_EQUAL == op;
 		}
 
+		ast::Node* else_of(ast::Node* if_node);
+
+		/*
+		 * Whether a branch's last statement is the value it gives, as an if expression's is: an expression, not a
+		 * definition, an assignment, or a statement that leaves.
+		 */
+		bool gives_value(const ast::Node* statement) {
+			const ast::NodeType type = statement->node_type;
+			return ast::NodeType::DEFINITION != type && ast::NodeType::RETURN != type && ast::NodeType::GIVE != type
+				&& !is_assignment(statement);
+		}
+
+		/*
+		 * An if expression of an integer type: a term of its own, which each branch says is its value, joined where they
+		 * meet, so n :: if a < b.count { a } else { b.count } is known to be at most b.count. Each time it's evaluated
+		 * it's a value of its own, what was known of it before forgotten.
+		 */
+		Value evaluate_if(Analysis& analysis, Facts& facts, ast::Node* node, Term result) {
+			auto [when_true, when_false] = condition(analysis, facts, node->children[0]);
+			auto branch = [&](Facts& branch_facts, ast::Node* block) {
+				if (ast::NodeType::IF == block->node_type) {
+					evaluate_if(analysis, branch_facts, block, result);
+					return;
+				}
+				const size_t count = block->children.size();
+				for (size_t i = 0; i + 1 < count; ++i) {
+					walk_statement(analysis, branch_facts, block->children[i]);
+				}
+				if (count == 0) {
+					return;
+				}
+				ast::Node* last = block->children[count - 1];
+				if (!branch_facts.reachable || !gives_value(last)) {
+					walk_statement(analysis, branch_facts, last);
+					return;
+				}
+				const Value value = evaluate(analysis, branch_facts, last);
+				add_value_equal(analysis, branch_facts, result, value);
+			};
+			branch(when_true, node->children[1]);
+			ast::Node* otherwise = else_of(node);
+			if (otherwise != nullptr) {
+				branch(when_false, otherwise);
+			}
+			facts = join(analysis, when_true, when_false);
+			return of_term(result);
+		}
+
 		Value evaluate(Analysis& analysis, Facts& facts, ast::Node* node) {
 			const ast::NodeType type = node->node_type;
 			if (ast::NodeType::LITERAL == type) {
@@ -1415,6 +1541,14 @@ namespace hemera {
 				return evaluate_steps(analysis, facts, node, automatic ? 1 : 2, chain).value;
 			}
 			if (ast::NodeType::IF == type) {
+				// One of an integer type is a value: a term of its own, which its branches give (evaluate_if)
+				const CheckedNode* found = found_at(analysis, node);
+				if (found != nullptr && is_variant(found->type, TypeInfoVariant::INTEGER) && else_of(node) != nullptr) {
+					const Term result = bounded_by_type(analysis,
+						term_for(analysis, TermKind::LOCAL, node, "if", is_unsigned(found->type)), found->type);
+					forget_local(analysis, facts, node);
+					return evaluate_if(analysis, facts, node, result);
+				}
 				walk_statement(analysis, facts, node);
 				return Value{};
 			}
@@ -1496,6 +1630,16 @@ namespace hemera {
 					at_most(facts, left, constant(*right.at_most), TokenType::SYM_LT == op ? -1 : 0);
 				}
 				return;
+			}
+			// What's compared against, for widening a loop's bounds to (thresholds): a step either side, either way
+			if (is_comparison(op)) {
+				const int64_t between = right.offset - left.offset;
+				if (between > -UNBOUNDED / 2 && between < UNBOUNDED / 2) {
+					for (int64_t step = -1; step <= 1; ++step) {
+						analysis.thresholds.insert(between + step);
+						analysis.thresholds.insert(-(between + step));
+					}
+				}
 			}
 			// left < right: left at its least is below right at its most, so left.term + l <= right.term + r + spread - 1
 			auto least = [](Value value) {
@@ -1758,10 +1902,20 @@ namespace hemera {
 				if (again <= c) {
 					result.bounds[pair] = c;
 				}
-				// The first few times, a bound that comes back looser is loosened to that, like i <= n - 1
-				// becoming i <= n; after that, one that keeps loosening is dropped
-				else if (loosen && again < UNBOUNDED) {
-					result.bounds[pair] = again;
+				/*
+				 * One that comes back looser is loosened: the first few times to what came back, like i <= n - 1
+				 * becoming i <= n; after that, to the nearest constant the body compares against that's at least as
+				 * loose, so a counter kept below a fixed array's count of 40 goes on to n <= 39, then 40, where it holds,
+				 * rather than a step each time around until it's dropped. One past every threshold is dropped.
+				 * Thresholds only rise, and are finitely many, so this ends.
+				 */
+				else if (again < UNBOUNDED) {
+					if (loosen) {
+						result.bounds[pair] = again;
+					}
+					else if (auto threshold = analysis.thresholds.lower_bound(again); threshold != analysis.thresholds.end()) {
+						result.bounds[pair] = *threshold;
+					}
 				}
 			}
 			return result;
@@ -1908,6 +2062,14 @@ namespace hemera {
 							return false;
 						}
 						const TermInfo& info = analysis.terms[term];
+						/*
+						 * Another field of what the same local reaches, whose bytes the store's can't be, its index
+						 * proven, like holder.count across holder.name[i] = byte
+						 */
+						if (TermKind::PATH == info.kind && term != stored && chain.local != nullptr && !chain.pathless
+							&& info.local == chain.local && disjoint_paths(info.path, chain.path)) {
+							return false;
+						}
 						return (found != nullptr && found->local != nullptr && TermKind::PATH == info.kind && info.local == found->local)
 							|| info.through_pointer || (info.local != nullptr && analysis.address_taken.contains(info.local));
 					};

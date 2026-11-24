@@ -235,3 +235,53 @@ through_pointer :: fn(p: ptr[u8[8]], i: usize) -> u8 {
     }
     return 0
 }
+
+// An if expression's value is what its branches give: the least of two counts (decisions of 0198's B1)
+least_of :: fn(text: u8[], want: usize) -> u8[] {
+    n :: if want < text.count { want } else { text.count }
+    return text[0..<n]
+}
+
+// Both arrays indexed to the least of their counts
+copy_least :: fn(from: u8[], into: mut u8[]) {
+    n :: if from.count < into.count { from.count } else { into.count }
+    for i in 0..<n {
+        into[i] = from[i]
+    }
+}
+
+// Branches of an else if too
+clamped :: fn(text: u8[], want: int) -> u8[] {
+    n :: if want < 0 { cast[usize](0) } else if cast[usize](want) < text.count { cast[usize](want) } else { text.count }
+    return text[0..<n]
+}
+
+// A counter kept below a fixed array's count through a loop, its bound widened to the count it's compared against
+fixed_counter :: fn(given: u8[]) -> usize {
+    shown : u8[40]
+    n := cast[usize](0)
+    for byte in given {
+        if n < shown.count {
+            shown[n] = byte
+            n += 1
+        }
+    }
+    return shown[0..<n].count
+}
+
+Named :: struct {
+    name : u8[32],
+    count : usize,
+}
+
+// A store into one field keeps what's known of the struct's others, its index proven
+kept_count :: fn(named: ptr[mut Named], given: u8[]) -> usize {
+    named.count = 0
+    for byte, i in given {
+        if i < named.name.count {
+            named.name[i] = byte
+            named.count = i + 1
+        }
+    }
+    return named.name[0..<named.count].count
+}

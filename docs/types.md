@@ -454,9 +454,15 @@ about an element's fields is forgotten when its index changes, as well as when t
 * a sum of two values compared as it is, like `if at + i < into.count { into[at + i] = 1 }`: what's known of the sum,
   wrapped or not, holds for an index that's the same sum, until either value changes
 * the count of a fixed array through a pointer, like `p.count` with `p` a `ptr[u8[8]]`, which is the constant 8
+* an `if` expression's integer value, what each branch gives, so `n :: if want < text.count { want } else { text.count }`
+  is at most `text.count`, and `text[0..<n]` is in bounds
+* a store into one field of what a local reaches, like `named.name[i] = byte`, keeps what's known of its other fields,
+  like `named.count`, when their bytes are apart (not a `#union`'s) and the store's index is a constant or a local
 
 A loop keeps what holds every time around it: a counter that only goes down keeps its upper bound, and one that's
-kept below a count keeps that.
+kept below a count keeps that, a fixed array's constant count too: a bound that keeps loosening is tried at the
+constants the function compares against, so `if n < shown.count { shown[n] = byte; n += 1 }` keeps `n` at most
+`shown.count`.
 
 Integers wrap, so `x + 1` is only known to be one more than `x` when `x` is already known to be below something, like
 a count. `if offset + 4 <= bytes.count` proves nothing about `offset`, since a huge `offset` wraps around;

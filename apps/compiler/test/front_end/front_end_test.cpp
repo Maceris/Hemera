@@ -939,6 +939,9 @@ TEST(FrontEnd, ReportsBodyErrors)
 		{ "bounds_signed_modulus", hemera::ErrorCode::E4031 },
 		{ "bounds_after_or_break", hemera::ErrorCode::E4031 },
 		{ "bounds_deferred_write", hemera::ErrorCode::E4031 },
+		// A #union's fields share bytes, so a store to one forgets the other; an if's branch past the count
+		{ "bounds_union_overlap", hemera::ErrorCode::E4031 },
+		{ "bounds_if_value_past", hemera::ErrorCode::E4031 },
 		{ "generic_value_variable", hemera::ErrorCode::E4010 },
 		{ "generic_value_given_type", hemera::ErrorCode::E4010 },
 		{ "generic_value_kind", hemera::ErrorCode::E4014 },
