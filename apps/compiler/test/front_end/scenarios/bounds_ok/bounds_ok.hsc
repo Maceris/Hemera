@@ -236,7 +236,7 @@ through_pointer :: fn(p: ptr[u8[8]], i: usize) -> u8 {
     return 0
 }
 
-// An if expression's value is what its branches give: the least of two counts (decisions of 0198's B1)
+// An if expression's value is what its branches give: the least of two counts
 least_of :: fn(text: u8[], want: usize) -> u8[] {
     n :: if want < text.count { want } else { text.count }
     return text[0..<n]
