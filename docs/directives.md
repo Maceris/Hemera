@@ -292,8 +292,8 @@ multi_byte_to_wide_char #foreign(KERNEL32) #link_name("MultiByteToWideChar") : f
   [calling_convention.md](calling_convention.md#calls-to-foreign-code). So do calls through a `.c` function value
   without a context, like one a library hands out by name. For now each parameter and the result have
   to fit a register (integers, floating-point values, booleans, enums, and pointers: `cstring`s, function values and
-  optional pointers included, null for None), there are no variadic foreign functions, and only x86-64 and AArch64
-  are supported.
+  optional pointers included, null for None), there are no variadic foreign functions, and only x86-64, AArch64 and
+  RISC-V are supported.
 
 ### `#test`
 

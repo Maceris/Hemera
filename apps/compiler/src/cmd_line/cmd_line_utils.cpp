@@ -567,6 +567,10 @@ namespace hemera {
 					output.architecture = ArchType::aarch64_32;
 					architecture_seen = true;
 				}
+				else if (strcmp("riscv64", first_arg.c_str()) == 0) {
+					output.architecture = ArchType::riscv64;
+					architecture_seen = true;
+				}
 				else if (strcmp("x86", first_arg.c_str()) == 0) {
 					output.architecture = ArchType::x86;
 					architecture_seen = true;

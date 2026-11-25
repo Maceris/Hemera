@@ -43,8 +43,8 @@ import runtime from "base:runtime"
      */
     STAT_MODE_WORD :: 3
 }
-#else_if OS == .Linux && TARGET_ARCH == .arm64 {
-    /** The system call number of getcwd in the generic table, which AArch64 uses. */
+#else_if OS == .Linux && (TARGET_ARCH == .arm64 || TARGET_ARCH == .riscv64) {
+    /** The system call number of getcwd in the generic table, which AArch64 and RISC-V use. */
     SYS_GETCWD : u64 : 17
     /** The system call number of mkdirat in the generic table. */
     SYS_MKDIRAT : u64 : 34
@@ -69,16 +69,22 @@ import runtime from "base:runtime"
     /** The system call number of renameat2, given no flags, standing in for renameat, which the generic table lacks. */
     SYS_RENAMEAT : u64 : 276
 
-    /** The openat flag that fails with ENOTDIR unless the path is a folder; AArch64's value. */
-    O_DIRECTORY : u64 : 0x4000
+    #if TARGET_ARCH == .arm64 {
+        /** The openat flag that fails with ENOTDIR unless the path is a folder; AArch64's value. */
+        O_DIRECTORY : u64 : 0x4000
+    }
+    #else {
+        /** The openat flag that fails with ENOTDIR unless the path is a folder; the generic value, RISC-V's. */
+        O_DIRECTORY : u64 : 0x10000
+    }
     /**
-     * Which of Stat's words holds st_mode, in its low 32 bits: struct stat on AArch64 is 128 bytes, st_mode the low
-     * half of the third word, st_size the seventh.
+     * Which of Stat's words holds st_mode, in its low 32 bits: the generic struct stat, AArch64's and RISC-V's, is
+     * 128 bytes, st_mode the low half of the third word, st_size the seventh.
      */
     STAT_MODE_WORD :: 2
 }
 
-#if OS == .Linux && (TARGET_ARCH == .x86_64 || TARGET_ARCH == .arm64) {
+#if OS == .Linux && (TARGET_ARCH == .x86_64 || TARGET_ARCH == .arm64 || TARGET_ARCH == .riscv64) {
     /** The directory openat and the other *at calls are given for a relative path to start from the current one. */
     AT_FDCWD : u64 : 0xffff_ffff_ffff_ff9c
     /** The unlinkat flag to remove a folder, which has to be empty, rather than a file. */

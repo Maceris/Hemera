@@ -1,0 +1,289 @@
+diff --git a/llvm/lib/Target/RISCV/RISCVFrameLowering.cpp b/llvm/lib/Target/RISCV/RISCVFrameLowering.cpp
+index ee3e4fa7a2fc..f26514a1739a 100644
+--- a/llvm/lib/Target/RISCV/RISCVFrameLowering.cpp
++++ b/llvm/lib/Target/RISCV/RISCVFrameLowering.cpp
+@@ -15,6 +15,7 @@
+ #include "MCTargetDesc/RISCVMCTargetDesc.h"
+ #include "RISCVMachineFunctionInfo.h"
+ #include "RISCVSubtarget.h"
++#include "llvm/ADT/StringSwitch.h"
+ #include "llvm/BinaryFormat/Dwarf.h"
+ #include "llvm/CodeGen/CFIInstBuilder.h"
+ #include "llvm/CodeGen/LivePhysRegs.h"
+@@ -2713,6 +2714,10 @@ bool RISCVFrameLowering::enableShrinkWrapping(const MachineFunction &MF) const {
+   if (MF.getFunction().hasOptNone())
+     return false;
+ 
++  // Segmented stacks' check runs before anything else, in the entry block
++  if (MF.shouldSplitStack())
++    return false;
++
+   // QCI and SiFive CLIC interrupt entry sequences must precede all handler
+   // code.
+   const auto *RVFI = MF.getInfo<RISCVMachineFunctionInfo>();
+@@ -2722,6 +2727,139 @@ bool RISCVFrameLowering::enableShrinkWrapping(const MachineFunction &MF) const {
+   return true;
+ }
+ 
++// "split-stack" with "split-stack-limit-register"="x27": the stack pointer less
++// the frame is compared against a limit read at an offset
++// ("split-stack-limit-offset", a multiple of 8, default 0) from a register the
++// program reserves for it (+reserve-x27), so any platform works, including
++// freestanding ones. Without room, "split-stack-failure"="trap" runs ebreak, and
++// "split-stack-morestack"="symbol" calls symbol with Hemera's protocol: a frame
++// record (ra at s0 - 8, the caller's s0 at s0 - 16), the frame's size in t3,
++// the stack arguments' size in t4, the body's address in t5, and call symbol,
++// which runs the body on a new stack segment and returns once it has; then back
++// to the caller. t0 and t1, which nothing holds at a function's entry, are the
++// check's scratch registers; a0 to a7, and t2, Zicfilp's label, pass through
++// untouched. LLVM has no other segmented stacks on RISC-V.
++void RISCVFrameLowering::adjustForSegmentedStacks(
++    MachineFunction &MF, MachineBasicBlock &PrologueMBB) const {
++  const Function &Fn = MF.getFunction();
++  if (!Fn.hasFnAttribute("split-stack-limit-register"))
++    report_fatal_error(
++        "Segmented stacks on RISC-V need split-stack-limit-register");
++  if (Fn.isVarArg())
++    report_fatal_error("Segmented stacks do not support vararg functions.");
++  StringRef Name =
++      Fn.getFnAttribute("split-stack-limit-register").getValueAsString();
++  const Register LimitReg = StringSwitch<unsigned>(Name)
++                                .Case("x27", RISCV::X27)
++                                .Case("s11", RISCV::X27)
++                                .Default(0);
++  if (!LimitReg)
++    report_fatal_error("Unsupported split-stack-limit-register " + Name);
++  int64_t LimitOffset = 0;
++  if (Fn.hasFnAttribute("split-stack-limit-offset") &&
++      Fn.getFnAttribute("split-stack-limit-offset")
++          .getValueAsString()
++          .getAsInteger(0, LimitOffset))
++    report_fatal_error("Invalid split-stack-limit-offset");
++  if (LimitOffset < 0 || LimitOffset % 8 != 0 || LimitOffset > 2040)
++    report_fatal_error(
++        "split-stack-limit-offset must be a multiple of 8, from 0 to 2040");
++  const bool TrapOnFailure =
++      Fn.getFnAttribute("split-stack-failure").getValueAsString() == "trap";
++  const StringRef MorestackSymbol =
++      Fn.getFnAttribute("split-stack-morestack").getValueAsString();
++  if (!TrapOnFailure && MorestackSymbol.empty())
++    report_fatal_error("Segmented stacks on RISC-V need "
++                       "split-stack-failure=trap or split-stack-morestack");
++
++  MachineFrameInfo &MFI = MF.getFrameInfo();
++  if (!MFI.needsSplitStackProlog())
++    return;
++  const RISCVInstrInfo &TII = *STI.getInstrInfo();
++  const auto *RVFI = MF.getInfo<RISCVMachineFunctionInfo>();
++  const uint64_t StackSize = MFI.getStackSize();
++  DebugLoc DL;
++
++  MachineBasicBlock *AllocMBB = MF.CreateMachineBasicBlock();
++  MachineBasicBlock *CheckMBB = MF.CreateMachineBasicBlock();
++  for (const auto &LI : PrologueMBB.liveins()) {
++    AllocMBB->addLiveIn(LI);
++    CheckMBB->addLiveIn(LI);
++  }
++  MF.push_front(AllocMBB);
++  MF.push_front(CheckMBB);
++
++  // t0, the limit; t1, the stack pointer less the frame
++  BuildMI(CheckMBB, DL, TII.get(RISCV::LD), RISCV::X5)
++      .addReg(LimitReg)
++      .addImm(LimitOffset);
++  if (StackSize <= 2048) {
++    BuildMI(CheckMBB, DL, TII.get(RISCV::ADDI), RISCV::X6)
++        .addReg(RISCV::X2)
++        .addImm(-static_cast<int64_t>(StackSize));
++  } else {
++    TII.movImm(*CheckMBB, CheckMBB->end(), DL, RISCV::X6, StackSize);
++    BuildMI(CheckMBB, DL, TII.get(RISCV::SUB), RISCV::X6)
++        .addReg(RISCV::X2)
++        .addReg(RISCV::X6, RegState::Kill);
++  }
++  // Into the function when there's room: above the limit
++  BuildMI(CheckMBB, DL, TII.get(RISCV::BLTU))
++      .addReg(RISCV::X5, RegState::Kill)
++      .addReg(RISCV::X6, RegState::Kill)
++      .addMBB(&PrologueMBB);
++  CheckMBB->addSuccessor(AllocMBB, BranchProbability::getZero());
++  CheckMBB->addSuccessor(&PrologueMBB, BranchProbability::getOne());
++
++  if (TrapOnFailure) {
++    BuildMI(AllocMBB, DL, TII.get(RISCV::EBREAK));
++    return;
++  }
++
++  PrologueMBB.setMachineBlockAddressTaken();
++  PrologueMBB.setLabelMustBeEmitted();
++  BuildMI(AllocMBB, DL, TII.get(RISCV::ADDI), RISCV::X2)
++      .addReg(RISCV::X2)
++      .addImm(-16);
++  BuildMI(AllocMBB, DL, TII.get(RISCV::SD))
++      .addReg(RISCV::X1)
++      .addReg(RISCV::X2)
++      .addImm(8);
++  BuildMI(AllocMBB, DL, TII.get(RISCV::SD))
++      .addReg(RISCV::X8)
++      .addReg(RISCV::X2)
++      .addImm(0);
++  BuildMI(AllocMBB, DL, TII.get(RISCV::ADDI), RISCV::X8)
++      .addReg(RISCV::X2)
++      .addImm(16);
++  TII.movImm(*AllocMBB, AllocMBB->end(), DL, RISCV::X28, StackSize);
++  TII.movImm(*AllocMBB, AllocMBB->end(), DL, RISCV::X29,
++             RVFI->getArgumentStackSize());
++  // t5, the body's address: auipc and addi, the addi naming the auipc
++  MCSymbol *Here = MF.getContext().createNamedTempSymbol("pcrel_hi");
++  MachineInstr *High =
++      BuildMI(AllocMBB, DL, TII.get(RISCV::AUIPC), RISCV::X30)
++          .addSym(PrologueMBB.getSymbol(), RISCVII::MO_PCREL_HI);
++  High->setPreInstrSymbol(MF, Here);
++  BuildMI(AllocMBB, DL, TII.get(RISCV::ADDI), RISCV::X30)
++      .addReg(RISCV::X30)
++      .addSym(Here, RISCVII::MO_PCREL_LO);
++  BuildMI(AllocMBB, DL, TII.get(RISCV::PseudoCALL))
++      .addExternalSymbol(MF.createExternalSymbolName(MorestackSymbol),
++                         RISCVII::MO_CALL)
++      .addReg(RISCV::X1, RegState::ImplicitDefine);
++  BuildMI(AllocMBB, DL, TII.get(RISCV::LD), RISCV::X1)
++      .addReg(RISCV::X2)
++      .addImm(8);
++  BuildMI(AllocMBB, DL, TII.get(RISCV::LD), RISCV::X8)
++      .addReg(RISCV::X2)
++      .addImm(0);
++  BuildMI(AllocMBB, DL, TII.get(RISCV::ADDI), RISCV::X2)
++      .addReg(RISCV::X2)
++      .addImm(16);
++  BuildMI(AllocMBB, DL, TII.get(RISCV::PseudoRET));
++}
++
+ bool RISCVFrameLowering::canUseAsPrologue(const MachineBasicBlock &MBB) const {
+   MachineBasicBlock *TmpMBB = const_cast<MachineBasicBlock *>(&MBB);
+   const MachineFunction *MF = MBB.getParent();
+diff --git a/llvm/lib/Target/RISCV/RISCVFrameLowering.h b/llvm/lib/Target/RISCV/RISCVFrameLowering.h
+index 5157c456a92c..fcdb43fb2598 100644
+--- a/llvm/lib/Target/RISCV/RISCVFrameLowering.h
++++ b/llvm/lib/Target/RISCV/RISCVFrameLowering.h
+@@ -67,6 +67,11 @@ public:
+   uint64_t getFirstSPAdjustAmount(const MachineFunction &MF) const;
+ 
+   bool canUseAsPrologue(const MachineBasicBlock &MBB) const override;
++
++  /// A stack check before the prologue, against a limit read from a register
++  /// the program reserves ("split-stack-limit-register").
++  void adjustForSegmentedStacks(MachineFunction &MF,
++                                MachineBasicBlock &PrologueMBB) const override;
+   bool canUseAsEpilogue(const MachineBasicBlock &MBB) const override;
+ 
+   bool enableShrinkWrapping(const MachineFunction &MF) const override;
+diff --git a/llvm/lib/Target/RISCV/RISCVISelLowering.cpp b/llvm/lib/Target/RISCV/RISCVISelLowering.cpp
+index 5f8001a51c9a..25d80b488094 100644
+--- a/llvm/lib/Target/RISCV/RISCVISelLowering.cpp
++++ b/llvm/lib/Target/RISCV/RISCVISelLowering.cpp
+@@ -29113,6 +29113,7 @@ SDValue RISCVTargetLowering::LowerFormalArguments(
+     RVFI->setVarArgsFrameIndex(FI);
+     RVFI->setVarArgsSaveSize(VarArgsSaveSize);
+   }
++  MF.getInfo<RISCVMachineFunctionInfo>()->setArgumentStackSize(CCInfo.getStackSize());
+ 
+   // All stores are grouped in one node to allow the matching between
+   // the size of Ins and InVals. This only happens for vararg functions.
+diff --git a/llvm/lib/Target/RISCV/RISCVMachineFunctionInfo.h b/llvm/lib/Target/RISCV/RISCVMachineFunctionInfo.h
+index 3aaf7466d742..5aeda6b85d0a 100644
+--- a/llvm/lib/Target/RISCV/RISCVMachineFunctionInfo.h
++++ b/llvm/lib/Target/RISCV/RISCVMachineFunctionInfo.h
+@@ -51,6 +51,8 @@ private:
+   int VarArgsFrameIndex = 0;
+   /// Size of the save area used for varargs
+   int VarArgsSaveSize = 0;
++  /// Size of the arguments passed on the stack, which segmented stacks' morestack copies
++  unsigned ArgumentStackSize = 0;
+   /// FrameIndex used for transferring values between 64-bit FPRs and a pair
+   /// of 32-bit GPRs via the stack.
+   int MoveF64FrameIndex = -1;
+@@ -112,6 +114,9 @@ public:
+   unsigned getVarArgsSaveSize() const { return VarArgsSaveSize; }
+   void setVarArgsSaveSize(int Size) { VarArgsSaveSize = Size; }
+ 
++  unsigned getArgumentStackSize() const { return ArgumentStackSize; }
++  void setArgumentStackSize(unsigned Size) { ArgumentStackSize = Size; }
++
+   int getMoveF64FrameIndex(MachineFunction &MF) {
+     if (MoveF64FrameIndex == -1)
+       MoveF64FrameIndex =
+diff --git a/llvm/test/CodeGen/RISCV/segmented-stacks-limit-register.ll b/llvm/test/CodeGen/RISCV/segmented-stacks-limit-register.ll
+new file mode 100644
+index 000000000000..1f0153a7d25c
+--- /dev/null
++++ b/llvm/test/CodeGen/RISCV/segmented-stacks-limit-register.ll
+@@ -0,0 +1,69 @@
++; RUN: llc < %s -mtriple=riscv64-unknown-elf -mattr=+reserve-x27 -verify-machineinstrs | FileCheck %s
++; RUN: llc < %s -mtriple=riscv64-linux-gnu -mattr=+reserve-x27,+c -verify-machineinstrs | FileCheck %s
++; RUN: llc < %s -mtriple=riscv64-unknown-elf -mattr=+reserve-x27 -filetype=obj -o /dev/null
++
++; Segmented stacks on RISC-V, with the limit read at an offset from a reserved register,
++; as on X86 and AArch64: running out traps, or calls a symbol with Hemera's protocol. The
++; stack pointer less the frame is compared, whatever the frame's size.
++
++declare void @use(ptr)
++
++define void @big() "split-stack" "split-stack-limit-register"="x27" "split-stack-failure"="trap" {
++; CHECK-LABEL: big:
++; CHECK:       ld t0, 0(s11)
++; CHECK-NEXT:  addi t1, sp, -1040
++; CHECK-NEXT:  bgeu t0, t1, [[TRAP:.LBB[0-9_]+]]
++; CHECK:       call use
++; CHECK:       [[TRAP]]:
++; CHECK-NEXT:  ebreak
++  %buf = alloca [1024 x i8]
++  call void @use(ptr %buf)
++  ret void
++}
++
++define void @offset() "split-stack" "split-stack-limit-register"="s11" "split-stack-limit-offset"="16" "split-stack-failure"="trap" {
++; CHECK-LABEL: offset:
++; CHECK:       ld t0, 16(s11)
++  %buf = alloca [64 x i8]
++  call void @use(ptr %buf)
++  ret void
++}
++
++define void @huge() "split-stack" "split-stack-limit-register"="x27" "split-stack-failure"="trap" {
++; CHECK-LABEL: huge:
++; CHECK:       ld t0, 0(s11)
++; CHECK:       sub t1, sp, t1
++; CHECK-NEXT:  bgeu t0, t1,
++  %buf = alloca [100000 x i8]
++  call void @use(ptr %buf)
++  ret void
++}
++
++; The body's address, and the frame's and stack arguments' sizes, are what morestack is given
++define i64 @grows(i64 %a, i64 %b, i64 %c, i64 %d, i64 %e, i64 %f, i64 %g, i64 %h, i64 %i) "split-stack" "split-stack-limit-register"="x27" "split-stack-morestack"="hemera.morestack" {
++; CHECK-LABEL: grows:
++; CHECK:       ld t0, 0(s11)
++; CHECK-NEXT:  addi t1, sp, -288
++; CHECK-NEXT:  bgeu t0, t1, [[GROW:.LBB[0-9_]+]]
++; CHECK-NEXT:  [[BODY:.LBB[0-9_]+]]:
++; CHECK:       call use
++; CHECK:       [[GROW]]:
++; CHECK-NEXT:  addi sp, sp, -16
++; CHECK-NEXT:  sd ra, 8(sp)
++; CHECK-NEXT:  sd s0, 0(sp)
++; CHECK-NEXT:  addi s0, sp, 16
++; CHECK-NEXT:  li t3, 288
++; CHECK-NEXT:  li t4, 8
++; CHECK-NEXT:  [[HERE:.Lpcrel_hi[0-9]+]]:
++; CHECK-NEXT:  auipc t5, %pcrel_hi([[BODY]])
++; CHECK-NEXT:  addi t5, t5, %pcrel_lo([[HERE]])
++; CHECK-NEXT:  call hemera.morestack
++; CHECK-NEXT:  ld ra, 8(sp)
++; CHECK-NEXT:  ld s0, 0(sp)
++; CHECK-NEXT:  addi sp, sp, 16
++; CHECK-NEXT:  ret
++  %buf = alloca [256 x i8]
++  call void @use(ptr %buf)
++  %sum = add i64 %a, %i
++  ret i64 %sum
++}

@@ -22,24 +22,32 @@ package runtime
     /** x86-64's relative relocation, R_X86_64_RELATIVE, the only kind a typed library may have. */
     RELATIVE_RELOCATION : u32 : 8
 }
-#else_if OS == .Linux && TARGET_ARCH == .arm64 {
-    /** AArch64's number for pread64(2). */
+#else_if OS == .Linux && (TARGET_ARCH == .arm64 || TARGET_ARCH == .riscv64) {
+    /** The generic table's number for pread64(2). */
     SYS_PREAD : u64 : 67
-    /** AArch64's number for close(2). */
+    /** The generic table's number for close(2). */
     SYS_CLOSE : u64 : 57
-    /** AArch64's number for mprotect(2). */
+    /** The generic table's number for mprotect(2). */
     SYS_MPROTECT : u64 : 226
-    /** AArch64's number for openat(2). */
+    /** The generic table's number for openat(2). */
     SYS_OPENAT : u64 : 56
-    /** AArch64's number for readlinkat(2). */
+    /** The generic table's number for readlinkat(2). */
     SYS_READLINKAT : u64 : 78
-    /** ELF's e_machine for AArch64, EM_AARCH64: a library for another machine is refused. */
-    ELF_MACHINE : u16 : 183
-    /** AArch64's relative relocation, R_AARCH64_RELATIVE, the only kind a typed library may have. */
-    RELATIVE_RELOCATION : u32 : 1027
+    #if TARGET_ARCH == .arm64 {
+        /** ELF's e_machine for AArch64, EM_AARCH64: a library for another machine is refused. */
+        ELF_MACHINE : u16 : 183
+        /** AArch64's relative relocation, R_AARCH64_RELATIVE, the only kind a typed library may have. */
+        RELATIVE_RELOCATION : u32 : 1027
+    }
+    #else {
+        /** ELF's e_machine for RISC-V, EM_RISCV: a library for another machine is refused. */
+        ELF_MACHINE : u16 : 243
+        /** RISC-V's relative relocation, R_RISCV_RELATIVE, the only kind a typed library may have. */
+        RELATIVE_RELOCATION : u32 : 3
+    }
 }
 
-#if OS == .Linux && (TARGET_ARCH == .x86_64 || TARGET_ARCH == .arm64) {
+#if OS == .Linux && (TARGET_ARCH == .x86_64 || TARGET_ARCH == .arm64 || TARGET_ARCH == .riscv64) {
     /** openat's and readlinkat's directory for a path relative to the working directory, -100. */
     AT_FDCWD : u64 : 0xffff_ffff_ffff_ff9c
     /** mmap's flag to map at exactly the address given, replacing what's there. */

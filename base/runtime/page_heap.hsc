@@ -6,7 +6,7 @@ import intrinsics from "base:intrinsics"
  * The process's heap (PageHeap, process.hsc) on systems where the runtime makes its own from pages the
  * system maps: map_pages and unmap_pages are each system's, in linux.hsc and slop_os.hsc.
  */
-#if (OS == .Linux && (TARGET_ARCH == .x86_64 || TARGET_ARCH == .arm64))
+#if (OS == .Linux && (TARGET_ARCH == .x86_64 || TARGET_ARCH == .arm64 || TARGET_ARCH == .riscv64))
     || (OS == .SlopOS && (TARGET_ARCH == .x86_64 || TARGET_ARCH == .arm64)) {
     /**
      * Allocate, reallocate or free with the process's PageHeap (process.hsc), which any thread can use.

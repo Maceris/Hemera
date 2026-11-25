@@ -162,7 +162,7 @@ SET(HEMERA_GENERATED_DIR ${CMAKE_CURRENT_BINARY_DIR}/generated)
 SET(LLVM_SOURCE_DIR ${THIRD_PARTY_DIR}/llvm-project)
 INCLUDE(${THIRD_PARTY_DIR}/patches/llvm/apply_patches.cmake)
 
-SET(LLVM_TARGETS_TO_BUILD "X86;AArch64;ARM" CACHE STRING "")
+SET(LLVM_TARGETS_TO_BUILD "X86;AArch64;ARM;RISCV" CACHE STRING "")
 # Only what the compiler links: LLVM's and MLIR's libraries. Programs are linked by the lld on the PATH, and nothing
 # uses clang, compiler-rt or LLVM's libc. lld stays a project so a linker can be built from the same LLVM when wanted
 SET(LLVM_ENABLE_PROJECTS "lld;mlir" CACHE STRING "")

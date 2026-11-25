@@ -129,3 +129,50 @@ On top of 0003: the frame `.Lgrow` makes to call morestack signs its link regist
 `autiasp` before `ret`) when the function signs return addresses (`"sign-return-address"`). A fiber suspended on a
 new stack segment has that frame in its chain, and the resume loop re-enters it like any other, signing its own return
 address with the frame pointer plus 16, which is the stack pointer at its entry there too.
+
+## 0007-riscv-split-stack-limit-register.patch
+
+The same prologue stack check on RISC-V, which LLVM has no segmented stacks for either. It takes 0001's attributes,
+with `x27` (or its name, `s11`) as the limit register, Hemera's carrier register, reserved with `+reserve-x27`, and an
+offset that's a multiple of 8, up to 2040. `t0` and `t1`, which nothing holds at a function's entry, are its scratch
+registers; `t2`, which Zicfilp's landing pads compare a label with, is left alone:
+
+```
+    ld      t0, OFFSET(s11)
+    addi    t1, sp, -FRAME      ; or li and sub, for a frame over 2048 bytes
+    bgeu    t0, t1, .Lgrow
+    ...
+.Lgrow:
+    ebreak                      ; "split-stack-failure"="trap"
+```
+
+With `"split-stack-morestack"="symbol"`, `.Lgrow` calls `symbol` with Hemera's protocol on RISC-V: a frame record as
+RISC-V keeps one, `s0` the stack pointer at entry with the return address at `s0 - 8` and the caller's `s0` at
+`s0 - 16`; the frame size in `t3`, the stack parameters' size in `t4`, the body's address in `t5` (an `auipc` and
+`addi` pair), `call symbol`, the record put back, `ret`. `a0` to `a7` pass through untouched. The stack parameters'
+size is recorded as the function's arguments are lowered, since RISC-V's function info didn't keep it.
+
+Functions with segmented stacks aren't shrink-wrapped, as on X86 and AArch64.
+
+Includes `llvm/test/CodeGen/RISCV/segmented-stacks-limit-register.ll`, also emitting an object, where the call needs
+the call flag for its `R_RISCV_CALL_PLT` relocation.
+
+## 0008-riscv-quoted-symbols.patch
+
+A quoted symbol name, like `"runtime.allocate_stack_segment"`, where RISC-V's assembler takes a bare symbol: `call`,
+`tail`, and the `lla`/`la` family. The generic assembler and the other targets' take one anywhere a symbol goes, and
+Hemera quotes every name it writes in assembly, since its names can hold characters a bare one can't; RISC-V's
+refused them with "operand must be a bare symbol name".
+
+Includes `llvm/test/MC/RISCV/quoted-symbols.s`, with the relocations they make.
+
+## 0009-riscv-shrink-demanded-constant-loop.patch
+
+A fix for instruction selection never ending on RISC-V with Zba or Zbs, both in RVA23. RISC-V's
+`targetShrinkDemandedConstant` turns an AND's mask into one with its low 32 bits copied into its high 32, like
+`0x7fffffff7fffffff`, when that's cheaper to make than the mask shrunk to the bits demanded. When two uses demand
+different bits, one could find that form cheaper and choose it while the other found it no cheaper and left the
+generic code to shrink it back, and each undid the other forever. The form is now kept when it's already the mask and
+costs no more.
+
+Includes `llvm/test/CodeGen/RISCV/shrink-demanded-constant-no-loop.ll`, which hung before.

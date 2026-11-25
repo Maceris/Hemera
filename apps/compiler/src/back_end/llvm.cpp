@@ -68,6 +68,7 @@ namespace hemera {
 			case ArchType::arm: return llvm::Triple::ArchType::arm;
 			case ArchType::aarch64: return llvm::Triple::ArchType::aarch64;
 			case ArchType::aarch64_32: return llvm::Triple::ArchType::aarch64_32;
+			case ArchType::riscv64: return llvm::Triple::ArchType::riscv64;
 			case ArchType::x86: return llvm::Triple::ArchType::x86;
 			case ArchType::x86_64: return llvm::Triple::ArchType::x86_64;
 		}
@@ -706,6 +707,8 @@ namespace hemera {
 		std::string cpu = options.cpu;
 		std::string features = target_features(options);
 		llvm::TargetOptions opts;
+		// RISC-V's ABI, its floats and doubles in registers (docs/calling_convention.md)
+		opts.MCOptions.ABIName = target_abi(options);
 		llvm::Reloc::Model reloc_model = TargetRelocationModel::Static == options.relocation_model
 			? llvm::Reloc::Model::Static : llvm::Reloc::Model::PIC_;
 		std::optional<llvm::CodeModel::Model> code_model;
@@ -778,6 +781,9 @@ namespace hemera {
 		case ArchType::aarch64_32:
 			args.push_back("/machine:arm64");
 			break;
+		case ArchType::riscv64:
+			// lld-link has no RISC-V: a UEFI program for it is an ELF made into a PE (docs/compilation.md, UEFI)
+			break;
 		case ArchType::x86:
 			args.push_back("/machine:x86");
 			break;
@@ -800,6 +806,13 @@ namespace hemera {
 		 */
 		const bool links_c = options.startup_code && OSType::Linux == options.os && !libraries.empty();
 		std::vector<std::string> args{ "-nostdlib" };
+		/*
+		 * RISC-V objects keep their assembler's temporary labels, like .Lpcrel_hi0, as local symbols, for the linker's
+		 * relaxation; the output has none, so a stack trace's address is named by its function, not a label in it
+		 */
+		if (ArchType::riscv64 == options.architecture) {
+			args.push_back("--discard-locals");
+		}
 		if (options.typed_library) {
 			/*
 			 * A typed library (docs/compilation.md, Typed Libraries): shared, its references to itself bound within
@@ -814,8 +827,9 @@ namespace hemera {
 			return args;
 		}
 		if (links_c) {
-			const bool aarch64 = ArchType::aarch64 == options.architecture;
-			args.insert(args.end(), { "-dynamic-linker", aarch64 ? "/lib/ld-linux-aarch64.so.1" : "/lib64/ld-linux-x86-64.so.2" });
+			const char* loader = ArchType::aarch64 == options.architecture ? "/lib/ld-linux-aarch64.so.1"
+				: ArchType::riscv64 == options.architecture ? "/lib/ld-linux-riscv64-lp64d.so.1" : "/lib64/ld-linux-x86-64.so.2";
+			args.insert(args.end(), { "-dynamic-linker", loader });
 			if (!options.sysroot.empty()) {
 				args.insert(args.end(), { "-L", options.sysroot.string() });
 			}
@@ -843,7 +857,8 @@ namespace hemera {
 			args.insert(args.end(), { "-pie", "--no-dynamic-linker" });
 		}
 		const bool linux_start = options.startup_code && OSType::Linux == options.os
-			&& (ArchType::x86_64 == options.architecture || ArchType::aarch64 == options.architecture);
+			&& (ArchType::x86_64 == options.architecture || ArchType::aarch64 == options.architecture
+			|| ArchType::riscv64 == options.architecture);
 		args.insert(args.end(), { "-e", linux_start ? LINUX_START_SYMBOL : options.startup_code ? HOSTED_ENTRY_SYMBOL : options.entry });
 		if (!options.linker_script.empty()) {
 			args.insert(args.end(), { "-T", options.linker_script.string() });

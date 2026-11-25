@@ -35,6 +35,10 @@ namespace hemera {
 	/// kept for itself. A #target_features function adds its own to these.
 	/// </summary>
 	std::string target_features(const Options& options);
+	// The target's ABI, as LLVM names it: lp64d on RISC-V, and empty, the target's own, elsewhere.
+	std::string target_abi(const Options& options);
+	// The carrier register's name as LLVM knows it: r14 on x86-64, x28 on AArch64, x27 (s11) on RISC-V.
+	const char* carrier_register_name(const Options& options);
 
 	/*
 	 * symbol as assembly text names it: in double quotes, with " and \ escaped, so a name with any characters, like

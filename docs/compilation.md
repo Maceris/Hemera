@@ -790,6 +790,16 @@ A freestanding AArch64 program, like a kernel, builds the same way as on x86-64,
 them, and `+strict-align` for code that runs before the MMU is on, when memory is Device memory and unaligned accesses
 fault. `apps/compiler/test/freestanding_tests.py` boots one in QEMU's `virt` machine.
 
+### Linux on RISC-V
+
+`--arch=riscv64` with `--os=linux` builds them for 64-bit RISC-V, with the generic system call table as on AArch64
+(made with `ecall`), and threads, fibers and `morestack` working as on x86-64. Without `--cpu`, code is for the
+RVA23U64 profile, which includes the vector extension and the bit-manipulation ones, and the ABI is LP64D, with
+floating-point values in floating-point registers. The carrier register is `s11` (see
+[calling_convention.md](calling_convention.md#carrier-register)), and a frame's record is RISC-V's own, below its
+frame pointer (see [Prologue Stack Check](calling_convention.md#prologue-stack-check)). An x86-64 Linux machine can run
+the programs with `qemu-user`.
+
 ### Linking C on Linux
 
 A hosted Linux program is normally static, with no C library: the runtime makes its own system calls
@@ -804,8 +814,8 @@ A hosted Linux program is normally static, with no C library: the runtime makes 
 * Each thread's carrier block is in an ELF thread-local slot, where callbacks from foreign code find it, so `.c`
   functions with a context work, as on Windows.
 * It's linked against the target's own libraries, from the folder `--sysroot` names: `libc.so` (a copy of `libc.so.6`
-  does), the `lib<name>.so` of each other `#library`, and the dynamic linker (`ld-linux-x86-64.so.2`, or
-  `ld-linux-aarch64.so.1` on AArch64). No C runtime objects are needed.
+  does), the `lib<name>.so` of each other `#library`, and the dynamic linker (`ld-linux-x86-64.so.2`,
+  `ld-linux-aarch64.so.1` on AArch64, or `ld-linux-riscv64-lp64d.so.1` on RISC-V). No C runtime objects are needed.
 
 ## Typed Libraries
 

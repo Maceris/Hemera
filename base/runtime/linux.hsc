@@ -77,25 +77,30 @@ import intrinsics from "base:intrinsics"
         return x86_64.clone_thread(flags, stack, parent_tid, child_tid, entry, argument)
     }
 }
-#else_if OS == .Linux && TARGET_ARCH == .arm64 {
-    import aarch64 from "base:intrinsics/aarch64"
+#else_if OS == .Linux && (TARGET_ARCH == .arm64 || TARGET_ARCH == .riscv64) {
+    #if TARGET_ARCH == .arm64 {
+        import aarch64 as machine from "base:intrinsics/aarch64"
+    }
+    #else {
+        import riscv64 as machine from "base:intrinsics/riscv64"
+    }
 
-    // The generic table's numbers, which AArch64 uses
-    /** AArch64's number for futex(2). */
+    // The generic table's numbers, which AArch64 and RISC-V use
+    /** The generic table's number for futex(2). */
     SYS_FUTEX : u64 : 98
-    /** AArch64's number for write(2). */
+    /** The generic table's number for write(2). */
     SYS_WRITE : u64 : 64
-    /** AArch64's number for exit(2), which ends only the calling thread. */
+    /** The generic table's number for exit(2), which ends only the calling thread. */
     SYS_EXIT : u64 : 93
-    /** AArch64's number for exit_group(2), which ends the whole process. */
+    /** The generic table's number for exit_group(2), which ends the whole process. */
     SYS_EXIT_GROUP : u64 : 94
-    /** AArch64's number for clock_gettime(2). */
+    /** The generic table's number for clock_gettime(2). */
     SYS_CLOCK_GETTIME : u64 : 113
-    /** AArch64's number for munmap(2). */
+    /** The generic table's number for munmap(2). */
     SYS_MUNMAP : u64 : 215
-    /** AArch64's number for mmap(2). */
+    /** The generic table's number for mmap(2). */
     SYS_MMAP : u64 : 222
-    /** AArch64's number for getrandom(2). */
+    /** The generic table's number for getrandom(2). */
     SYS_GETRANDOM : u64 : 278
 
     /**
@@ -120,7 +125,7 @@ import intrinsics from "base:intrinsics"
         e : u64 = 0,
         f : u64 = 0
     ) -> u64 {
-        return aarch64.syscall(number, a, b, c, d, e, f)
+        return machine.syscall(number, a, b, c, d, e, f)
     }
 
     /**
@@ -146,11 +151,11 @@ import intrinsics from "base:intrinsics"
         entry : rawptr,
         argument : rawptr
     ) -> i64 {
-        return aarch64.clone_thread(flags, stack, parent_tid, child_tid, entry, argument)
+        return machine.clone_thread(flags, stack, parent_tid, child_tid, entry, argument)
     }
 }
 
-#if OS == .Linux && (TARGET_ARCH == .x86_64 || TARGET_ARCH == .arm64) {
+#if OS == .Linux && (TARGET_ARCH == .x86_64 || TARGET_ARCH == .arm64 || TARGET_ARCH == .riscv64) {
     /** mmap's protection for memory that can be read and written, not run: PROT_READ | PROT_WRITE. */
     PROT_READ_WRITE : u64 : 3
     /** mmap's flags for memory of the process's own, backed by no file: MAP_PRIVATE | MAP_ANONYMOUS. */

@@ -1770,6 +1770,7 @@ namespace hemera {
 			case ArchType::arm: return "arm";
 			case ArchType::aarch64: return "arm64";
 			case ArchType::aarch64_32: return "arm64";
+			case ArchType::riscv64: return "riscv64";
 			case ArchType::x86: return "x86";
 			case ArchType::x86_64: return "x86_64";
 		}

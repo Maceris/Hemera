@@ -6,7 +6,7 @@ import runtime from "base:runtime"
  * Targets without processes to run or an environment, like OS == .None and SlopOS (whose programs start through
  * launch).
  */
-#if OS != .Windows && !(OS == .Linux && (TARGET_ARCH == .x86_64 || TARGET_ARCH == .arm64)) {
+#if OS != .Windows && !(OS == .Linux && (TARGET_ARCH == .x86_64 || TARGET_ARCH == .arm64 || TARGET_ARCH == .riscv64)) {
     /**
      * Fail to run a program, as there's nothing to run it with.
      *
@@ -44,7 +44,7 @@ import runtime from "base:runtime"
 }
 
 // Targets without a file system, like OS == .None: SlopOS's files are its file protocols (slop_os_files.hsc).
-#if OS != .Windows && OS != .SlopOS && !(OS == .Linux && (TARGET_ARCH == .x86_64 || TARGET_ARCH == .arm64)) {
+#if OS != .Windows && OS != .SlopOS && !(OS == .Linux && (TARGET_ARCH == .x86_64 || TARGET_ARCH == .arm64 || TARGET_ARCH == .riscv64)) {
     /**
      * Fail to open a file, as there's no file system.
      *

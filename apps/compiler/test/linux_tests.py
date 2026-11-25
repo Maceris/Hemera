@@ -11,10 +11,11 @@ compiler (default the Release build if there is one, otherwise Debug), and HEMER
 libc.so (a copy of libc.so.6), libm.so and ld-linux-x86-64.so.2, for the tests that link C. The
 programs go in ~/hemera-tests on the Linux machine.
 
-HEMERA_LINUX_ARCH=aarch64 builds them for AArch64 instead, run on an x86-64 Linux machine through
-user-mode QEMU (qemu-user-static and binfmt), with the C library from QEMU_LD_PREFIX
-(/usr/aarch64-linux-gnu, libc6-arm64-cross) and HEMERA_LINUX_SYSROOT_AARCH64 for linking it. They go in
-~/hemera-tests-aarch64, and the Valgrind tests are left out. HEMERA_LINUX_TESTS, names separated by
+HEMERA_LINUX_ARCH=aarch64 or riscv64 builds them for AArch64 or RISC-V instead, run on an x86-64 Linux
+machine through user-mode QEMU (qemu-user-static and binfmt), with the C library from QEMU_LD_PREFIX
+(/usr/aarch64-linux-gnu from libc6-arm64-cross, /usr/riscv64-linux-gnu from libc6-riscv64-cross) and
+HEMERA_LINUX_SYSROOT_AARCH64 or HEMERA_LINUX_SYSROOT_RISCV64 for linking it. They go in ~/hemera-tests-aarch64
+or ~/hemera-tests-riscv64, and the Valgrind tests are left out. HEMERA_LINUX_TESTS, names separated by
 commas, runs only those.
 """
 
@@ -171,11 +172,26 @@ SYMBOLIZED = [
 ASSERTION_REPORT = "assertion failed: count must be positive\n    at "
 
 
+# The architectures run through user-mode QEMU: each one's C library folder on the Linux machine, and the variable
+# and default folder for the sysroot it's linked against here
+EMULATED = {
+    "aarch64": ("/usr/aarch64-linux-gnu", "HEMERA_LINUX_SYSROOT_AARCH64", "D:/Programs/System Tools/linux-sysroot-aarch64"),
+    "riscv64": ("/usr/riscv64-linux-gnu", "HEMERA_LINUX_SYSROOT_RISCV64", "D:/Programs/System Tools/linux-sysroot-riscv64"),
+}
+
+
 def run(command: list[str]) -> subprocess.CompletedProcess:
     return subprocess.run(command, capture_output=True, text=True)
 
 
-def openssh_interop(compiler: str, aarch64: bool, temporary: Path, ssh: list[str], key: str, host: str, folder: str) -> str:
+def emulation(architecture: str) -> tuple[list[str], str]:
+    """The compiler's architecture argument, and the prefix a program's run needs, for architecture."""
+    if architecture not in EMULATED:
+        return [], ""
+    return [f"--arch={architecture}"], f"QEMU_LD_PREFIX={EMULATED[architecture][0]} "
+
+
+def openssh_interop(compiler: str, machine: str, temporary: Path, ssh: list[str], key: str, host: str, folder: str) -> str:
     """
     std/ssh against OpenSSH's ssh, sshd and ssh-keygen on the Linux machine, which needs them and sshpass: the
     ssh_openssh scenario's program, run by its interop.sh as a server for ssh and a client of sshd -i, under each
@@ -183,21 +199,20 @@ def openssh_interop(compiler: str, aarch64: bool, temporary: Path, ssh: list[str
     """
     scenario = SCENARIOS / "ssh_openssh"
     program = temporary / "ssh_openssh"
-    architecture = ["--arch=aarch64"] if aarch64 else []
+    architecture, prefix = emulation(machine)
     built = run([compiler, "--os=linux", *architecture, f"--output={program}", str(scenario)])
     if built.returncode != 0 or not program.exists():
         return f"doesn't build\n{built.stdout}{built.stderr}"
     for file in (program, scenario / "interop.sh"):
         if run(["scp", "-q", "-i", key, str(file), f"{host}:{folder}/{file.name}"]).returncode != 0:
             return f"couldn't copy {file.name}"
-    prefix = "QEMU_LD_PREFIX=/usr/aarch64-linux-gnu " if aarch64 else ""
     ran = run(ssh + [f"cd ~/{folder} && chmod +x ssh_openssh interop.sh && {prefix}timeout 600 ./interop.sh"])
     if ran.returncode != 42:
         return f"exited with {ran.returncode}\n{ran.stdout}{ran.stderr}"
     return ""
 
 
-def typed_libraries(compiler: str, aarch64: bool, temporary: Path, ssh: list[str], key: str, host: str, folder: str) -> str:
+def typed_libraries(compiler: str, machine: str, temporary: Path, ssh: list[str], key: str, host: str, folder: str) -> str:
     """
     docs/compilation.md, Typed Libraries: a library and a program calling it, built by a build package, which loads it
     with base's own ELF loader and calls through it; then the library built again with add's type changed, which the
@@ -206,12 +221,11 @@ def typed_libraries(compiler: str, aarch64: bool, temporary: Path, ssh: list[str
     scenario = SCENARIOS / "typed_libraries"
     library = temporary / "maths"
     program = temporary / "typed_program"
-    architecture = ["--arch=aarch64"] if aarch64 else []
+    architecture, prefix = emulation(machine)
     built = run([compiler, "--os=linux", *architecture, f"--setting=library={library.as_posix()},program={program.as_posix()}",
                  str(scenario / "build")])
     if built.returncode != 0 or not library.exists() or not program.exists():
         return f"doesn't build\n{built.stdout}{built.stderr}"
-    prefix = "QEMU_LD_PREFIX=/usr/aarch64-linux-gnu " if aarch64 else ""
     for file in (library, program):
         if run(["scp", "-q", "-i", key, str(file), f"{host}:{folder}/{file.name}"]).returncode != 0:
             return f"couldn't copy {file.name}"
@@ -237,15 +251,19 @@ def main() -> int:
     key = os.environ.get("HEMERA_LINUX_KEY", str(Path.home() / ".ssh" / "hemera_linux_vm"))
     release = BUILT / "Release" / "hemera.exe"
     compiler = os.environ.get("HEMERA", str(release if release.exists() else BUILT / "Debug" / "hemera-debug.exe"))
-    architecture = os.environ.get("HEMERA_LINUX_ARCH", "x86_64")
-    aarch64 = architecture == "aarch64"
-    if aarch64:
-        sysroot = os.environ.get("HEMERA_LINUX_SYSROOT_AARCH64", "D:/Programs/System Tools/linux-sysroot-aarch64")
+    machine = os.environ.get("HEMERA_LINUX_ARCH", "x86_64")
+    emulated = machine in EMULATED
+    if machine != "x86_64" and not emulated:
+        print(f"HEMERA_LINUX_ARCH is {machine}: x86_64, aarch64 or riscv64")
+        return 2
+    if emulated:
+        sysroot = os.environ.get(EMULATED[machine][1], EMULATED[machine][2])
     else:
         sysroot = os.environ.get("HEMERA_LINUX_SYSROOT", "D:/Programs/System Tools/linux-sysroot")
-    folder = "hemera-tests-aarch64" if aarch64 else "hemera-tests"
+    folder = f"hemera-tests-{machine}" if emulated else "hemera-tests"
+    architecture, prefix = emulation(machine)
     only = [name for name in os.environ.get("HEMERA_LINUX_TESTS", "").split(",") if name]
-    tests = [test for test in TESTS if (not only or test[0] in only) and not (aarch64 and test[0] in UNDER_VALGRIND)]
+    tests = [test for test in TESTS if (not only or test[0] in only) and not (emulated and test[0] in UNDER_VALGRIND)]
     ssh = ["ssh", "-i", key, "-o", "BatchMode=yes", host]
     if run(ssh + [f"mkdir -p ~/{folder}"]).returncode != 0:
         print(f"can't reach {host}")
@@ -255,8 +273,7 @@ def main() -> int:
         for name, arguments, exit_code in tests:
             output = Path(temporary) / name
             arguments = [f"--sysroot={sysroot}" if argument == "SYSROOT" else argument for argument in arguments]
-            if aarch64:
-                arguments = ["--arch=aarch64", *arguments]
+            arguments = [*architecture, *arguments]
             scenario = SCENARIOS / SCENARIO_OF.get(name, name)
             built = run([compiler, "--os=linux", f"--output={output}", *arguments, str(scenario)])
             if built.returncode != 0 or not output.exists():
@@ -269,8 +286,7 @@ def main() -> int:
                 failures += 1
                 continue
             environment, program_arguments = RUN_WITH.get(name, ("", ""))
-            if aarch64:
-                environment = f"QEMU_LD_PREFIX=/usr/aarch64-linux-gnu {environment}"
+            environment = f"{prefix}{environment}"
             launch = f"timeout {TIME_LIMITS.get(name, 120)} ./{name}"
             if name in UNDER_VALGRIND:
                 launch = (f"if command -v valgrind > /dev/null; then timeout 1200 {VALGRIND} ./{name}; "
@@ -305,7 +321,7 @@ def main() -> int:
         count = len(tests)
         if not only or "openssh_interop" in only:
             count += 1
-            problem = openssh_interop(compiler, aarch64, Path(temporary), ssh, key, host, folder)
+            problem = openssh_interop(compiler, machine, Path(temporary), ssh, key, host, folder)
             if problem:
                 print(f"FAILED: openssh_interop {problem}")
                 failures += 1
@@ -313,7 +329,7 @@ def main() -> int:
                 print("passed: openssh_interop")
         if not only or "typed_libraries" in only:
             count += 1
-            problem = typed_libraries(compiler, aarch64, Path(temporary), ssh, key, host, folder)
+            problem = typed_libraries(compiler, machine, Path(temporary), ssh, key, host, folder)
             if problem:
                 print(f"FAILED: typed_libraries {problem}")
                 failures += 1

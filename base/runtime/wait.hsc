@@ -29,7 +29,7 @@ deterministic_turn :: fn() #no_context {
 
 // Windows' are in windows.hsc, Linux's on x86-64 and AArch64 in linux.hsc, and SlopOS's in slop_os_threads.hsc
 #if OS != .Windows
-    && !(OS == .Linux && (TARGET_ARCH == .x86_64 || TARGET_ARCH == .arm64))
+    && !(OS == .Linux && (TARGET_ARCH == .x86_64 || TARGET_ARCH == .arm64 || TARGET_ARCH == .riscv64))
     && !(OS == .SlopOS && (TARGET_ARCH == .x86_64 || TARGET_ARCH == .arm64)) {
     /**
      * Wait until the value at address isn't expected: here, without a system to sleep on, a spin hint and a return,
@@ -86,7 +86,7 @@ deterministic_turn :: fn() #no_context {
 }
 
 #if OS != .Windows
-    && !(OS == .Linux && (TARGET_ARCH == .x86_64 || TARGET_ARCH == .arm64))
+    && !(OS == .Linux && (TARGET_ARCH == .x86_64 || TARGET_ARCH == .arm64 || TARGET_ARCH == .riscv64))
     && !(OS == .SlopOS && (TARGET_ARCH == .x86_64 || TARGET_ARCH == .arm64))
     && OS != .UEFI {
     /**

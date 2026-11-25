@@ -1,0 +1,51 @@
+diff --git a/llvm/lib/Target/RISCV/RISCVISelLowering.cpp b/llvm/lib/Target/RISCV/RISCVISelLowering.cpp
+index 5f8001a51c9a..efcfb1622084 100644
+--- a/llvm/lib/Target/RISCV/RISCVISelLowering.cpp
++++ b/llvm/lib/Target/RISCV/RISCVISelLowering.cpp
+@@ -27476,9 +27476,14 @@ bool RISCVTargetLowering::targetShrinkDemandedConstant(
+         unsigned NewCost =
+             RISCVMatInt::generateInstSeq(DupConstant, Subtarget).size();
+         // If the new sequence is shorter than the old sequence and won't
+-        // use a constant pool, make the change.
+-        if (NewCost < OrigCost && (!Subtarget.useConstantPoolForLargeInts() ||
+-                                   NewCost <= Subtarget.getMaxBuildIntsCost()))
++        // use a constant pool, make the change. Keep the constant when it's
++        // already the duplicated one and no dearer: shrinking it here would
++        // undo another use's choice of it, which would make it again, without
++        // end.
++        bool Shorter = NewCost < OrigCost ||
++                       (NewCost == OrigCost && CandidateMask == Mask);
++        if (Shorter && (!Subtarget.useConstantPoolForLargeInts() ||
++                        NewCost <= Subtarget.getMaxBuildIntsCost()))
+           return UseMask(CandidateMask);
+ 
+         // For the 2 register form, if we're optimizing for size, only do
+diff --git a/llvm/test/CodeGen/RISCV/shrink-demanded-constant-no-loop.ll b/llvm/test/CodeGen/RISCV/shrink-demanded-constant-no-loop.ll
+new file mode 100644
+index 000000000000..4f682ea71ca5
+--- /dev/null
++++ b/llvm/test/CodeGen/RISCV/shrink-demanded-constant-no-loop.ll
+@@ -0,0 +1,23 @@
++; RUN: llc -mtriple=riscv64 -mattr=+zba < %s | FileCheck %s
++; RUN: llc -mtriple=riscv64 -mattr=+zbs < %s | FileCheck %s
++; RUN: llc -mtriple=riscv64 -mattr=+zba,+zbs -O0 < %s | FileCheck %s
++
++; An AND's mask that two uses shrink with different demanded bits: one chooses
++; the constant with its low half duplicated into its high, 0x7fffffff7fffffff,
++; as cheaper than 0x7fffffff0000ff00; the other finds it no cheaper than
++; 0x7fffffff7fffff00, and must keep it rather than shrink it back, or the two
++; undo each other forever.
++
++define i64 @f(i8 %c, i64 %a) {
++; CHECK-LABEL: f:
++; CHECK:       ret
++  %1 = shl i64 %a, 24
++  %2 = zext i8 %c to i64
++  %3 = or i64 %1, %2
++  %4 = shl i64 %3, 8
++  %masked = and i64 %4, 9223372034690580224
++  %5 = or i64 %masked, %a
++  %6 = add i64 %5, 1
++  %7 = lshr i64 %6, 1
++  ret i64 %7
++}

@@ -34,6 +34,7 @@
 #include "llvm/MC/TargetRegistry.h"
 #include "llvm/Support/TargetSelect.h"
 #include "llvm/TargetParser/Host.h"
+#include "llvm/TargetParser/RISCVISAInfo.h"
 #include "llvm/TargetParser/Triple.h"
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/Dialect/LLVMIR/LLVMTypes.h"
@@ -1866,6 +1867,125 @@ namespace hemera {
 	}
 
 	/*
+	 * RISC-V assembly's opening and closing around code using the D or V extension's registers, which the target has:
+	 * module assembly is also read for its symbols with no extensions, so it names those it needs itself.
+	 */
+	static std::string riscv64_extensions_open(bool fp, bool vector) {
+		if (!fp) {
+			return "";
+		}
+		return vector ? "\t.option push\n\t.option arch, +d, +v\n" : "\t.option push\n\t.option arch, +d\n";
+	}
+
+	static std::string riscv64_extensions_close(bool fp) {
+		return fp ? "\t.option pop\n" : "";
+	}
+
+	// Whether a target turns a feature off, "-name" among its comma-separated features.
+	static bool feature_turned_off(std::string_view features, std::string_view name) {
+		size_t start = 0;
+		while (start <= features.size()) {
+			const size_t end = std::min(features.find(',', start), features.size());
+			const std::string_view feature = features.substr(start, end - start);
+			if (feature.size() == name.size() + 1 && feature[0] == '-' && feature.substr(1) == name) {
+				return true;
+			}
+			start = end + 1;
+		}
+		return false;
+	}
+
+	/*
+	 * morestack on RISC-V, the same as on AArch64. The function's check has built a frame record (s0 the stack pointer
+	 * at its entry, the return address at s0 - 8 and the caller's s0 at s0 - 16) and passes the frame's size in t3, the
+	 * stack parameters' size in t4 and the body in t5; the parameters are at the function's s0, the stack pointer at its
+	 * entry. morestack's own frame record is the same, and below it the carrier's limit and segment and s1 and s2,
+	 * which it uses like x19 and x20; until the body runs it only changes t0, t1 and t6 besides those, which no
+	 * parameter is in, and after, nothing a result is in. Without memory it runs ebreak. With fp, it keeps fa0 to fa7
+	 * while allocating, and with vector, v8 to v23, where vector parameters are.
+	 */
+	static std::string morestack_assembly_riscv64(const MorestackOffsets& o, uint64_t header_and_guard, const std::string& allocate,
+		bool fp, bool vector) {
+
+		const size_t limit = o.limit, segment = o.segment, spare = o.spare, cache = o.cache, cache_count = o.cache_count;
+		const size_t segment_size = o.segment_size, next_free = o.next_free;
+		const uint64_t extra = header_and_guard + 32;
+		std::string text = std::format("\t.text\n{}\t.p2align 2\n{}:\n", riscv64_extensions_open(fp, vector), MORESTACK_SYMBOL);
+		text += "\taddi sp, sp, -48\n\tsd ra, 40(sp)\n\tsd s0, 32(sp)\n\taddi s0, sp, 48\n";
+		// The carrier's limit at s0 - 48 and segment at s0 - 40, s1 and s2 at s0 - 32 and s0 - 24
+		text += std::format("\tld t0, {}(s11)\n\tld t1, {}(s11)\n\tsd t0, 0(sp)\n\tsd t1, 8(sp)\n\tsd s1, 16(sp)\n\tsd s2, 24(sp)\n",
+			limit, segment);
+		text += std::format("\tli s1, {}\n\tadd s1, s1, t3\n\tadd s1, s1, t4\n", extra);
+		// The spare, if it's big enough, or the first cached segment, which must be
+		text += std::format("\tld s2, {}(s11)\n\tbeqz s2, 1f\n", spare);
+		text += std::format("\tlwu t0, {}(s2)\n\tbltu t0, s1, 1f\n", segment_size);
+		text += std::format("\tsd zero, {}(s11)\n\tj 3f\n", spare);
+		text += std::format("1:\n\tld s2, {}(s11)\n\tbeqz s2, 9f\n", cache);
+		text += std::format("\tlwu t0, {}(s2)\n\tbltu t0, s1, 9f\n", segment_size);
+		text += std::format("\tld t0, {}(s2)\n\tsd t0, {}(s11)\n", next_free, cache);
+		text += std::format("\tlw t0, {0}(s11)\n\taddi t0, t0, -1\n\tsw t0, {0}(s11)\n", cache_count);
+		// On it, as on AArch64; the parameters are copied from the function's s0, which its record saved
+		text += std::format("3:\n\tld t0, {}(s11)\n\tbnez t0, 11f\n\tld t0, {}(s11)\n\tbnez t0, 11f\n", segment, o.current_fiber);
+		text += std::format("\tsd sp, {}(s11)\n", o.native_sp);
+		text += std::format("11:\n\tsd s2, {}(s11)\n", segment);
+		text += std::format("\tli t0, {}\n\tadd t0, t0, s2\n\tsd t0, {}(s11)\n", header_and_guard, limit);
+		text += std::format("\tlwu t1, {}(s2)\n\tadd t1, t1, s2\n\tsub t1, t1, t4\n\tandi t1, t1, -16\n", segment_size);
+		text += "\tld t6, -16(s0)\n\tli t0, 0\n2:\n\tbgeu t0, t4, 4f\n";
+		text += "\tadd s1, t6, t0\n\tld s1, 0(s1)\n\tadd s2, t1, t0\n\tsd s1, 0(s2)\n\taddi t0, t0, 8\n\tj 2b\n";
+		text += "4:\n\tld s1, -32(s0)\n\tld s2, -24(s0)\n\tmv sp, t1\n";
+		// Where a body on a new segment returns: stack walks leave this frame out, and the check's too
+		text += std::format("\tjalr t5\n{}:\n", MORESTACK_CONTINUE_SYMBOL);
+		// Back: the segment just left is the spare now, and an older spare goes to the cache
+		text += "\taddi sp, s0, -48\n";
+		text += std::format("\tld t0, {}(s11)\n\tld t1, {}(s11)\n\tbeqz t1, 5f\n", segment, spare);
+		text += std::format("\tld t6, {}(s11)\n\tsd t6, {}(t1)\n\tsd t1, {}(s11)\n", cache, next_free, cache);
+		text += std::format("\tlw t6, {0}(s11)\n\taddi t6, t6, 1\n\tsw t6, {0}(s11)\n", cache_count);
+		text += std::format("5:\n\tsd t0, {}(s11)\n", spare);
+		text += std::format("\tld t0, 0(sp)\n\tld t1, 8(sp)\n\tsd t0, {}(s11)\n\tsd t1, {}(s11)\n", limit, segment);
+		text += "\tld ra, 40(sp)\n\tld s0, 32(sp)\n\taddi sp, sp, 48\n\tret\n";
+		// None big enough: one from allocate, on the native stack, with the arguments and the body kept there
+		text += "9:\n\tmv s2, sp\n\tmv t0, sp\n";
+		text += std::format("\tlw t1, {}(s11)\n\tbnez t1, 7f\n", o.foreign_depth);
+		text += std::format("\tld t1, {}(s11)\n\tbeqz t1, 6f\n\tld t0, {}(s11)\n\tj 7f\n", o.current_fiber, o.scheduler_sp);
+		text += std::format("6:\n\tld t1, {}(s11)\n\tbeqz t1, 7f\n\tld t0, {}(s11)\n", segment, o.native_sp);
+		text += "7:\n\tandi sp, t0, -16\n";
+		text += "\taddi sp, sp, -80\n\tsd a0, 0(sp)\n\tsd a1, 8(sp)\n\tsd a2, 16(sp)\n\tsd a3, 24(sp)\n\tsd a4, 32(sp)\n";
+		text += "\tsd a5, 40(sp)\n\tsd a6, 48(sp)\n\tsd a7, 56(sp)\n\tsd t4, 64(sp)\n\tsd t5, 72(sp)\n";
+		if (fp) {
+			text += "\taddi sp, sp, -64\n";
+			for (int i = 0; i < 8; ++i) {
+				text += std::format("\tfsd fa{}, {}(sp)\n", i, i * 8);
+			}
+		}
+		if (vector) {
+			// Sixteen vector registers, each vlenb bytes: a multiple of 16, so the stack stays aligned
+			text += "\tcsrr t0, vlenb\n\tslli t0, t0, 4\n\tsub sp, sp, t0\n\tvs8r.v v8, (sp)\n";
+			text += "\tcsrr t0, vlenb\n\tslli t0, t0, 3\n\tadd t0, sp, t0\n\tvs8r.v v16, (t0)\n";
+		}
+		// No limit while it allocates, as on x86-64
+		text += std::format("\tld t0, {0}(s11)\n\taddi sp, sp, -16\n\tsd t0, 0(sp)\n\tsd s2, 8(sp)\n\tsd zero, {0}(s11)\n", limit);
+		text += std::format("\tlw t0, {0}(s11)\n\taddi t0, t0, 1\n\tsw t0, {0}(s11)\n", o.foreign_depth);
+		text += std::format("\tmv a0, s1\n\tcall {}\n\tmv s1, a0\n", assembly_name(allocate));
+		text += std::format("\tlw t0, {0}(s11)\n\taddi t0, t0, -1\n\tsw t0, {0}(s11)\n", o.foreign_depth);
+		text += std::format("\tld t0, 0(sp)\n\tld s2, 8(sp)\n\taddi sp, sp, 16\n\tsd t0, {}(s11)\n", limit);
+		if (vector) {
+			text += "\tvl8r.v v8, (sp)\n\tcsrr t0, vlenb\n\tslli t0, t0, 3\n\tadd t0, sp, t0\n\tvl8r.v v16, (t0)\n";
+			text += "\tcsrr t0, vlenb\n\tslli t0, t0, 4\n\tadd sp, sp, t0\n";
+		}
+		if (fp) {
+			for (int i = 0; i < 8; ++i) {
+				text += std::format("\tfld fa{}, {}(sp)\n", i, i * 8);
+			}
+			text += "\taddi sp, sp, 64\n";
+		}
+		text += "\tld a0, 0(sp)\n\tld a1, 8(sp)\n\tld a2, 16(sp)\n\tld a3, 24(sp)\n\tld a4, 32(sp)\n";
+		text += "\tld a5, 40(sp)\n\tld a6, 48(sp)\n\tld a7, 56(sp)\n\tld t4, 64(sp)\n\tld t5, 72(sp)\n";
+		text += "\tmv sp, s2\n\tbeqz s1, 8f\n\tmv s2, s1\n\tj 3b\n";
+		text += "8:\n\tebreak\n";
+		return text + riscv64_extensions_close(fp);
+	}
+
+	/*
 	 * Whether functions can call morestack: on x86-64 targets, with morestack made once. Reports why
 	 * not, the first time.
 	 */
@@ -1874,7 +1994,8 @@ namespace hemera {
 			return true;
 		}
 		const bool aarch64 = ArchType::aarch64 == generator.options->architecture;
-		if (ArchType::x86_64 != generator.options->architecture && !aarch64) {
+		const bool riscv64 = ArchType::riscv64 == generator.options->architecture;
+		if (ArchType::x86_64 != generator.options->architecture && !aarch64 && !riscv64) {
 			return false;
 		}
 		MorestackOffsets o;
@@ -1905,6 +2026,14 @@ namespace hemera {
 		// Only the assembly calls it, which LLVM doesn't count as a use, so it's kept by being external
 		LLVM::LLVMFuncOp allocate_function = function_for(generator, allocate);
 		allocate_function.setLinkage(LLVM::Linkage::External);
+		if (riscv64) {
+			const std::string features = target_features(*generator.options);
+			const bool fp = !feature_turned_off(features, "d") && !feature_turned_off(features, "f");
+			const bool vector = fp && !feature_turned_off(features, "v") && features.find("+v") != std::string::npos;
+			generator.module_assembly.push_back(morestack_assembly_riscv64(o, guard + header->type_value->size,
+				allocate_function.getSymName().str(), fp, vector));
+			return true;
+		}
 		if (aarch64) {
 			const bool fp = generator.options->cpu_features.find("-fp-armv8") == std::string::npos;
 			generator.module_assembly.push_back(morestack_assembly_aarch64(o, guard + header->type_value->size,
@@ -1947,7 +2076,7 @@ namespace hemera {
 		size_t foreign_context = 0;
 		const ArchType architecture = generator.options->architecture;
 		const bool linux_c = OSType::Linux == generator.options->os && generator.c_library
-			&& (ArchType::x86_64 == architecture || ArchType::aarch64 == architecture);
+			&& (ArchType::x86_64 == architecture || ArchType::aarch64 == architecture || ArchType::riscv64 == architecture);
 		if (!(system_v_on_windows(*generator.options) || linux_c) || carrier_declaration == nullptr || context_declaration == nullptr || hosted == nullptr
 			|| find_carrier == nullptr || carrier_declaration->type_value == nullptr || context_declaration->type_value == nullptr
 			|| !runtime_offset(generator, "CarrierBlock", "foreign_depth", foreign_depth)
@@ -2166,12 +2295,72 @@ namespace hemera {
 	}
 
 	/*
-	 * Whether a function C's convention calls can go through a shim: on x86-64 and AArch64, with parameters and a result
+	 * The same for RISC-V's LP64D: the integers in a0 to a7, the floating-point values in fa0 to fa7 and, once those
+	 * are used, in what's left of a0 to a7, as C does; the rest each in an 8-byte slot, found at the shim's frame
+	 * pointer, the stack pointer at its entry.
+	 */
+	static std::vector<std::pair<int64_t, int64_t>> foreign_stack_arguments_riscv64(TypeInfoFunction const* type) {
+		std::vector<std::pair<int64_t, int64_t>> result;
+		size_t integers = 0;
+		size_t floats = 0;
+		for (const FunctionInput& input : type->input) {
+			bool in_register = false;
+			if (is_float(input.type) && floats < 8) {
+				++floats;
+				in_register = true;
+			}
+			else if (integers < 8) {
+				++integers;
+				in_register = true;
+			}
+			if (!in_register) {
+				const int64_t slot = static_cast<int64_t>(result.size()) * 8;
+				result.emplace_back(slot, slot);
+			}
+		}
+		return result;
+	}
+
+	/*
+	 * The shim on RISC-V, the same as on AArch64: s1 and s2 in place of x19 and x20, and t0 and t1 for everything else,
+	 * which no parameter or result is in.
+	 */
+	static std::string foreign_shim_assembly_riscv64(const std::string& shim, const std::string& symbol, const ForeignOffsets& o,
+		const std::vector<std::pair<int64_t, int64_t>>& stack_arguments) {
+
+		const int64_t area = (static_cast<int64_t>(stack_arguments.size()) * 8 + 15) & ~int64_t{ 15 };
+		std::string text = std::format("\t.text\n\t.p2align 2\n{}:\n", assembly_name(shim));
+		text += "\taddi sp, sp, -32\n\tsd ra, 24(sp)\n\tsd s0, 16(sp)\n\taddi s0, sp, 32\n\tsd s1, 8(sp)\n\tsd s2, 0(sp)\n";
+		text += std::format("\tlw t0, {0}(s11)\n\taddi t0, t0, 1\n\tsw t0, {0}(s11)\n", o.foreign_depth);
+		text += std::format("\tld s2, {}(s11)\n\tmv s1, sp\n", o.stack_limit);
+		// Already on the native stack, inside other foreign code or morestack's allocating: stay there
+		text += "\tli t1, 1\n\tbne t0, t1, 1f\n";
+		text += std::format("\tld t0, {}(s11)\n\tbeqz t0, 2f\n\tld t0, {}(s11)\n\tj 3f\n", o.current_fiber, o.scheduler_sp);
+		text += std::format("2:\n\tld t0, {}(s11)\n\tbeqz t0, 1f\n\tld t0, {}(s11)\n", o.stack_segment, o.native_sp);
+		text += "3:\n\tandi sp, t0, -16\n";
+		text += std::format("\tld t0, {}(s11)\n\tsd t0, {}(s11)\n", o.native_stack_limit, o.stack_limit);
+		text += "1:\n";
+		if (area > 0) {
+			text += std::format("\taddi sp, sp, -{}\n", area);
+		}
+		for (const auto& [from, to] : stack_arguments) {
+			text += std::format("\tld t0, {}(s0)\n\tsd t0, {}(sp)\n", from, to);
+		}
+		text += symbol.empty() ? std::format("\tld t0, {}(s11)\n\tjalr t0\n", o.foreign_target) : std::format("\tcall {}\n", assembly_name(symbol));
+		text += std::format("\tmv sp, s1\n\tsd s2, {}(s11)\n", o.stack_limit);
+		text += std::format("\tlw t0, {0}(s11)\n\taddi t0, t0, -1\n\tsw t0, {0}(s11)\n", o.foreign_depth);
+		text += "\tld s2, 0(sp)\n\tld s1, 8(sp)\n\tld s0, 16(sp)\n\tld ra, 24(sp)\n\taddi sp, sp, 32\n\tret\n";
+		return text;
+	}
+
+	/*
+	 * Whether a function C's convention calls can go through a shim: on x86-64, AArch64 and RISC-V, with parameters and a result
 	 * that each fit a register, which the shim leaves where they are.
 	 */
 	static bool foreign_fits(Generator& generator, TypeInfoFunction const* type) {
-		const bool aarch64 = ArchType::aarch64 == generator.options->architecture;
-		bool fits = (ArchType::x86_64 == generator.options->architecture || aarch64) && type->output.size() <= 1;
+		const ArchType architecture = generator.options->architecture;
+		bool fits = (ArchType::x86_64 == architecture || ArchType::aarch64 == architecture || ArchType::riscv64 == architecture)
+			&& type->output.size() <= 1;
 		const auto in_register = [](TypeInfo const* value) {
 			TypeInfo const* held = base(value);
 			// Pointers of every kind are one register: cstrings, function values, and optional pointers, null for None
@@ -2207,6 +2396,9 @@ namespace hemera {
 			return foreign_shim_assembly_aarch64(shim, symbol, offsets, foreign_stack_arguments_aarch64(type),
 				control_flow_integrity(*generator.options));
 		}
+		if (ArchType::riscv64 == generator.options->architecture) {
+			return foreign_shim_assembly_riscv64(shim, symbol, offsets, foreign_stack_arguments_riscv64(type));
+		}
 		// C's convention on Windows and UEFI is Microsoft's x64 one, with shadow space; elsewhere System V's
 		const bool windows = OSType::Win32 == generator.options->os || OSType::UEFI == generator.options->os;
 		return foreign_shim_assembly(shim, symbol, offsets, foreign_stack_arguments(type, windows), windows,
@@ -2231,6 +2423,7 @@ namespace hemera {
 			return mlir::Value();
 		}
 		const size_t stack = ArchType::aarch64 == generator.options->architecture ? foreign_stack_arguments_aarch64(type).size()
+			: ArchType::riscv64 == generator.options->architecture ? foreign_stack_arguments_riscv64(type).size()
 			: foreign_stack_arguments(type, OSType::Win32 == generator.options->os || OSType::UEFI == generator.options->os).size();
 		const std::string shim = std::format("hemera.foreign_indirect.{}", stack);
 		if (!generator.module.lookupSymbol<LLVM::LLVMFuncOp>(shim)) {
@@ -2243,7 +2436,7 @@ namespace hemera {
 
 	/*
 	 * A #foreign function: its shim, which is what Hemera code calls, made once, and its library,
-	 * for the linker. For now on x86-64 and AArch64, with parameters and a result that each fit a register.
+	 * for the linker. For now on x86-64, AArch64 and RISC-V, with parameters and a result that each fit a register.
 	 */
 	static LLVM::LLVMFuncOp foreign_function_for(Generator& generator, Declaration* declaration, TypeInfoFunction const* type) {
 		const std::string symbol = text_of(declaration->link_name);
@@ -2254,7 +2447,8 @@ namespace hemera {
 		 */
 		if (OSType::Linux == generator.options->os && !generator.c_library && is_base_package(declaration->package_path)) {
 			if (!generator.module.lookupSymbol<LLVM::LLVMFuncOp>(shim)) {
-				const char* stop = ArchType::aarch64 == generator.options->architecture ? "brk #1" : "ud2";
+				const ArchType architecture = generator.options->architecture;
+				const char* stop = ArchType::aarch64 == architecture ? "brk #1" : ArchType::riscv64 == architecture ? "ebreak" : "ud2";
 				generator.module_assembly.push_back(std::format("\t.text\n\t.p2align 4\n{}:\n\t{}\n", assembly_name(shim), stop));
 			}
 			LLVM::LLVMFuncOp unused = assembly_function(generator, shim, function_type(generator, type, false));
@@ -2268,7 +2462,7 @@ namespace hemera {
 		if (!fits) {
 			// At the declaration, in its own file, which needn't be the one being generated, or any (--generate-all)
 			unsupported_in(generator, file_path_of(declaration->package_path, declaration->file_name), where,
-				"a #foreign function can only take and give values that fit a register, on x86-64 and AArch64, so far");
+				"a #foreign function can only take and give values that fit a register, on x86-64, AArch64 and RISC-V, so far");
 		}
 		ForeignOffsets offsets;
 		if (!generator.module.lookupSymbol<LLVM::LLVMFuncOp>(shim)) {
@@ -2475,7 +2669,7 @@ namespace hemera {
 				return generator.builder.getArrayAttr({ generator.builder.getStringAttr(key), generator.builder.getStringAttr(text) });
 			};
 			attributes.push_back(generator.builder.getStringAttr("split-stack"));
-			attributes.push_back(pair("split-stack-limit-register", ArchType::aarch64 == generator.options->architecture ? "x28" : "r14"));
+			attributes.push_back(pair("split-stack-limit-register", carrier_register_name(*generator.options)));
 			attributes.push_back(pair("split-stack-limit-offset", "0"));
 			if (grows) {
 				attributes.push_back(pair("split-stack-morestack", MORESTACK_SYMBOL));
@@ -5582,6 +5776,49 @@ namespace hemera {
 	}
 
 	/*
+	 * A RISC-V instruction (base/intrinsics/riscv64). Returns false for a name that isn't one of them, or isn't
+	 * generated yet.
+	 */
+	static bool emit_riscv64(Generator& generator, std::string_view name, const std::vector<mlir::Value>& arguments,
+		TypeInfoFunction const* function, Emitted& result) {
+
+		mlir::Type i64 = integer_type(generator, 8);
+		if (name == "syscall") {
+			// Linux's convention: the number in a7, up to six arguments in a0 to a5, the result in a0
+			std::vector<mlir::Value> operands(arguments.begin() + 1, arguments.end());
+			operands.push_back(arguments[0]);
+			result = intrinsic_value(assembly(generator, i64, operands, "ecall",
+				"={x10},{x10},{x11},{x12},{x13},{x14},{x15},{x17},~{memory}"), function);
+			return true;
+		}
+		if (name == "clone_thread") {
+			/*
+			 * As on AArch64: a stub leaves entry and argument at the top of the child's stack, and the child
+			 * calls entry there. Linux's clone takes flags, stack, parent_tid, tls and child_tid, in that order
+			 */
+			constexpr const char* CLONE_SYMBOL = "hemera.clone_thread";
+			if (!generator.module.lookupSymbol<LLVM::LLVMFuncOp>(CLONE_SYMBOL)) {
+				generator.module_assembly.push_back(std::format(
+					"\t.text\n\t.p2align 2\n{}:\n"
+					"\taddi a1, a1, -16\n\tsd a4, 0(a1)\n\tsd a5, 8(a1)\n"
+					"\tmv a4, a3\n\tli a3, 0\n\tli a7, 220\n\tecall\n"
+					"\tbnez a0, 1f\n"
+					"\tli s0, 0\n\tli ra, 0\n\tld t0, 0(sp)\n\tld a0, 8(sp)\n\taddi sp, sp, 16\n\tjalr t0\n\tebreak\n"
+					"1:\n\tret\n", CLONE_SYMBOL));
+			}
+			mlir::Type pointer = pointer_type(generator);
+			LLVM::LLVMFuncOp clone = assembly_function(generator, CLONE_SYMBOL,
+				LLVM::LLVMFunctionType::get(i64, { i64, pointer, pointer, pointer, pointer, pointer }));
+			clone.setCConv(LLVM::cconv::CConv::C);
+			auto call = LLVM::CallOp::create(generator.builder, generator.loc, clone, arguments);
+			call.setCConv(LLVM::cconv::CConv::C);
+			result = intrinsic_value(call.getResult(), function);
+			return true;
+		}
+		return false;
+	}
+
+	/*
 	 * An x86-64 instruction (base/intrinsics/x86_64). Returns false for a name that isn't one of
 	 * them, or isn't generated yet.
 	 */
@@ -6111,10 +6348,19 @@ namespace hemera {
 	 */
 	constexpr size_t AARCH64_SUSPENDED_SIZE = 112;
 	constexpr size_t AARCH64_SUSPENDED_FP_SIZE = 176;
+	/*
+	 * On RISC-V: the top frame's s0, the limit and segment, s1 to s10, then fiber_suspend's ra, and with fp, fcsr and
+	 * fs0 to fs11 after it, at 112 to 208: 216 bytes, made 224 to keep the stack 16-byte aligned.
+	 */
+	constexpr size_t RISCV64_SUSPENDED_SIZE = 112;
+	constexpr size_t RISCV64_SUSPENDED_FP_SIZE = 224;
 
-	static SuspendedLayout suspended_layout(bool sse, bool aarch64 = false) {
+	static SuspendedLayout suspended_layout(bool sse, bool aarch64 = false, bool riscv64 = false) {
 		if (aarch64) {
 			return SuspendedLayout{ 0, 8, 16, 24, 96 };
+		}
+		if (riscv64) {
+			return SuspendedLayout{ 0, 8, 16, 24, 104 };
 		}
 		const size_t floating = sse ? 16 : 0;
 		return SuspendedLayout{ floating, floating + 8, floating + 16, floating + 24, floating + 56 };
@@ -6360,6 +6606,117 @@ namespace hemera {
 		return text;
 	}
 
+	// Storing a fiber's state on RISC-V, the fiber in a0.
+	static std::string set_state_riscv64(const FiberOffsets& o, uint64_t value) {
+		const char* store = o.state_size == 1 ? "sb" : o.state_size == 2 ? "sh" : o.state_size == 4 ? "sw" : "sd";
+		return std::format("\tli t6, {}\n\t{} t6, {}(a0)\n", value, store, o.state);
+	}
+
+	/*
+	 * The fiber switches and the resume loop on RISC-V, as on AArch64, with RISC-V's frame record: a frame's s0 is the
+	 * stack pointer at its entry, its return address at s0 - 8 and its caller's s0 at s0 - 16. The scheduler's state on
+	 * its own stack, from scheduler_sp: s1 to s10, s0, ra, the carrier's stack_limit, stack_segment and current_fiber,
+	 * and with fp, fcsr and fs0 to fs11. A suspended fiber's is suspended_layout's. The loop keeps its state in t3 to t6,
+	 * which no function returns anything in, leaving t2, Zicfilp's label, alone; after a frame returns, the stack
+	 * pointer is at its s0, below everything its caller has live.
+	 */
+	static std::string fiber_assembly_riscv64(const FiberOffsets& o, std::string_view run, bool fp) {
+		const SuspendedLayout layout = suspended_layout(fp, false, true);
+		const size_t scheduler_size = fp ? 240 : 128;
+		const size_t suspended_size = fp ? RISCV64_SUSPENDED_FP_SIZE : RISCV64_SUSPENDED_SIZE;
+		// fcsr and fs0 to fs11 at offset, from sp
+		auto floating = [&](size_t offset, bool save) {
+			if (!fp) {
+				return std::string();
+			}
+			std::string text = save ? std::format("\tfrcsr t6\n\tsd t6, {}(sp)\n", offset)
+				: std::format("\tld t6, {}(sp)\n\tfscsr t6\n", offset);
+			for (size_t i = 0; i < 12; ++i) {
+				text += std::format("\t{} fs{}, {}(sp)\n", save ? "fsd" : "fld", i, offset + 8 + i * 8);
+			}
+			return text;
+		};
+		// s1 to s10 from offset, from sp
+		auto saved = [&](size_t offset, bool save) {
+			std::string text;
+			for (size_t i = 1; i <= 10; ++i) {
+				text += std::format("\t{} s{}, {}(sp)\n", save ? "sd" : "ld", i, offset + (i - 1) * 8);
+			}
+			return text;
+		};
+		std::string save_scheduler = std::format("\taddi sp, sp, -{}\n", scheduler_size);
+		save_scheduler += saved(0, true);
+		save_scheduler += std::format("\tsd s0, 80(sp)\n\tsd ra, 88(sp)\n\tld t6, {}(s11)\n\tsd t6, 96(sp)\n", o.carrier_limit);
+		save_scheduler += std::format("\tld t6, {}(s11)\n\tsd t6, 104(sp)\n\tld t6, {}(s11)\n\tsd t6, 112(sp)\n",
+			o.carrier_segment, o.current_fiber);
+		save_scheduler += floating(128, true);
+		save_scheduler += std::format("\tsd sp, {}(s11)\n", o.scheduler_sp);
+		// No shadow stack is kept here yet (Zicfiss, M19's R6)
+		save_scheduler += std::format("\tsd zero, {}(s11)\n", o.shadow_stack_base);
+		auto back_to_scheduler = [&](int exit) {
+			std::string text = std::format("\tld sp, {}(s11)\n", o.scheduler_sp);
+			text += floating(128, false);
+			text += std::format("\tld t6, 104(sp)\n\tsd t6, {}(s11)\n\tld t6, 112(sp)\n\tsd t6, {}(s11)\n", o.carrier_segment, o.current_fiber);
+			text += std::format("\tld t6, 96(sp)\n\tsd t6, {}(s11)\n\tld ra, 88(sp)\n\tld s0, 80(sp)\n", o.carrier_limit);
+			text += saved(0, false);
+			text += std::format("\taddi sp, sp, {}\n\tli a0, {}\n\tret\n", scheduler_size, exit);
+			return text;
+		};
+		std::string text = "\t.text\n" + riscv64_extensions_open(fp, false);
+		// fiber_start(fiber, stack top, stack limit): onto the fiber's first segment, into fiber_entry
+		text += std::format("\t.p2align 2\n{}:\n", FIBER_START_SYMBOL);
+		text += save_scheduler;
+		text += std::format("\tsd a0, {}(s11)\n\tsd a2, {}(s11)\n\tsd zero, {}(s11)\n\tsd zero, {}(s11)\n",
+			o.current_fiber, o.carrier_limit, o.carrier_segment, o.resume_frame);
+		text += set_state_riscv64(o, o.running);
+		text += "\tmv sp, a1\n\tli s0, 0\n\tcall hemera.fiber_entry\n\tebreak\n";
+		// fiber_entry: the fiber's bottom frame, calling runtime.fiber_run(fiber); after that, it's finished
+		text += "\t.p2align 2\nhemera.fiber_entry:\n\taddi sp, sp, -16\n\tsd ra, 8(sp)\n\tsd s0, 0(sp)\n\taddi s0, sp, 16\n";
+		// Where the resume loop re-enters this frame, with an indirect jump
+		text += std::format("\tcall {}\n", assembly_name(run));
+		text += back_to_scheduler(1);
+		// fiber_resume(fiber): the carrier's segment and limit back from the fiber's stack, then re-enter its frames, innermost first
+		text += std::format("\t.p2align 2\n{}:\n", FIBER_RESUME_SYMBOL);
+		text += save_scheduler;
+		text += std::format("\tsd a0, {}(s11)\n", o.current_fiber);
+		text += set_state_riscv64(o, o.running);
+		text += std::format("\tld sp, {}(a0)\n", o.saved_sp);
+		text += std::format("\tld t6, {}(sp)\n\tsd t6, {}(s11)\n", layout.segment, o.carrier_segment);
+		text += std::format("\tld t6, {}(sp)\n\tsd t6, {}(s11)\n", layout.limit, o.carrier_limit);
+		text += std::format("\tld t3, {}(sp)\n\tld t4, {}(sp)\n\tli t5, 1\n", layout.top_frame, layout.continuation);
+		text += "hemera.fiber_reenter_next:\n";
+		text += std::format("\tsd t3, {}(s11)\n", o.resume_frame);
+		text += std::format("\tld t6, -8(t3)\n\tsd t6, {}(s11)\n", o.resume_return);
+		text += std::format("\tld t6, -16(t3)\n\tsd t6, {}(s11)\n", o.resume_parent);
+		text += "\tcall hemera.fiber_reenter\n";
+		// The frame returned, to here: on to its caller, whose frame bottom the stack pointer is at now
+		text += std::format("{}:\n", FIBER_LOOP_RETURN_SYMBOL);
+		text += std::format("\tld t4, {}(s11)\n\tld t3, {}(s11)\n", o.resume_return, o.resume_parent);
+		text += "\tli t5, 0\n\tj hemera.fiber_reenter_next\n";
+		// fiber_reenter: only reached by the call above, whose return address the frame returns through now
+		text += "\t.p2align 2\nhemera.fiber_reenter:\n\tsd ra, -8(t3)\n\tmv s0, t3\n\tbeqz t5, 1f\n";
+		text += saved(layout.registers, false);
+		text += floating(layout.continuation + 8, false);
+		text += std::format("\taddi sp, sp, {}\n", suspended_size);
+		text += "1:\n\tjr t4\n";
+		// fiber_suspend(fiber): its state on its own stack, where it is, and back to the scheduler
+		text += std::format("\t.p2align 2\n{}:\n", FIBER_SUSPEND_SYMBOL);
+		text += std::format("\taddi sp, sp, -{}\n", suspended_size);
+		text += std::format("\tld t6, {}(s11)\n\tld t5, {}(s11)\n\tsd s0, {}(sp)\n\tsd t6, {}(sp)\n\tsd t5, {}(sp)\n",
+			o.carrier_limit, o.carrier_segment, layout.top_frame, layout.limit, layout.segment);
+		text += saved(layout.registers, true);
+		text += std::format("\tsd ra, {}(sp)\n", layout.continuation);
+		text += floating(layout.continuation + 8, true);
+		text += std::format("\tsd sp, {}(a0)\n", o.saved_sp);
+		// Suspended frames hold their real return addresses
+		text += std::format("\tld t6, {}(s11)\n\tbeqz t6, 1f\n", o.resume_frame);
+		text += std::format("\tld t5, {}(s11)\n\tsd t5, -8(t6)\n\tsd zero, {}(s11)\n", o.resume_return, o.resume_frame);
+		text += "1:\n";
+		text += set_state_riscv64(o, o.suspended);
+		text += back_to_scheduler(0);
+		return text + riscv64_extensions_close(fp);
+	}
+
 	/*
 	 * What lower_to_llvm's stack walks need to follow fibers (define_stack_walker): the resume loop's
 	 * return address, and FIBER_WALK_SYMBOL: the offsets of the carrier's resume_return and of a
@@ -6368,7 +6725,8 @@ namespace hemera {
 	 */
 	static void fiber_walk_table(Generator& generator, const FiberOffsets& o, bool sse) {
 		assembly_function(generator, FIBER_LOOP_RETURN_SYMBOL, no_arguments(generator));
-		const SuspendedLayout layout = suspended_layout(sse, ArchType::aarch64 == generator.options->architecture);
+		const SuspendedLayout layout = suspended_layout(sse, ArchType::aarch64 == generator.options->architecture,
+			ArchType::riscv64 == generator.options->architecture);
 		const std::vector<int64_t> values{ static_cast<int64_t>(o.resume_return), static_cast<int64_t>(o.saved_sp),
 			static_cast<int64_t>(o.state), static_cast<int64_t>(o.state_size), static_cast<int64_t>(o.suspended),
 			static_cast<int64_t>(layout.top_frame), static_cast<int64_t>(layout.continuation) };
@@ -6391,8 +6749,9 @@ namespace hemera {
 		if (name != "fiber_start" && name != "fiber_resume" && name != "fiber_suspend") {
 			return false;
 		}
-		if (ArchType::x86_64 != generator.options->architecture && ArchType::aarch64 != generator.options->architecture) {
-			unsupported(generator, where, "fibers are only made for x86-64 and AArch64 so far (docs/multitasking.md, Open Questions)");
+		if (ArchType::x86_64 != generator.options->architecture && ArchType::aarch64 != generator.options->architecture
+			&& ArchType::riscv64 != generator.options->architecture) {
+			unsupported(generator, where, "fibers are only made for x86-64, AArch64 and RISC-V so far (docs/multitasking.md, Open Questions)");
 			result = intrinsic_value(zero_of(generator, llvm_type(generator, function->output.empty() ? BUILTIN_int : function->output[0].type)),
 				function);
 			return true;
@@ -6410,7 +6769,13 @@ namespace hemera {
 			LLVM::LLVMFuncOp run_function = function_for(generator, run);
 			run_function.setLinkage(LLVM::Linkage::External);
 			const std::string run_symbol = run_function.getSymName().str();
-			if (ArchType::aarch64 == generator.options->architecture) {
+			if (ArchType::riscv64 == generator.options->architecture) {
+				const std::string features = target_features(*generator.options);
+				const bool fp = !feature_turned_off(features, "d") && !feature_turned_off(features, "f");
+				generator.module_assembly.push_back(fiber_assembly_riscv64(offsets, run_symbol, fp));
+				fiber_walk_table(generator, offsets, fp);
+			}
+			else if (ArchType::aarch64 == generator.options->architecture) {
 				const bool fp = generator.options->cpu_features.find("-fp-armv8") == std::string::npos;
 				generator.module_assembly.push_back(fiber_assembly_aarch64(offsets, run_symbol, fp, control_flow_integrity(*generator.options)));
 				fiber_walk_table(generator, offsets, fp);
@@ -6955,9 +7320,7 @@ namespace hemera {
 		}
 		// The carrier register, which nothing else uses (docs/calling_convention.md, Carrier Register)
 		if (name == "carrier") {
-			const bool aarch64 = ArchType::aarch64 == generator.options->architecture;
-			return value(assembly(generator, pointer_type(generator), {}, aarch64 ? "mov $0, x28" : "movq %r14, $0", "=r,~{memory}"),
-				result_type);
+			return value(assembly(generator, pointer_type(generator), {}, carrier_to_operand(generator), "=r,~{memory}"), result_type);
 		}
 		if (name == "uses_c_library") {
 			return value(boolean(generator, generator.c_library), result_type);
@@ -6983,8 +7346,7 @@ namespace hemera {
 			return value(LLVM::AddressOfOp::create(b, l, state), result_type);
 		}
 		if (name == "set_carrier") {
-			const bool aarch64 = ArchType::aarch64 == generator.options->architecture;
-			assembly(generator, mlir::Type(), arguments, aarch64 ? "mov x28, $0" : "movq $0, %r14", "r,~{memory}");
+			assembly(generator, mlir::Type(), arguments, operand_to_carrier(generator), "r,~{memory}");
 			return result;
 		}
 		if (name.starts_with("volatile_load_")) {
@@ -7071,7 +7433,8 @@ namespace hemera {
 		 */
 		const ArchType architecture = generator.options->architecture;
 		if ((package.ends_with("intrinsics/x86_64") && ArchType::x86_64 != architecture)
-			|| (package.ends_with("intrinsics/aarch64") && ArchType::aarch64 != architecture)) {
+			|| (package.ends_with("intrinsics/aarch64") && ArchType::aarch64 != architecture)
+			|| (package.ends_with("intrinsics/riscv64") && ArchType::riscv64 != architecture)) {
 			if (!generator.compile_time) {
 				unsupported(generator, where, std::format("{} is another architecture's instruction", full_name));
 			}
@@ -7082,6 +7445,9 @@ namespace hemera {
 			return result;
 		}
 		if (package.ends_with("intrinsics/aarch64") && emit_aarch64(generator, name, called, arguments, function, result)) {
+			return result;
+		}
+		if (package.ends_with("intrinsics/riscv64") && emit_riscv64(generator, name, arguments, function, result)) {
 			return result;
 		}
 		unsupported(generator, where, std::format("the intrinsic {} can't be generated yet", full_name));
@@ -8943,6 +9309,7 @@ namespace hemera {
 				case ArchType::arm: member = "arm"; break;
 				case ArchType::aarch64:
 				case ArchType::aarch64_32: member = "arm64"; break;
+				case ArchType::riscv64: member = "riscv64"; break;
 				case ArchType::x86: member = "x86"; break;
 				case ArchType::x86_64: member = "x86_64"; break;
 			}
@@ -10774,20 +11141,23 @@ namespace hemera {
 
 	/*
 	 * The instructions moving the carrier register (docs/calling_convention.md, Carrier Register) into an
-	 * operand, and from one: r14 on x86-64, x28 on AArch64.
+	 * operand, and from one: r14 on x86-64, x28 on AArch64, s11 on RISC-V.
 	 */
 	static const char* carrier_to_operand(const Generator& generator) {
-		return ArchType::aarch64 == generator.options->architecture ? "mov $0, x28" : "movq %r14, $0";
+		const ArchType architecture = generator.options->architecture;
+		return ArchType::aarch64 == architecture ? "mov $0, x28" : ArchType::riscv64 == architecture ? "mv $0, s11" : "movq %r14, $0";
 	}
 
 	static const char* operand_to_carrier(const Generator& generator) {
-		return ArchType::aarch64 == generator.options->architecture ? "mov x28, $0" : "movq $0, %r14";
+		const ArchType architecture = generator.options->architecture;
+		return ArchType::aarch64 == architecture ? "mov x28, $0" : ArchType::riscv64 == architecture ? "mv s11, $0" : "movq $0, %r14";
 	}
 
 	// Whether the target is Linux on an architecture whose start and system calls the compiler knows.
 	static bool hosted_linux(const Generator& generator) {
 		const ArchType architecture = generator.options->architecture;
-		return OSType::Linux == generator.options->os && (ArchType::x86_64 == architecture || ArchType::aarch64 == architecture);
+		return OSType::Linux == generator.options->os
+			&& (ArchType::x86_64 == architecture || ArchType::aarch64 == architecture || ArchType::riscv64 == architecture);
 	}
 
 	/*
@@ -10874,7 +11244,8 @@ namespace hemera {
 		 */
 		Declaration* carrier_declaration = base_declaration_named(generator, "runtime", "CarrierBlock");
 		mlir::Value callers_carrier;
-		if ((ArchType::x86_64 == generator.options->architecture || ArchType::aarch64 == generator.options->architecture)
+		if ((ArchType::x86_64 == generator.options->architecture || ArchType::aarch64 == generator.options->architecture
+			|| ArchType::riscv64 == generator.options->architecture)
 			&& carrier_declaration != nullptr
 			&& carrier_declaration->type_value != nullptr) {
 			TypeInfo* carrier_type = carrier_declaration->type_value;
@@ -11049,6 +11420,29 @@ namespace hemera {
 					"\t.text\n\t.globl {0}\n\t.p2align 4\n{0}:\n\tmov x29, xzr\n\tmov x30, xzr\n"
 					"\tldr x0, [sp]\n\tadd x1, sp, #8\n\tadd x2, x1, x0, lsl #3\n\tadd x2, x2, #8\n"
 					"\tbl {1}\n\tmov x8, #94\n\tsvc #0\n\tbrk #1\n",
+					LINUX_START_SYMBOL, HOSTED_ENTRY_SYMBOL));
+			}
+			const bool riscv64 = ArchType::riscv64 == generator.options->architecture;
+			if (OSType::Linux == generator.options->os && riscv64 && generator.c_library) {
+				/*
+				 * As glibc's _start on RISC-V: rtld_fini from a0, argc and argv from the stack, the stack aligned as
+				 * stack_end, no init or fini of its own, and the entry as main
+				 */
+				generator.module_assembly.push_back(std::format(
+					"\t.text\n\t.globl {0}\n\t.p2align 2\n{0}:\n\tli s0, 0\n\tli ra, 0\n\tmv a5, a0\n"
+					"\tld a1, 0(sp)\n\taddi a2, sp, 8\n\tandi sp, sp, -16\n\tmv a6, sp\n\tlla a0, {1}\n"
+					"\tli a3, 0\n\tli a4, 0\n\tcall __libc_start_main\n\tebreak\n",
+					LINUX_START_SYMBOL, HOSTED_ENTRY_SYMBOL));
+			}
+			else if (OSType::Linux == generator.options->os && riscv64) {
+				/*
+				 * As on AArch64, with no C library: argc, argv and envp from the stack, which Linux leaves 16-byte
+				 * aligned, the entry called, then exit_group (94) with its result
+				 */
+				generator.module_assembly.push_back(std::format(
+					"\t.text\n\t.globl {0}\n\t.p2align 2\n{0}:\n\tli s0, 0\n\tli ra, 0\n"
+					"\tld a0, 0(sp)\n\taddi a1, sp, 8\n\tslli a2, a0, 3\n\tadd a2, a2, a1\n\taddi a2, a2, 8\n"
+					"\tcall {1}\n\tli a7, 94\n\tecall\n\tebreak\n",
 					LINUX_START_SYMBOL, HOSTED_ENTRY_SYMBOL));
 			}
 			if (OSType::Linux == generator.options->os && ArchType::x86_64 == generator.options->architecture && generator.c_library) {
@@ -12547,7 +12941,7 @@ namespace hemera {
 				const TypeInfoStruct* target = struct_of(field_type);
 				uint8_t* at = record + offset;
 				data.write_member(at, target, "architecture", ArchType::aarch64 == options.architecture ? "arm64" : ArchType::x86 == options.architecture ? "x86"
-					: ArchType::arm == options.architecture ? "arm" : "x86_64");
+					: ArchType::arm == options.architecture ? "arm" : ArchType::riscv64 == options.architecture ? "riscv64" : "x86_64");
 				data.write_member(at, target, "os", options.startup_code || OSType::UnknownOS != options.os ? operating_system_name(options.os) : "None");
 				data.write_member(at, target, "output_type", "Executable");
 				data.write_text(at, target, "cpu", options.cpu);
@@ -13411,6 +13805,9 @@ namespace hemera {
 		else if (target.architecture == "arm64") {
 			result.architecture = ArchType::aarch64;
 		}
+		else if (target.architecture == "riscv64") {
+			result.architecture = ArchType::riscv64;
+		}
 		else {
 			return refuse(std::format("it's for {}, which can't be built yet", target.architecture));
 		}
@@ -13472,8 +13869,9 @@ namespace hemera {
 			}
 			result.libraries.push_back({ library_root, library.file });
 		}
-		// Morestack where it's made: x86-64 and AArch64 targets; off elsewhere, for now
-		const bool grows = ArchType::x86_64 == result.architecture || ArchType::aarch64 == result.architecture;
+		// Morestack where it's made: x86-64, AArch64 and RISC-V targets; off elsewhere, for now
+		const bool grows = ArchType::x86_64 == result.architecture || ArchType::aarch64 == result.architecture
+			|| ArchType::riscv64 == result.architecture;
 		result.stack_check = target.stack_check_failure == "Trap" ? TargetStackCheck::Trap
 			: target.stack_check_failure == "Morestack" && grows ? TargetStackCheck::Morestack : TargetStackCheck::Off;
 		if (!target.linker_script.empty()) {
@@ -13763,7 +14161,28 @@ namespace hemera {
 			}
 			features += features.empty() ? "+reserve-x28" : ",+reserve-x28";
 		}
+		if (ArchType::riscv64 == options.architecture) {
+			// RVA23U64 unless the CPU says otherwise, first, so the target's own features come after and win
+			if (options.cpu.empty() || options.cpu == "generic") {
+				auto profile = llvm::RISCVISAInfo::parseArchString("rva23u64", true);
+				if (profile) {
+					std::string expanded;
+					for (const std::string& feature : (*profile)->toFeatures(false, false)) {
+						expanded += expanded.empty() ? feature : "," + feature;
+					}
+					features = features.empty() ? expanded : expanded + "," + features;
+				}
+				else {
+					llvm::consumeError(profile.takeError());
+				}
+			}
+			features += features.empty() ? "+reserve-x27" : ",+reserve-x27";
+		}
 		return features;
+	}
+
+	std::string target_abi(const Options& options) {
+		return ArchType::riscv64 == options.architecture ? "lp64d" : "";
 	}
 
 	/*
@@ -14252,15 +14671,36 @@ namespace hemera {
 		llvm::Function* morestack_continue = nullptr;
 		// FIBER_WALK_SYMBOL's offsets, see fiber_walk_table
 		std::vector<uint64_t> offsets;
-		// The carrier register's name: r14 on x86-64, x28 on AArch64
+		// The carrier register's name: r14 on x86-64, x28 on AArch64, x27 (s11) on RISC-V
 		const char* carrier_register = "r14";
 		// Whether return addresses are signed (AArch64 with control-flow integrity), so the walk strips them
 		bool signed_returns = false;
+		/*
+		 * Where a frame's record (the caller's frame pointer, then the return address) is from its frame pointer: at
+		 * it, or 16 bytes below on RISC-V, whose frame pointer is the stack pointer at entry
+		 */
+		int64_t record = 0;
 	};
+
+	// The carrier register's name as LLVM knows it: r14 on x86-64, x28 on AArch64, x27 (s11) on RISC-V.
+	const char* carrier_register_name(const Options& options) {
+		return ArchType::aarch64 == options.architecture ? "x28" : ArchType::riscv64 == options.architecture ? "x27" : "r14";
+	}
+
+	// The address offset bytes from a frame pointer, below it for a negative offset.
+	static llvm::Value* record_field(llvm::IRBuilder<>& builder, llvm::Value* frame, int64_t offset) {
+		return builder.CreateGEP(builder.getInt8Ty(), frame, llvm::ConstantInt::getSigned(builder.getInt64Ty(), offset));
+	}
+
+	// Where a frame's record is from its frame pointer (WalkSupport::record).
+	static int64_t frame_record_offset(const Options& options) {
+		return ArchType::riscv64 == options.architecture ? -16 : 0;
+	}
 
 	static WalkSupport walk_support(llvm::Module& module, const Options& options) {
 		WalkSupport support;
-		support.carrier_register = ArchType::aarch64 == options.architecture ? "x28" : "r14";
+		support.carrier_register = carrier_register_name(options);
+		support.record = frame_record_offset(options);
 		support.signed_returns = control_flow_integrity(options) && ArchType::aarch64 == options.architecture;
 		support.loop_return = module.getFunction(FIBER_LOOP_RETURN_SYMBOL);
 		support.morestack_continue = module.getFunction(MORESTACK_CONTINUE_SYMBOL);
@@ -14337,9 +14777,9 @@ namespace hemera {
 
 		// The caller's frame pointer, then this frame's return address unless it's the entry function's
 		builder.SetInsertPoint(frame);
-		llvm::Value* caller = builder.CreateLoad(pointer, current);
+		llvm::Value* caller = builder.CreateLoad(pointer, record_field(builder, current, support.record));
 		llvm::Value* raw_return = strip_authentication(builder, support,
-			builder.CreateLoad(pointer, builder.CreateConstGEP1_64(builder.getInt8Ty(), current, 8)));
+			builder.CreateLoad(pointer, record_field(builder, current, support.record + 8)));
 		builder.CreateCondBr(builder.CreateIsNull(caller), done, returned);
 
 		builder.SetInsertPoint(returned);
@@ -14473,7 +14913,8 @@ namespace hemera {
 		// From the walker's caller's frame
 		llvm::IRBuilder<> builder(llvm::BasicBlock::Create(context, "entry", walker));
 		llvm::Value* own = builder.CreateIntrinsic(llvm::Intrinsic::frameaddress, { pointer }, { builder.getInt32(0) });
-		build_walk(builder, walker, support, builder.CreateLoad(pointer, own), walker->getArg(0), walker->getArg(1),
+		build_walk(builder, walker, support,
+			builder.CreateLoad(pointer, record_field(builder, own, support.record)), walker->getArg(0), walker->getArg(1),
 			walker->getArg(2), llvm::ConstantInt::get(size, 0));
 	}
 
@@ -14490,7 +14931,8 @@ namespace hemera {
 		llvm::IRBuilder<> builder(&*entry->getEntryBlock().getFirstInsertionPt());
 		llvm::Type* pointer = llvm::PointerType::get(module.getContext(), 0);
 		llvm::Value* frame = builder.CreateIntrinsic(llvm::Intrinsic::frameaddress, { pointer }, { builder.getInt32(0) });
-		builder.CreateStore(llvm::ConstantPointerNull::get(llvm::PointerType::get(module.getContext(), 0)), frame);
+		builder.CreateStore(llvm::ConstantPointerNull::get(llvm::PointerType::get(module.getContext(), 0)),
+			record_field(builder, frame, frame_record_offset(options)));
 	}
 
 	/*

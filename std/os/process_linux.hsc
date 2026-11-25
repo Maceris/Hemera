@@ -60,9 +60,9 @@ import runtime from "base:runtime"
         return runtime.linux_syscall(SYS_POLL, descriptors, count, 0xffff_ffff_ffff_ffff)
     }
 }
-#else_if OS == .Linux && TARGET_ARCH == .arm64 {
+#else_if OS == .Linux && (TARGET_ARCH == .arm64 || TARGET_ARCH == .riscv64) {
     // The generic table has no fork, dup2 or poll: clone, dup3 and ppoll do what they did
-    /** The system call number of dup3 in the generic table, which AArch64 uses; it stands in for dup2. */
+    /** The system call number of dup3 in the generic table, which AArch64 and RISC-V use; it stands in for dup2. */
     SYS_DUP3 : u64 : 24
     /** The system call number of pipe2 in the generic table. */
     SYS_PIPE2 : u64 : 59
@@ -116,7 +116,7 @@ import runtime from "base:runtime"
     }
 }
 
-#if OS == .Linux && (TARGET_ARCH == .x86_64 || TARGET_ARCH == .arm64) {
+#if OS == .Linux && (TARGET_ARCH == .x86_64 || TARGET_ARCH == .arm64 || TARGET_ARCH == .riscv64) {
     /** The poll event for a descriptor with something to read, or at its end. */
     POLLIN : i16 : 1
     /** The errno for nothing being at a path. */

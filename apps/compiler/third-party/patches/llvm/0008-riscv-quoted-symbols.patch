@@ -1,0 +1,46 @@
+diff --git a/llvm/lib/Target/RISCV/AsmParser/RISCVAsmParser.cpp b/llvm/lib/Target/RISCV/AsmParser/RISCVAsmParser.cpp
+index d839f12b70ee..4b6feb81cdd9 100644
+--- a/llvm/lib/Target/RISCV/AsmParser/RISCVAsmParser.cpp
++++ b/llvm/lib/Target/RISCV/AsmParser/RISCVAsmParser.cpp
+@@ -2217,7 +2217,8 @@ ParseStatus RISCVAsmParser::parseBareSymbol(OperandVector &Operands) {
+   SMLoc S = getLoc();
+   const MCExpr *Res;
+ 
+-  if (getLexer().getKind() != AsmToken::Identifier)
++  // A quoted name, like "a.b c", is a symbol too, as in the generic parser
++  if (getLexer().isNot(AsmToken::Identifier) && getLexer().isNot(AsmToken::String))
+     return ParseStatus::NoMatch;
+ 
+   StringRef Identifier = getTok().getIdentifier();
+@@ -2241,7 +2242,8 @@ ParseStatus RISCVAsmParser::parseCallSymbol(OperandVector &Operands) {
+   SMLoc S = getLoc();
+   const MCExpr *Res;
+ 
+-  if (getLexer().getKind() != AsmToken::Identifier)
++  // A quoted name, like "a.b c", is a symbol too, as in the generic parser
++  if (getLexer().isNot(AsmToken::Identifier) && getLexer().isNot(AsmToken::String))
+     return ParseStatus::NoMatch;
+   std::string Identifier(getTok().getIdentifier());
+ 
+diff --git a/llvm/test/MC/RISCV/quoted-symbols.s b/llvm/test/MC/RISCV/quoted-symbols.s
+new file mode 100644
+index 000000000000..c31073fb3349
+--- /dev/null
++++ b/llvm/test/MC/RISCV/quoted-symbols.s
+@@ -0,0 +1,16 @@
++# RUN: llvm-mc -triple=riscv64 %s | FileCheck %s
++# RUN: llvm-mc -triple=riscv64 -filetype=obj %s | llvm-objdump -dr - | FileCheck %s --check-prefix=OBJECT
++
++# A quoted symbol, whose name a bare one couldn't have, where call and the bare-symbol
++# operands take one, as the generic parser and other targets' allow.
++
++# CHECK: call "a.b c"
++# OBJECT: R_RISCV_CALL_PLT a.b c
++call "a.b c"
++# CHECK: tail "d e"
++# OBJECT: R_RISCV_CALL_PLT d e
++tail "d e"
++# CHECK: auipc a0, %pcrel_hi("f g")
++lla a0, "f g"
++# CHECK: call plain
++call plain

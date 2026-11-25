@@ -13,7 +13,7 @@ ThreadFunction :: fn(data #escaping : any) -> void
     /** A thread's system-specific state, which Thread includes: none, since threads don't start here yet. */
     ThreadSpecificOS :: struct {}
 }
-#else_if OS == .Linux && TARGET_ARCH != .x86_64 && TARGET_ARCH != .arm64 {
+#else_if OS == .Linux && TARGET_ARCH != .x86_64 && TARGET_ARCH != .arm64 && TARGET_ARCH != .riscv64 {
     /** A thread's system-specific state, which Thread includes: none, since threads don't start here yet. */
     ThreadSpecificOS :: struct {}
 }

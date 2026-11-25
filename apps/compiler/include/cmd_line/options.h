@@ -25,6 +25,10 @@ namespace hemera {
         /// </summary>
         aarch64_32,
         /// <summary>
+        /// RISC-V (little endian), 64-bit: riscv64.
+        /// </summary>
+        riscv64,
+        /// <summary>
         /// X86: i[3-9]86.
         /// </summary>
         x86,

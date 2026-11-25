@@ -11,3 +11,6 @@ package intrinsics
 #else_if TARGET_ARCH == .arm64 {
     import aarch64 from "./aarch64"
 }
+#else_if TARGET_ARCH == .riscv64 {
+    import riscv64 from "./riscv64"
+}
