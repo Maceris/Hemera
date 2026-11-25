@@ -738,14 +738,16 @@ send_message :: fn(conn : ptr[mut Connection], message : u8[]) {
     kind :: if message.count > 0 { message[0] } else { cast[u8](0) }
     transport :: kind < 50 && kind != MSG_SERVICE_REQUEST && kind != MSG_SERVICE_ACCEPT
     if conn.first_done && exchanging(conn) && !transport {
-        if conn.held_count + 4 + message.count > conn.held.count {
+        // Its length and itself, which put_string writes: the count past them, checked first
+        grown :: conn.held_count + 4 + message.count
+        if grown > conn.held.count {
             conn.ended = true
             conn.ended_reason = DISCONNECT_BY_APPLICATION
             return void
         }
         writer := Writer.{at = conn.held_count}
         put_string(conn.held[0..<HELD_BYTES], &writer, message)
-        conn.held_count = writer.at
+        conn.held_count = grown
         return void
     }
     send_packet(conn, message)
@@ -786,9 +788,11 @@ send_packet #constant_time :: fn(conn : ptr[mut Connection], payload : u8[]) {
     packet_length :: 1 + payload.count + pad
     tag_length :: if cipher == .None { cast[usize](0) } else { cast[usize](16) }
     total :: 4 + packet_length + tag_length
+    // What's to go out once it's added, checked before sealing it, whose calls the count's not known past
+    grown :: conn.outgoing_count + total
     if payload.count > CHANNEL_PACKET + 64 && payload.count > KEXINIT_BYTES
         || packet_length + 4 > conn.sealing.count
-        || conn.outgoing_count + total > conn.outgoing.count {
+        || grown > conn.outgoing.count {
         conn.ended = true
         conn.ended_reason = DISCONNECT_BY_APPLICATION
         return void
@@ -867,7 +871,7 @@ send_packet #constant_time :: fn(conn : ptr[mut Connection], payload : u8[]) {
     for i in cast[usize](0)..<plain.count {
         plain[i] = 0
     }
-    conn.outgoing_count += total
+    conn.outgoing_count = grown
     conn.out.sequence += 1
     conn.out.bytes += cast[u64](total)
     if conn.first_done && conn.out.bytes > REKEY_BYTES && !exchanging(conn) {

@@ -249,7 +249,7 @@ spawn :: fn(function : runtime.ThreadFunction, data #escaping #crosses_threads :
     }
     model.threads[index] = ModelFiber.{fiber = fiber}
     // It starts with what its parent has seen
-    if index < model.views.count && model.current < model.views.count {
+    if model.current < model.views.count {
         model.views[index] = ModelView.{clock = model.views[model.current].clock}
     }
     model.thread_count = index + 1

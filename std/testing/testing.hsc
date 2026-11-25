@@ -30,7 +30,7 @@ Text :: struct {
     /** The text's bytes. */
     bytes : u8[TEXT_BYTES],
     /** How many of bytes are used, 0 to TEXT_BYTES. */
-    count : usize,
+    count #at_most(bytes.count) : usize,
 }
 
 /** One failed assertion, as it's reported. */
@@ -112,7 +112,7 @@ Test :: struct {
     /** Its tags, from #tags(...), which decide whether a run includes it: the first tag_count. */
     tags : Tag[MAX_TAGS],
     /** How many of tags it has, 0 to MAX_TAGS. */
-    tag_count : usize,
+    tag_count #at_most(tags.count) : usize,
 }
 
 /**
@@ -122,10 +122,7 @@ Test :: struct {
  * @return Its tags, a view of its own, good while it's unchanged; empty for none.
  */
 tags_of :: fn(test : ptr[Test]) -> Tag[] {
-    if test.tag_count <= test.tags.count {
-        return test.tags[0..<test.tag_count]
-    }
-    return test.tags[0..<test.tags.count]
+    return test.tags[0..<test.tag_count]
 }
 
 /** Which of a table's tests a runner runs (run). The zero value runs each test none of whose tags is Excluded. */
@@ -176,7 +173,7 @@ passed :: fn(t : ptr[T]) -> bool {
  * @return A view of its bytes, good while it's unchanged; "" for none.
  */
 text_of :: fn(text : ptr[Text]) -> string {
-    if text.count == 0 || text.count > text.bytes.count {
+    if text.count == 0 {
         return ""
     }
     return string_of(&text.bytes[0], text.count)
@@ -605,7 +602,7 @@ expect_same_items :: fn[V](
         return false
     }
     for item, i in actual {
-        if i < expected.count && item != expected[i] {
+        if item != expected[i] {
             record_formatted(
                 t,
                 message,

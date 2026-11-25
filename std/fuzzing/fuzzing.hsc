@@ -255,8 +255,12 @@ run_input :: fn(fuzzer : ptr[mut Fuzzer], input : u8[]) -> Ran {
     attempt := testing.T.{name = fuzzer.name}
     _ = fuzzer.property(&attempt, &source)
     fuzzer.runs += 1
-    // The bytes it read are the input's: zeros past its end included, and not what it didn't read
-    fuzzer.room.count = testing.read_bytes(&source).count
+    /*
+     * The bytes it read are the input's: zeros past its end included, and not what it didn't read. They're a view of
+     * the room, so never more than it holds, which the proof can't see through the source
+     */
+    read :: testing.read_bytes(&source).count
+    fuzzer.room.count = if read < room.bytes.count { read } else { room.bytes.count }
     ran := Ran.{failed = attempt.failure_count > 0 || source.unsupported.count > 0}
     for count, i in fuzzer.counters {
         bit :: bucket_of(count)
@@ -399,11 +403,11 @@ put_in :: fn(input : ptr[mut testing.Case], at : usize, byte : u8) {
  * @param at Which; past its count, nothing is taken out.
  */
 take_out :: fn(input : ptr[mut testing.Case], at : usize) {
-    if at >= input.count || input.count > input.bytes.count {
+    if at >= input.count {
         return void
     }
     for place in at..<input.count - 1 {
-        if place < input.bytes.count && place + 1 < input.bytes.count {
+        if place + 1 < input.bytes.count {
             input.bytes[place] = input.bytes[place + 1]
         }
     }
@@ -431,13 +435,13 @@ mutate :: fn(fuzzer : ptr[mut Fuzzer], parent : u8[], other : u8[], into : ptr[m
             case 0:
                 // A bit flipped
                 at :: below(fuzzer, count)
-                if at < count && at < into.bytes.count {
+                if at < count {
                     into.bytes[at] = into.bytes[at] ~ (cast[u8](1) << cast[u8](below(fuzzer, 8)))
                 }
             case 1:
                 // A byte set
                 at :: below(fuzzer, count)
-                if at < count && at < into.bytes.count {
+                if at < count {
                     into.bytes[at] = cast[u8](below(fuzzer, 256))
                 }
             case 2:
@@ -470,7 +474,7 @@ mutate :: fn(fuzzer : ptr[mut Fuzzer], parent : u8[], other : u8[], into : ptr[m
                 // A small step up or down
                 at :: below(fuzzer, count)
                 step :: cast[u8](1 + below(fuzzer, 16))
-                if at < count && at < into.bytes.count {
+                if at < count {
                     into.bytes[at] = if below(fuzzer, 2) == 0 { into.bytes[at] + step } else { into.bytes[at] - step }
                 }
             case 6:

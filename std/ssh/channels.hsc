@@ -273,7 +273,7 @@ signal_number :: fn(name : u8[]) -> u32 {
     names :: string.["HUP", "INT", "QUIT", "ILL", "ABRT", "FPE", "KILL", "USR1", "SEGV", "USR2", "PIPE", "ALRM", "TERM"]
     numbers :: u32.[1, 2, 3, 4, 6, 8, 9, 10, 11, 12, 13, 14, 15]
     for each, i in names {
-        if is(name, each) && i < numbers.count {
+        if is(name, each) {
             return numbers[i]
         }
     }

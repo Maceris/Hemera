@@ -877,7 +877,7 @@ package net
                 bytes :: os.items(&incoming, arrived.bytes)
                 count :: if bytes.count < into.count { bytes.count } else { into.count }
                 for i in 0..<count {
-                    if i < into.count && i < bytes.count {
+                    if i < bytes.count {
                         into[i] = bytes[i]
                     }
                 }

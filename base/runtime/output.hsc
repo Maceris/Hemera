@@ -58,7 +58,7 @@ OutputBuffer :: struct {
     /** The text not yet written; only the first count bytes mean anything. */
     bytes : u8[OUTPUT_BUFFER_SIZE],
     /** How many of bytes hold text, from 0 to OUTPUT_BUFFER_SIZE. */
-    count : usize,
+    count #at_most(bytes.count) : usize,
     /** Where the text is written when the buffer fills or is flushed. */
     stream : OutputStream,
     /**

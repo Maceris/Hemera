@@ -172,7 +172,7 @@ AtomicDeclarations :: struct {
     /** Room for the declarations, each one's code; those past count hold no code. */
     codes : compiler.Code[1024],
     /** How many of codes are made, from 0 to 1024. */
-    count : usize,
+    count #at_most(codes.count) : usize,
 }
 
 /**

@@ -409,7 +409,7 @@ copied :: fn(starts : u16[], data : u32[], at : usize, into : mut u32[]) -> usiz
     }
     for i in start..<end {
         place :: i - start
-        if i < data.count && place < into.count {
+        if place < into.count {
             into[place] = data[i]
         }
     }

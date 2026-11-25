@@ -248,7 +248,7 @@ import intrinsics from "base:intrinsics"
                 length = 4
             }
             i += length
-            if character == cast[u32]('\n') && used < buffer.count {
+            if character == cast[u32]('\n') {
                 buffer[used] = 0x0d
                 used += 1
             }
@@ -257,7 +257,7 @@ import intrinsics from "base:intrinsics"
                 used += 1
             }
         }
-        if used > 0 && used < buffer.count {
+        if used > 0 {
             buffer[used] = 0
             _ = out.output_string(cast[rawptr](out), &buffer[0])
         }

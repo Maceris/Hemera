@@ -457,12 +457,24 @@ about an element's fields is forgotten when its index changes, as well as when t
 * an `if` expression's integer value, what each branch gives, so `n :: if want < text.count { want } else { text.count }`
   is at most `text.count`, and `text[0..<n]` is in bounds
 * a store into one field of what a local reaches, like `named.name[i] = byte`, keeps what's known of its other fields,
-  like `named.count`, when their bytes are apart (not a `#union`'s) and the store's index is a constant or a local
+  like `named.count`, when their bytes are apart (not a `#union`'s), at whatever index it's proven within; and a store
+  into a local's own field or fixed array, through no pointer, with its address never taken, keeps what's known of
+  memory elsewhere
+* a difference that can't wrap, `a - b` with `b` known to be at least 0 and at most `a`, which is from 0 to `a`, like
+  what's left of a queue once its first `b` are taken
+* an integer read through a pointer, like `most^`, which is a path of its own, as a field is
+* what a function's integer result is at every return, once every body's checked: at most a constant, and at most the
+  count of an array it's given or the value of an integer it's given, as its parameters were on entry, so
+  `field.count = copy_into(&field.bytes, text)` is known to be at most the buffer's count when `copy_into`'s every
+  return is
+* what a fact said of other values through one that's forgotten: `left <= queue.count` and `queue.count <= 64`, with
+  `queue.count` forgotten across a call, still leave `left <= 64`
 
 A loop keeps what holds every time around it: a counter that only goes down keeps its upper bound, and one that's
 kept below a count keeps that, a fixed array's constant count too: a bound that keeps loosening is tried at the
 constants the function compares against, so `if n < shown.count { shown[n] = byte; n += 1 }` keeps `n` at most
-`shown.count`.
+`shown.count`. A range's end is worked out once, so a loop over `0..<list.count` keeps its index below the count it
+began with, and knows the count's still that until the body changes it.
 
 Integers wrap, so `x + 1` is only known to be one more than `x` when `x` is already known to be below something, like
 a count. `if offset + 4 <= bytes.count` proves nothing about `offset`, since a huge `offset` wraps around;
@@ -470,8 +482,9 @@ a count. `if offset + 4 <= bytes.count` proves nothing about `offset`, since a h
 
 #### What Isn't
 
-* What other functions do. A count a function computed and another relies on, or a value one returns, is unknown to
-  the caller: check it, or state it with `runtime.assert`, which documents the contract and checks it at run time.
+* What other functions do, beyond an integer result's bound (above) and whether they write memory (below). A view a
+  function returns, its count, or a relation between its result and anything but what it's given, is unknown to the
+  caller: check it, or state it with `runtime.assert`, which documents the contract and checks it at run time.
 * Memory reached through a pointer, after anything that could write it: a store through a pointer, or a call to a
   function that may write memory, by a store outside its own locals or a call to one that may, a call through a
   function value, a foreign function or an intrinsic among them. `info.cpus.count` is forgotten across such a call; a

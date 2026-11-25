@@ -12,7 +12,7 @@ package audio
 mix :: fn(into : mut f32[], from : f32[], gain : f32) -> usize {
     count :: if from.count < into.count { from.count } else { into.count }
     for i in 0..<count {
-        if i < into.count && i < from.count {
+        if i < from.count {
             into[i] += from[i] * gain
         }
     }

@@ -322,14 +322,14 @@ Connection :: struct {
     read_secret     : Secret,
     write_secret    : Secret,
     incoming        : u8[INCOMING_BYTES],
-    incoming_count  : usize,
+    incoming_count #at_most(incoming.count) : usize,
     outgoing        : u8[OUTGOING_BYTES],
-    outgoing_count  : usize,
+    outgoing_count #at_most(outgoing.count) : usize,
     message         : u8[MESSAGE_BYTES],
-    message_count   : usize,
+    message_count #at_most(message.count) : usize,
     plaintext       : u8[PLAINTEXT_BYTES],
     plaintext_start : usize,
-    plaintext_count : usize,
+    plaintext_count #at_most(plaintext.count) : usize,
     /** Where a record's inner plaintext is built and opened. */
     inner : u8[RECORD_PLAINTEXT + 1],
     opened : crypto.SecretByte[RECORD_CIPHERTEXT],
@@ -440,15 +440,15 @@ update_keys :: fn(connection : ptr[mut Connection], ask : bool) {
  * @return How many were taken; the rest are to be given again later, after output's sent or plaintext's read.
  */
 received :: fn(connection : ptr[mut Connection], bytes : u8[]) -> usize {
-    room :: connection.incoming.count - connection.incoming_count
-    taken :: if bytes.count < room { bytes.count } else { room }
-    for byte, i in range(bytes, 0, taken) {
-        at :: connection.incoming_count + i
-        if at < connection.incoming.count {
-            connection.incoming[at] = byte
+    taken := cast[usize](0)
+    for byte in bytes {
+        if connection.incoming_count >= connection.incoming.count {
+            break
         }
+        connection.incoming[connection.incoming_count] = byte
+        connection.incoming_count += 1
+        taken += 1
     }
-    connection.incoming_count += taken
     take_records(connection)
     return taken
 }
@@ -470,8 +470,7 @@ output :: fn(connection : ptr[Connection]) -> u8[] {
  * @param count How many bytes, at most output's count.
  */
 sent :: fn(connection : ptr[mut Connection], count : usize) {
-    taken :: if count < connection.outgoing_count { count } else { connection.outgoing_count }
-    remove_front(&connection.outgoing, &connection.outgoing_count, taken)
+    connection.outgoing_count = remove_front(&connection.outgoing, connection.outgoing_count, count)
 }
 
 /**
@@ -610,6 +609,8 @@ write :: fn(connection : ptr[mut Connection], data : u8[]) -> usize {
  */
 read :: fn(connection : ptr[mut Connection], into : mut u8[]) -> usize {
     count := if into.count < connection.plaintext_count { into.count } else { connection.plaintext_count }
+    // What's left, before writing into, which could be anywhere as far as the proof knows
+    left :: connection.plaintext_count - count
     for i in 0..<count {
         at :: connection.plaintext_start + i
         if at < connection.plaintext.count && i < into.count {
@@ -617,7 +618,7 @@ read :: fn(connection : ptr[mut Connection], into : mut u8[]) -> usize {
         }
     }
     connection.plaintext_start += count
-    connection.plaintext_count -= count
+    connection.plaintext_count = left
     if connection.plaintext_count == 0 {
         connection.plaintext_start = 0
     }
@@ -741,18 +742,23 @@ host_of :: fn(connection : ptr[Connection]) -> u8[] {
     return range(connection.host, 0, connection.host_length)
 }
 
-/** Drop a buffer's first bytes, moving the rest down. */
-remove_front :: fn[N : usize](buffer : ptr[mut u8[N]], count : ptr[mut usize], taken : usize) {
-    if taken == 0 {
-        return void
-    }
-    left :: count^ - taken
+/**
+ * Drop a buffer's first bytes, moving the rest down.
+ *
+ * @param buffer The buffer, its first count bytes in use.
+ * @param count How many of its bytes are in use.
+ * @param taken How many to drop from the front; past count, all of them are.
+ * @return How many are left in use, at most count.
+ */
+remove_front :: fn[N : usize](buffer : ptr[mut u8[N]], count : usize, taken : usize) -> usize {
+    dropped :: if taken < count { taken } else { count }
+    left :: count - dropped
     for i in 0..<left {
-        if i < buffer.count && i + taken < buffer.count {
-            buffer[i] = buffer[i + taken]
+        if i < buffer.count && i + dropped < buffer.count {
+            buffer[i] = buffer[i + dropped]
         }
     }
-    count^ = left
+    return left
 }
 
 /**
@@ -792,8 +798,9 @@ send_alert :: fn(connection : ptr[mut Connection], description : u8) {
 write_record :: fn(connection : ptr[mut Connection], kind : u8, content : u8[]) {
     sealed :: connection.write_encrypted
     length :: if sealed { content.count + 1 + 16 } else { content.count }
-    if content.count > RECORD_PLAINTEXT
-        || connection.outgoing.count - connection.outgoing_count < RECORD_HEADER + length {
+    // What's waiting to go out once it's added, which it's checked won't be past what the connection holds
+    grown :: connection.outgoing_count + RECORD_HEADER + length
+    if content.count > RECORD_PLAINTEXT || grown > connection.outgoing.count {
         // Nothing more can go out: the connection can't go on
         connection.state = .Ended
         connection.ending = .Refused
@@ -831,7 +838,7 @@ write_record :: fn(connection : ptr[mut Connection], kind : u8, content : u8[]) 
                 connection.outgoing[position] = byte
             }
         }
-        connection.outgoing_count += RECORD_HEADER + length
+        connection.outgoing_count = grown
         return void
     }
     for byte, i in content {
@@ -856,7 +863,7 @@ write_record :: fn(connection : ptr[mut Connection], kind : u8, content : u8[]) 
             connection.outgoing[position] = byte
         }
     }
-    connection.outgoing_count += RECORD_HEADER + length
+    connection.outgoing_count = grown
     connection.write.sequence += 1
 }
 
@@ -967,7 +974,7 @@ take_records :: fn(connection : ptr[mut Connection]) {
             }
         }
         take_record(connection, kind, length)
-        remove_front(&connection.incoming, &connection.incoming_count, RECORD_HEADER + length)
+        connection.incoming_count = remove_front(&connection.incoming, connection.incoming_count, RECORD_HEADER + length)
     }
 }
 
@@ -1053,7 +1060,7 @@ take_record :: fn(connection : ptr[mut Connection], kind : u8, length : usize) {
         // Moved down to the start, then appended
         if connection.plaintext_start > 0 {
             for i in 0..<connection.plaintext_count {
-                if i < connection.plaintext.count && connection.plaintext_start + i < connection.plaintext.count {
+                if connection.plaintext_start + i < connection.plaintext.count {
                     connection.plaintext[i] = connection.plaintext[connection.plaintext_start + i]
                 }
             }
@@ -1127,7 +1134,7 @@ take_handshake_bytes :: fn(connection : ptr[mut Connection], bytes : u8[]) {
         }
         before :: connection.read_changes
         take_message(connection, connection.message[0], 4 + length)
-        remove_front(&connection.message, &connection.message_count, 4 + length)
+        connection.message_count = remove_front(&connection.message, connection.message_count, 4 + length)
         // A message mustn't span a change of keys (§5.1)
         if before != connection.read_changes && connection.message_count > 0 {
             fail(connection, ALERT_UNEXPECTED_MESSAGE)

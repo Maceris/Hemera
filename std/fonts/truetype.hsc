@@ -50,7 +50,7 @@ Font :: struct #scoped {
     cmap_format : u32,
     /** GPOS's pair-adjustment subtables of its kern feature, by their offsets in the font. */
     pairs : u32[MAX_PAIR_SUBTABLES],
-    pair_count : usize,
+    pair_count #at_most(pairs.count) : usize,
     /** The kern table, used when GPOS has no pair kerning; size 0 for none. */
     kern : Table,
 }

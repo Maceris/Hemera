@@ -74,7 +74,7 @@ KISS_NTS_NAK : u32 : 0x4e54534e
 /** A cookie, as the server gave it. */
 Cookie :: struct {
     bytes : u8[COOKIE_BYTES],
-    count : usize,
+    count #at_most(bytes.count) : usize,
 }
 
 /** An NTS session: the keys NTS-KE gave, the cookies to spend, and the NTP server to ask. */

@@ -452,7 +452,7 @@ parse_private_key :: fn(text : u8[]) -> crypto.Ed25519SecretKey? {
         if !finished && same(range(text, i, i + end.count), end) {
             finished = true
         }
-        if !finished && i < text.count && text[i] != 0x0a && text[i] != 0x0d && text[i] != 0x20 {
+        if !finished && text[i] != 0x0a && text[i] != 0x0d && text[i] != 0x20 {
             if count < encoded.count {
                 encoded[count] = text[i]
             }

@@ -56,7 +56,7 @@ ModelLocation :: struct {
     /** Its newest stores, the oldest first, from stores[0]. */
     stores : ModelStore[MAX_LOCATION_STORES],
     /** How many of stores are in use. */
-    count : usize,
+    count #at_most(stores.count) : usize,
     /** How many stores it's had, those dropped as it filled included: the number of the newest, plus one. */
     total : u64,
     /** For each thread, the number of the newest store it has read or made, which it can't read before: coherence. */
@@ -92,7 +92,7 @@ ModelView :: struct {
  */
 join_clock #no_context :: fn(into : ptr[mut ModelClock], from : ptr[ModelClock]) {
     for &time, i in into.times {
-        if i < from.times.count && from.times[i] > time^ {
+        if from.times[i] > time^ {
             time^ = from.times[i]
         }
     }

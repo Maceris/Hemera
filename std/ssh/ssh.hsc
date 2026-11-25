@@ -261,9 +261,9 @@ Connection :: struct {
     waiting : Waiting,
 
     incoming       : u8[INCOMING_BYTES],
-    incoming_count : usize,
+    incoming_count #at_most(incoming.count) : usize,
     outgoing       : u8[OUTGOING_BYTES],
-    outgoing_count : usize,
+    outgoing_count #at_most(outgoing.count) : usize,
     /** A packet's payload as read, declassified, wiped once it's taken. */
     payload : u8[PAYLOAD_BYTES],
     /** A message being built. */
@@ -272,7 +272,7 @@ Connection :: struct {
     sealing : crypto.SecretByte[PAYLOAD_BYTES],
     /** Messages held while keys are exchanged, each its length then itself. */
     held : u8[HELD_BYTES],
-    held_count : usize,
+    held_count #at_most(held.count) : usize,
 
     // The version exchange
     version_received : bool,
@@ -431,7 +431,7 @@ received :: fn(conn : ptr[mut Connection], bytes : u8[]) -> usize {
     room :: conn.incoming.count - conn.incoming_count
     count :: if bytes.count < room { bytes.count } else { room }
     for i in cast[usize](0)..<count {
-        if conn.incoming_count < conn.incoming.count && i < bytes.count {
+        if conn.incoming_count < conn.incoming.count {
             conn.incoming[conn.incoming_count] = bytes[i]
             conn.incoming_count += 1
         }

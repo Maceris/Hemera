@@ -122,7 +122,7 @@ take :: fn(spin_lock : ptr[mut SpinLock], waiting : Waiting?) {
  */
 push_held :: fn(held : ptr[mut HeldRanks], rank : u32, address : u64) {
     count :: cast[usize](held.count)
-    if count < held.ranks.count && count < held.locks.count {
+    if count < held.locks.count {
         held.ranks[count] = rank
         held.locks[count] = address
     }

@@ -133,8 +133,8 @@ longest_word :: fn(font : ptr[fonts.Font], size : f32, text : u8[]) -> f32 {
     longest := cast[f32](0)
     start := cast[usize](0)
     for i in cast[usize](0)..<text.count + 1 {
-        at_end :: i >= text.count
-        breaks :: at_end || text[i % text.count] == cast[u8](' ') || text[i % text.count] == cast[u8]('\n')
+        // At the end, a space or a line break; the text's indexed only once it's known not to be the end
+        breaks :: i >= text.count || text[i] == cast[u8](' ') || text[i] == cast[u8]('\n')
         if breaks {
             if i > start && i <= text.count {
                 width :: fonts.measure(font, size, text[start..<i])

@@ -36,7 +36,7 @@ Case :: struct {
     /** The bytes; the first count are the case's. */
     bytes : u8[MAX_CASE_BYTES],
     /** How many of bytes are the case's, 0 to MAX_CASE_BYTES. */
-    count : usize,
+    count #at_most(bytes.count) : usize,
 }
 
 /**
@@ -46,10 +46,7 @@ Case :: struct {
  * @return Its bytes, a view of its own, good while it's unchanged.
  */
 case_bytes :: fn(found : ptr[Case]) -> u8[] {
-    if found.count <= found.bytes.count {
-        return found.bytes[0..<found.count]
-    }
-    return found.bytes[0..<found.bytes.count]
+    return found.bytes[0..<found.count]
 }
 
 /**
@@ -665,8 +662,12 @@ replay :: fn(
     source := source_in(into.bytes[0..<into.bytes.count], into.count, null, kept)
     attempt := T.{name = test.name}
     _ = property(&attempt, &source)
-    // Bytes it didn't read aren't the case's
-    into.count = read_bytes(&source).count
+    /*
+     * Bytes it didn't read aren't the case's, and bytes it read past them, added as it read, are. They're a view of
+     * the case's bytes, so never more than it holds, which the proof can't see through the source
+     */
+    read :: read_bytes(&source).count
+    into.count = if read < into.bytes.count { read } else { into.bytes.count }
     return attempt.failure_count > 0 || source.unsupported.count > 0
 }
 
@@ -682,7 +683,7 @@ smaller :: fn(a : u8[], b : u8[]) -> bool {
         return a.count < b.count
     }
     for byte, i in a {
-        if i < b.count && byte != b[i] {
+        if byte != b[i] {
             return byte < b[i]
         }
     }

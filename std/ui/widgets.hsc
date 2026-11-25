@@ -347,7 +347,7 @@ offset_at :: fn(ui : ptr[Ui], id : ID, text : u8[], x : f32) -> usize {
     best := cast[usize](0)
     best_distance := cast[f32](1.0e9)
     for at in cast[usize](0)..<text.count + 1 {
-        if at < text.count && is_continuation(text[at % text.count]) {
+        if at < text.count && is_continuation(text[at]) {
             continue
         }
         width :: fonts.measure(&font, ui.theme.text_size, slice(text, 0, at))
@@ -388,7 +388,7 @@ after :: fn(text : u8[], at : usize) -> usize {
     }
     place := at + 1
     for step in cast[usize](0)..<4 {
-        if place >= text.count || !is_continuation(text[place % text.count]) {
+        if place >= text.count || !is_continuation(text[place]) {
             break
         }
         place += 1

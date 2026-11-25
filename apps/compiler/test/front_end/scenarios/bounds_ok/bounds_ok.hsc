@@ -355,3 +355,77 @@ kept_bounded :: fn(kept: ptr[mut Kept], given: u8[], other: mut u8[]) -> usize {
 by_level :: fn(levelled: Levelled, table: u32[8]) -> u32 {
     return table[levelled.level]
 }
+
+Queue :: struct {
+    events : u32[64],
+    count #at_most(events.count) : usize,
+    held : u32[4],
+}
+
+// What's left once the first are taken, worked out before a call that writes: at most the count, kept across it
+left_after_call :: fn(queue: ptr[mut Queue], taken: usize, into: mut u8[]) {
+    if taken > queue.count {
+        return void
+    }
+    left :: queue.count - taken
+    writes(into)
+    for i in 0..<left {
+        from :: i + taken
+        if from < queue.events.count {
+            queue.events[i] = queue.events[from]
+        }
+    }
+    queue.count = left
+}
+
+// The range's end, changed in the body, is still what the index is below; an integer read through a pointer
+removed :: fn(queue: ptr[mut Queue], gone: u32) {
+    for i in 0..<queue.count {
+        if queue.events[i] != gone {
+            continue
+        }
+        queue.count -= 1
+        return void
+    }
+}
+
+pointed :: fn(queue: ptr[mut Queue]) {
+    for &most in queue.held {
+        taken :: if queue.count < cast[usize](most^) { queue.count } else { cast[usize](most^) }
+        queue.count = queue.count - taken
+    }
+}
+
+// A store into a local's own field forgets nothing elsewhere
+local_store :: fn(queue: ptr[mut Queue], from: usize) {
+    if from > queue.count {
+        return void
+    }
+    left :: queue.count - from
+    moved := Kept.{}
+    moved.count = 1
+    queue.count = left
+}
+
+// What a function returns, bounded by a constant, by an array it's given, and by an integer it's given
+copy_bounded :: fn[N: usize](into: ptr[mut u8[N]], bytes: u8[]) -> usize {
+    copied := cast[usize](0)
+    for byte, i in bytes {
+        if i >= into.count {
+            break
+        }
+        into[i] = byte
+        copied = i + 1
+    }
+    return copied
+}
+
+fewer :: fn(held: usize, taken: usize) -> usize {
+    dropped :: if taken < held { taken } else { held }
+    return held - dropped
+}
+
+from_results :: fn(kept: ptr[mut Kept], given: u8[]) {
+    kept.count = copy_bounded(&kept.name, given)
+    kept.count = fewer(kept.count, 3)
+}

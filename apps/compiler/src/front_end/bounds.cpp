@@ -401,6 +401,18 @@ namespace hemera {
 			return result;
 		}
 
+		/*
+		 * What a function's integer result is proven to be at every return, once every body is checked: at most a
+		 * constant, and at most an array parameter's count, by the parameter's place
+		 */
+		struct ResultBound {
+			bool known = false;
+			std::optional<int64_t> most;
+			std::optional<size_t> parameter;
+		};
+
+		struct Summaries;
+
 		struct Analysis {
 			const CheckedBody& checked;
 			TypeInfoFunction const* function;
@@ -434,7 +446,24 @@ namespace hemera {
 			const std::unordered_set<const Declaration*>* writes_nothing = nullptr;
 			// Whether what isn't proven is only counted, not reported, as where a body's first checked
 			bool silent = false;
+			// What's known of other functions' results, once every body is checked; null before (check_pending_bounds)
+			Summaries* summaries = nullptr;
+			/*
+			 * While working out this function's own result's bound (summarize): whether a return's been seen, the most
+			 * every one gives, and for each parameter, whether every one's at most its count
+			 */
+			bool collecting = false;
+			bool returns_seen = false;
+			std::optional<int64_t> return_most = {};
+			std::vector<bool> return_within = {};
+			/*
+			 * Each parameter's value on entry, an integer's or an array's count, as a term of its own that reassigning the
+			 * parameter doesn't change, which a return's compared with; none for another kind
+			 */
+			std::vector<std::optional<Term>> entries = {};
 		};
+
+		ResultBound result_of(Summaries& summaries, const Declaration* declaration);
 
 		void report(Analysis& analysis, const ast::Node* where, const std::string& details, ErrorCode code = ErrorCode::E4031) {
 			if (analysis.quiet > 0 || !analysis.reported.insert(where).second) {
@@ -702,6 +731,8 @@ namespace hemera {
 			}
 		}
 
+		Closure close(const Analysis& analysis, const Facts& facts, const std::vector<Term>& wanted);
+
 		void forget(Facts& facts, const std::function<bool(Term)>& which) {
 			for (auto iter = facts.bounds.begin(); iter != facts.bounds.end();) {
 				if (which(iter->first.first) || which(iter->first.second)) {
@@ -713,10 +744,53 @@ namespace hemera {
 			}
 		}
 
+		/*
+		 * Forget what's known of some terms, keeping what they implied of the terms beside them: i <= n and n <= 64, with
+		 * n forgotten, leave i <= 64. Only the terms a forgotten one had a fact with are kept so, which is where what's
+		 * implied through it goes, so the facts don't grow with every term the function has.
+		 */
+		void forget(const Analysis& analysis, Facts& facts, const std::function<bool(Term)>& which) {
+			std::vector<Term> beside;
+			bool any = false;
+			for (const auto& [pair, c] : facts.bounds) {
+				const bool first = which(pair.first);
+				const bool second = which(pair.second);
+				any = any || first || second;
+				if (first != second) {
+					const Term kept = first ? pair.second : pair.first;
+					if (std::find(beside.begin(), beside.end(), kept) == beside.end()) {
+						beside.push_back(kept);
+					}
+				}
+			}
+			if (!any) {
+				return;
+			}
+			std::vector<std::tuple<Term, Term, int64_t>> implied;
+			if (!beside.empty() && facts.reachable) {
+				const Closure closure = close(analysis, facts, beside);
+				if (!closure.contradiction) {
+					beside.push_back(ZERO);
+					for (Term a : beside) {
+						for (Term b : beside) {
+							const int64_t c = a != b ? closure.distance[closure.index.at(b)][closure.index.at(a)] : UNBOUNDED;
+							if (c < UNBOUNDED) {
+								implied.emplace_back(a, b, c);
+							}
+						}
+					}
+				}
+			}
+			forget(facts, which);
+			for (const auto& [a, b, c] : implied) {
+				add(facts, a, b, c);
+			}
+		}
+
 		// A local assigned: what's known about it and its count, and paths through it.
 		// Paths indexed by local, like items[i].count, which are about another element once it changes.
 		void forget_indexed_by(Analysis& analysis, Facts& facts, const void* local) {
-			forget(facts, [&](Term term) {
+			forget(analysis, facts, [&](Term term) {
 				auto indexes = analysis.indexed_by.find(term);
 				return indexes != analysis.indexed_by.end()
 					&& std::find(indexes->second.begin(), indexes->second.end(), local) != indexes->second.end();
@@ -724,7 +798,7 @@ namespace hemera {
 		}
 
 		void forget_local(Analysis& analysis, Facts& facts, const void* local) {
-			forget(facts, [&](Term term) {
+			forget(analysis, facts, [&](Term term) {
 				if (term == ZERO) {
 					return false;
 				}
@@ -740,7 +814,7 @@ namespace hemera {
 
 		// Something wrote memory, or called a function that may have.
 		void forget_memory(Analysis& analysis, Facts& facts) {
-			forget(facts, [&](Term term) {
+			forget(analysis, facts, [&](Term term) {
 				const TermInfo& info = analysis.terms[term];
 				return info.through_pointer || (info.local != nullptr && analysis.address_taken.contains(info.local));
 			});
@@ -751,7 +825,7 @@ namespace hemera {
 			// Counting an unsigned value down past zero wraps, and counting up past a bound may
 			const bool wraps_down = by < 0 && analysis.terms[term].nonnegative && !proves(analysis, facts, ZERO, term, by);
 			if (wraps_down || (by > 0 && !is_bounded(analysis, facts, term))) {
-				forget(facts, [&](Term each) { return each == term; });
+				forget(analysis, facts, [&](Term each) { return each == term; });
 				return;
 			}
 			std::map<std::pair<Term, Term>, int64_t> moved;
@@ -761,7 +835,7 @@ namespace hemera {
 			}
 			facts.bounds = std::move(moved);
 			// A sum it's part of was what it was
-			forget(facts, [&](Term each) {
+			forget(analysis, facts, [&](Term each) {
 				auto parts = analysis.sums.find(each);
 				return parts != analysis.sums.end() && (parts->second.first == term || parts->second.second == term);
 			});
@@ -878,12 +952,20 @@ namespace hemera {
 			bool never_returns = false;
 			// For a struct's field with #at_most, what it's at most, which a store to it must keep
 			std::optional<int64_t> at_most;
+			/*
+			 * For an element at an index that isn't a constant or a local, which has no path: the path of the array it's
+			 * in, and its local, as a store to it, its index proven, writes nothing outside that array
+			 */
+			std::string within = {};
+			const void* within_local = nullptr;
 		};
 
 		Value evaluate(Analysis& analysis, Facts& facts, ast::Node* node);
 		void walk_statement(Analysis& analysis, Facts& facts, ast::Node* statement);
 		void walk_block(Analysis& analysis, Facts& facts, ast::Node* block);
 		std::pair<Facts, Facts> condition(Analysis& analysis, const Facts& facts, ast::Node* node);
+		void call_result(Analysis& analysis, const Facts& facts, const CheckedNode* found, const ast::Node* paren,
+			const std::vector<ast::Node*>& arguments, bool writes_nothing, Value& result);
 
 		// The term for a path from a chain's local, remembering the locals its indexes are.
 		Term path_term(Analysis& analysis, const Chain& chain, const std::string& path, bool nonnegative) {
@@ -1164,6 +1246,11 @@ namespace hemera {
 						&& values.size() == 2) {
 						next.count = values[1];
 					}
+					// An integer result: what the function's returns are proven to be, once every body's checked
+					if (analysis.summaries != nullptr && found->called_declaration != nullptr
+						&& is_variant(found->type, TypeInfoVariant::INTEGER)) {
+						call_result(analysis, facts, found, child, arguments, writes_nothing, next.value);
+					}
 					next.never_returns = (found->called != nullptr && found->called->never_returns)
 						|| (ValueKind::BUILTIN_FUNCTION == current.kind && current.never_returns);
 				}
@@ -1182,6 +1269,11 @@ namespace hemera {
 						}
 						ast::Node* index = arguments[0];
 						next.pathless = true;
+						// Whatever the index, what it reaches is inside the array, when that has a path
+						if (collection.local != nullptr && !collection.pathless) {
+							next.within = collection.path;
+							next.within_local = collection.local;
+						}
 						// m[row, column]: each proven below the matrix's rows or columns (docs/types.md, Matrices)
 						if (is_variant(collection.type, TypeInfoVariant::MATRIX) && arguments.size() == 2) {
 							auto matrix = static_cast<TypeInfoMatrix const*>(base(collection.type));
@@ -1235,6 +1327,16 @@ namespace hemera {
 					next.local = current.local;
 					next.pathless = current.pathless;
 					next.path = current.path + "^";
+					// An integer pointed to, like most^, is a path of its own, as a field reached from a local is
+					if (is_variant(found->type, TypeInfoVariant::INTEGER) && next.local != nullptr && !next.pathless) {
+						next.value = of_term(bounded_by_type(analysis, path_term(analysis, next, next.path + "#", is_unsigned(found->type)),
+							found->type));
+					}
+				}
+				// An element's array, which what's reached from it is inside too
+				if (next.within.empty() && !current.within.empty()) {
+					next.within = current.within;
+					next.within_local = current.within_local;
 				}
 				current = next;
 			}
@@ -1430,6 +1532,16 @@ namespace hemera {
 			if ((TokenType::OPERATOR_MODULUS == op || TokenType::OPERATOR_REMAINDER == op) && right.known && ZERO != right.term
 				&& right.spread == 0 && (nonnegative(left) || unsigned_operands)) {
 				result.at_most_term = std::make_pair(right.term, right.offset - 1);
+				result.nonnegative = true;
+			}
+			/*
+			 * a - b, with b at least 0 and at most a, so it can't wrap: from 0 to a, like what's left of a queue's count
+			 * once the first b are taken
+			 */
+			if (TokenType::OPERATOR_MINUS == op && left.known && ZERO != left.term && 0 == left.spread && right.known
+				&& ZERO != right.term && nonnegative(right)
+				&& proves(analysis, facts, right.term, left.term, left.offset - right.offset - right.spread)) {
+				result.at_most_term = std::make_pair(left.term, left.offset);
 				result.nonnegative = true;
 			}
 			// A bounded value divided by a positive constant, or shifted right
@@ -1696,12 +1808,128 @@ namespace hemera {
 		// ---------------------------------------------------------------------------------------------
 		// Conditions
 
+		// The most a value is known to be, if anything bounds it from above.
+		std::optional<int64_t> most_of(const Analysis& analysis, const Facts& facts, const Value& value) {
+			if (value.known) {
+				if (ZERO == value.term) {
+					return value.offset + value.spread;
+				}
+				if (auto most = upper_bound(analysis, facts, value.term)) {
+					return *most + value.offset + value.spread;
+				}
+				return std::nullopt;
+			}
+			if (value.at_most_term.has_value()) {
+				if (auto most = upper_bound(analysis, facts, value.at_most_term->first)) {
+					const int64_t through = *most + value.at_most_term->second;
+					return value.at_most.has_value() ? std::min(*value.at_most, through) : through;
+				}
+			}
+			return value.at_most;
+		}
+
+		/*
+		 * A return, while working out the function's result's bound: the most every return so far gives, and whether each
+		 * is at most each array parameter's count, as its local's count term, which a caller knows of what it passes
+		 */
+		void record_return(Analysis& analysis, const Facts& facts, const Value& value) {
+			const std::optional<int64_t> most = most_of(analysis, facts, value);
+			analysis.return_most = !analysis.returns_seen ? most
+				: analysis.return_most.has_value() && most.has_value() ? std::optional<int64_t>(std::max(*analysis.return_most, *most))
+				: std::nullopt;
+			analysis.returns_seen = true;
+			for (size_t k = 0; k < analysis.return_within.size() && k < analysis.checked.parameters.size(); ++k) {
+				if (!analysis.return_within[k]) {
+					continue;
+				}
+				bool within = false;
+				if (k < analysis.entries.size() && analysis.entries[k].has_value()) {
+					const Term count = *analysis.entries[k];
+					within = value.known ? proves(analysis, facts, value.term, count, -(value.offset + value.spread))
+						: value.at_most_term.has_value()
+							&& proves(analysis, facts, value.at_most_term->first, count, -value.at_most_term->second);
+				}
+				analysis.return_within[k] = within;
+			}
+		}
+
+		Chain evaluate_chain(Analysis& analysis, Facts& facts, ast::Node* node);
+
+		/*
+		 * A call's integer result, from what the function's returns are proven to be (result_of): at most a constant, and
+		 * at most the count of what it's given for an array parameter, when that's a constant, a local's count, or
+		 * anything the call can't have changed, as it writes nothing.
+		 */
+		void call_result(Analysis& analysis, const Facts& facts, const CheckedNode* found, const ast::Node* paren,
+			const std::vector<ast::Node*>& arguments, bool writes_nothing, Value& result) {
+
+			const ResultBound bound = result_of(*analysis.summaries, found->called_declaration);
+			if (!bound.known) {
+				return;
+			}
+			if (bound.most.has_value()) {
+				result.at_most = result.at_most.has_value() ? std::min(*result.at_most, *bound.most) : *bound.most;
+			}
+			if (bound.parameter.has_value()) {
+				// The argument given for it: by where the checker put each, or in order when none's named
+				std::optional<size_t> given;
+				auto split = analysis.checked.argument_parameters.find(paren);
+				if (split != analysis.checked.argument_parameters.end()) {
+					for (size_t j = 0; j < split->second.size(); ++j) {
+						if (split->second[j] == *bound.parameter) {
+							given = j;
+						}
+					}
+				}
+				else if (*bound.parameter < arguments.size()) {
+					bool named = false;
+					for (const ast::Node* argument : arguments) {
+						named = named || (ast::NodeType::BINARY_OPERATOR == argument->node_type && is_assign(argument));
+					}
+					if (!named) {
+						given = *bound.parameter;
+					}
+				}
+				if (given.has_value() && *given < arguments.size()) {
+					Facts reading = facts;
+					const CheckedNode* argument = found_at(analysis, arguments[*given]);
+					const bool integer = argument != nullptr && is_variant(argument->type, TypeInfoVariant::INTEGER);
+					const Value count = integer ? evaluate(analysis, reading, arguments[*given])
+						: count_of(analysis, evaluate_chain(analysis, reading, arguments[*given]));
+					if (count.known && 0 == count.spread) {
+						// What the call can't have changed: a constant, a local's count or value, or anything, if it writes nothing
+						const TermKind kind = analysis.terms[count.term].kind;
+						const bool kept = ZERO == count.term || writes_nothing || TermKind::COUNT == kind
+							|| (TermKind::LOCAL == kind && !analysis.terms[count.term].through_pointer
+								&& (analysis.terms[count.term].local == nullptr
+									|| !analysis.address_taken.contains(analysis.terms[count.term].local)));
+						if (ZERO == count.term) {
+							result.at_most = result.at_most.has_value() ? std::min(*result.at_most, count.offset) : count.offset;
+						}
+						else if (kept) {
+							result.at_most_term = std::make_pair(count.term, count.offset);
+						}
+						// What the call may have changed: at most what that was at most, as it was read for the call
+						else if (auto most = most_of(analysis, reading, count)) {
+							result.at_most = result.at_most.has_value() ? std::min(*result.at_most, *most) : *most;
+						}
+					}
+				}
+			}
+			result.nonnegative = result.nonnegative || is_unsigned(found->type);
+		}
+
 		// Whether a value is proven at most a constant, as a store to a field with #at_most needs.
 		bool fits(const Analysis& analysis, const Facts& facts, const Value& value, int64_t most) {
 			if (value.known) {
 				return proves(analysis, facts, value.term, ZERO, most - value.offset - value.spread);
 			}
-			return value.at_most.has_value() && *value.at_most <= most;
+			if (value.at_most.has_value() && *value.at_most <= most) {
+				return true;
+			}
+			// At most a term that's itself at most this, like a - b for a count a
+			return value.at_most_term.has_value()
+				&& proves(analysis, facts, value.at_most_term->first, ZERO, most - value.at_most_term->second);
 		}
 
 		// x <= y + k, for every value x and y can be: x at its most, y at its least.
@@ -2161,13 +2389,19 @@ namespace hemera {
 					const bool field = targets.size() == 1 && chain.value.known && ZERO != chain.value.term && 0 == chain.value.offset
 						&& 0 == chain.value.spread && TermKind::PATH == analysis.terms[chain.value.term].kind;
 					const Term stored = field ? chain.value.term : ZERO;
+					/*
+					 * Made smaller by what's at least 0 and at most it, so it can't wrap: still at most what it was, which a
+					 * field with #at_most then is, whatever's taken away
+					 */
+					const bool shrinks = field && TokenType::OPERATOR_ASSIGN_SUB == op && at_least_zero(analysis, facts, value)
+						&& value.known && proves(analysis, facts, value.term, stored, -(value.offset + value.spread));
 					const bool moved = field && (TokenType::OPERATOR_ASSIGN_ADD == op || TokenType::OPERATOR_ASSIGN_SUB == op)
 						&& value.known && ZERO == value.term && 0 == value.spread;
 					if (moved) {
 						shift(analysis, facts, stored, TokenType::OPERATOR_ASSIGN_ADD == op ? value.offset : -value.offset);
 					}
 					// Added to or the like: what it is now, proven at most its #at_most
-					if (chain.at_most.has_value() && !is_assign(node)
+					if (chain.at_most.has_value() && !is_assign(node) && !shrinks
 						&& !(moved && proves(analysis, facts, stored, ZERO, *chain.at_most))) {
 						report(analysis, target, std::format(
 							"it's #at_most({}), and what it becomes isn't proven to be: check it against that first",
@@ -2182,18 +2416,30 @@ namespace hemera {
 						 * Another field of what the same local reaches, whose bytes the store's can't be, its index
 						 * proven, like holder.count across holder.name[i] = byte
 						 */
-						if (TermKind::PATH == info.kind && term != stored && chain.local != nullptr && !chain.pathless
-							&& info.local == chain.local && disjoint_paths(info.path, chain.path)) {
+						const bool pathed = chain.local != nullptr && !chain.pathless;
+						const void* store_local = pathed ? chain.local : chain.within_local;
+						const std::string& store_path = pathed ? chain.path : chain.within;
+						if (TermKind::PATH == info.kind && term != stored && store_local != nullptr && !store_path.empty()
+							&& info.local == store_local && disjoint_paths(info.path, store_path)) {
+							return false;
+						}
+						/*
+						 * A store inside a local itself, a struct's field or a fixed array's element, through no pointer, and
+						 * a local whose address isn't taken: nothing reached through a pointer is that memory
+						 */
+						const bool in_place = store_local != nullptr && store_path.find('^') == std::string::npos
+							&& !analysis.address_taken.contains(store_local);
+						if (in_place && info.local != store_local) {
 							return false;
 						}
 						return (found != nullptr && found->local != nullptr && TermKind::PATH == info.kind && info.local == found->local)
 							|| info.through_pointer || (info.local != nullptr && analysis.address_taken.contains(info.local));
 					};
-					forget(facts, changed);
+					forget(analysis, facts, changed);
 					// The value it's given, when that's a constant or a local, which the store didn't change
 					if (field && is_assign(node) && value.known
 						&& (ZERO == value.term || (TermKind::LOCAL == analysis.terms[value.term].kind && !changed(value.term)))) {
-						forget(facts, [&](Term term) { return term == stored; });
+						forget(analysis, facts, [&](Term term) { return term == stored; });
 						add_value_equal(analysis, facts, stored, value);
 					}
 					continue;
@@ -2279,7 +2525,18 @@ namespace hemera {
 			};
 			Facts before = facts;
 			if (index.has_value()) {
-				forget(before, [&](Term term) { return term == *index; });
+				forget(analysis, before, [&](Term term) { return term == *index; });
+			}
+			/*
+			 * An end the body changes is still what it was when the loop began, which the range was worked out from: a term
+			 * of its own, equal to it then, so for i in 0..<list.count keeps i below the count it started with, and that
+			 * the count is still that until the body changes it
+			 */
+			std::optional<Term> high_then;
+			if (index.has_value() && high.known && 0 == high.spread && ZERO != high.term && !unchanged(high)) {
+				high_then = term_for(analysis, TermKind::LOCAL, node, "end", analysis.terms[high.term].nonnegative);
+				forget(analysis, before, [&](Term term) { return term == *high_then; });
+				add_value_equal(analysis, before, *high_then, high);
 			}
 			auto around = [&](const Facts& head, std::vector<Facts>& breaks) {
 				Facts entry = head;
@@ -2289,6 +2546,9 @@ namespace hemera {
 					}
 					if (unchanged(high)) {
 						add(entry, *index, high.term, high.offset - (inclusive ? 0 : 1));
+					}
+					else if (high_then.has_value()) {
+						add(entry, *index, *high_then, -(inclusive ? 0 : 1));
 					}
 					else if (!high.known && high.at_most.has_value()) {
 						add(entry, *index, ZERO, *high.at_most - (inclusive ? 0 : 1));
@@ -2305,7 +2565,7 @@ namespace hemera {
 				}
 				// The index is the next one's next time
 				if (index.has_value()) {
-					forget(back, [&](Term term) { return term == *index; });
+					forget(analysis, back, [&](Term term) { return term == *index; });
 				}
 				return back;
 			};
@@ -2492,15 +2752,25 @@ namespace hemera {
 				walk_assignment(analysis, facts, statement);
 			}
 			else if (ast::NodeType::RETURN == type) {
+				std::optional<Value> first;
 				for (ast::Node* child : statement->children) {
 					if (ast::NodeType::LIST == child->node_type) {
 						for (ast::Node* each : child->children) {
-							evaluate(analysis, facts, each);
+							const Value value = evaluate(analysis, facts, each);
+							if (!first.has_value()) {
+								first = value;
+							}
 						}
 					}
 					else {
-						evaluate(analysis, facts, child);
+						const Value value = evaluate(analysis, facts, child);
+						if (!first.has_value()) {
+							first = value;
+						}
 					}
+				}
+				if (analysis.collecting && facts.reachable) {
+					record_return(analysis, facts, first.value_or(Value{}));
 				}
 				facts = unreachable();
 			}
@@ -2677,6 +2947,98 @@ namespace hemera {
 
 	namespace {
 
+		/*
+		 * What's known of other functions once every body is checked (check_pending_bounds): which write nothing, and what
+		 * each's integer result is proven to be, worked out from its body when a call to it is first met, and kept
+		 */
+		struct Summaries {
+			const std::unordered_set<const Declaration*>* writes_nothing = nullptr;
+			std::unordered_map<const Declaration*, const StackCheck*> bodies;
+			std::unordered_map<const Declaration*, ResultBound> results;
+			/*
+			 * Those being worked out, innermost last; and those found on a loop of calls, which know nothing of each
+			 * other's results, so what's known doesn't depend on which was met first
+			 */
+			std::vector<const Declaration*> working;
+			std::unordered_set<const Declaration*> on_loop;
+		};
+
+		/*
+		 * Prove a body's indexes in bounds, knowing what summaries know; with result, also work out what its returns are
+		 * proven to be. Reports only when reporting; returns whether every index was proven.
+		 */
+		bool prove(const StackCheck& function, Summaries* summaries, bool reporting, ResultBound* result) {
+			Analysis analysis{ *function.checked, function.type, function.file_path, { TermInfo{} }, {}, {}, {}, 0, {}, 0, {}, {} };
+			analysis.writes_nothing = summaries != nullptr ? summaries->writes_nothing : nullptr;
+			analysis.summaries = summaries;
+			analysis.silent = !reporting;
+			Facts facts;
+			if (result != nullptr) {
+				analysis.collecting = true;
+				const std::vector<const void*>& parameters = function.checked->parameters;
+				analysis.return_within.assign(parameters.size(), true);
+				analysis.entries.assign(parameters.size(), std::nullopt);
+				for (size_t k = 0; k < parameters.size() && k < function.type->input.size(); ++k) {
+					TypeInfo* type = function.type->input[k].type;
+					// Keyed by the parameter's place in the list, which no local is, so nothing the body does forgets it
+					const void* place = &parameters[k];
+					if (is_variant(type, TypeInfoVariant::INTEGER)) {
+						const Term entry = bounded_by_type(analysis, term_for(analysis, TermKind::LOCAL, place, "entry", is_unsigned(type)), type);
+						add_equal(facts, entry, local_term(analysis, parameters[k], type), 0);
+						analysis.entries[k] = entry;
+					}
+					else if (is_indexable(type) && !static_count(type).has_value() && !is_variant(type, TypeInfoVariant::POINTER)) {
+						const Term entry = term_for(analysis, TermKind::LOCAL, place, "entry", true);
+						add_equal(facts, entry, term_for(analysis, TermKind::COUNT, parameters[k], "", true), 0);
+						analysis.entries[k] = entry;
+					}
+				}
+			}
+			find_address_taken(analysis, function.body);
+			find_deferred_writes(analysis, function.body, false);
+			walk_block(analysis, facts, function.body);
+			if (result != nullptr) {
+				result->known = analysis.returns_seen;
+				result->most = analysis.return_most;
+				for (size_t k = 0; k < analysis.return_within.size(); ++k) {
+					if (analysis.return_within[k]) {
+						result->parameter = k;
+						break;
+					}
+				}
+			}
+			return analysis.errors == 0;
+		}
+
+		ResultBound result_of(Summaries& summaries, const Declaration* declaration) {
+			if (auto known = summaries.results.find(declaration); known != summaries.results.end()) {
+				return known->second;
+			}
+			auto body = summaries.bodies.find(declaration);
+			if (body == summaries.bodies.end()) {
+				return ResultBound{};
+			}
+			auto calling = std::find(summaries.working.begin(), summaries.working.end(), declaration);
+			if (calling != summaries.working.end()) {
+				summaries.on_loop.insert(calling, summaries.working.end());
+				return ResultBound{};
+			}
+			const StackCheck& function = *body->second;
+			if (function.type->output.empty() || !is_variant(function.type->output[0].type, TypeInfoVariant::INTEGER)) {
+				summaries.results[declaration] = ResultBound{};
+				return ResultBound{};
+			}
+			summaries.working.push_back(declaration);
+			ResultBound bound;
+			prove(function, &summaries, false, &bound);
+			summaries.working.pop_back();
+			if (summaries.on_loop.contains(declaration)) {
+				bound = ResultBound{};
+			}
+			summaries.results[declaration] = bound;
+			return bound;
+		}
+
 		// What a body may write, as check_pending_bounds needs it: whether it stores outside its own locals, and what it calls.
 		struct Writes {
 			bool stores = false;
@@ -2807,11 +3169,17 @@ namespace hemera {
 				}
 			}
 		}
+		Summaries summaries;
+		summaries.writes_nothing = &writes_nothing;
+		for (const StackCheck& function : functions) {
+			if (!function.failed && function.checked != nullptr && function.declaration != nullptr) {
+				summaries.bodies[function.declaration] = &function;
+			}
+		}
 		bool clean = true;
 		for (const StackCheck& function : functions) {
 			if (function.bounds_pending && !function.failed && function.checked != nullptr) {
-				clean = check_bounds(*function.checked, function.body, function.type, function.file_path, &writes_nothing, true)
-					&& clean;
+				clean = prove(function, &summaries, true, nullptr) && clean;
 			}
 		}
 		return clean;

@@ -225,7 +225,7 @@ drop_front :: fn(buffer : mut u8[], held : usize, count : usize) -> usize {
     taken :: if count < held { count } else { held }
     for i in taken..<held {
         to :: i - taken
-        if to < buffer.count && i < buffer.count {
+        if i < buffer.count {
             buffer[to] = buffer[i]
         }
     }
