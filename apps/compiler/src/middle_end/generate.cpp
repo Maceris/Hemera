@@ -2495,8 +2495,14 @@ namespace hemera {
 			mlir::OpBuilder::InsertionGuard guard(generator.builder);
 			generator.builder.setInsertionPointToEnd(generator.module.getBody());
 			mlir::Type pointer = LLVM::LLVMPointerType::get(generator.context);
+			/*
+			 * An executable's own thread-local storage is at a fixed offset from the thread pointer; only a shared
+			 * library's needs __tls_get_addr, which RISC-V's linker, unlike x86-64's and AArch64's, doesn't relax away
+			 */
+			const LLVM::ThreadLocalMode mode = generator.options->typed_library ? LLVM::ThreadLocalMode::GeneralDynamic
+				: LLVM::ThreadLocalMode::LocalExec;
 			carrier = LLVM::GlobalOp::create(generator.builder, generator.loc, pointer, false, LLVM::Linkage::Internal,
-				THREAD_CARRIER_SYMBOL, mlir::Attribute(), 8, 0, true, LLVM::ThreadLocalMode::GeneralDynamic);
+				THREAD_CARRIER_SYMBOL, mlir::Attribute(), 8, 0, true, mode);
 			generator.builder.setInsertionPointToStart(generator.builder.createBlock(&carrier.getInitializerRegion()));
 			LLVM::ReturnOp::create(generator.builder, generator.loc, zero_of(generator, pointer));
 		}

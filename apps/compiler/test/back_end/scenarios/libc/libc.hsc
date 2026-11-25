@@ -40,6 +40,13 @@ Qsort :: alias fn(items: rawptr, count: usize, size: usize, compare: rawptr) #ca
         return aarch64.syscall(172)
     }
 }
+#else_if TARGET_ARCH == .riscv64 {
+    import riscv64 from "base:intrinsics/riscv64"
+
+    raw_getpid :: fn() -> u64 {
+        return riscv64.syscall(172)
+    }
+}
 
 /** What went wrong calling C, or that nothing did. */
 CallProblem :: enum {
