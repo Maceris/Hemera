@@ -487,6 +487,21 @@ import runtime from "base:runtime"
         extended : u32[6],
     }
 
+    /**
+     * RISCV_EFI_BOOT_PROTOCOL: which hart the firmware booted on, which supervisor mode can't read for itself.
+     *
+     * SPEC: RISC-V UEFI Protocol Specification 1.0, §2 (RISCV_EFI_BOOT_PROTOCOL).
+     */
+    RiscvBoot :: struct {
+        /** The protocol's revision, 0x00010000 for 1.0. */
+        revision : u64,
+        /** GetBootHartId: the boot hart's ID, its mhartid, into hart_id. */
+        get_boot_hart_id : fn(
+            this : ptr[RiscvBoot],
+            hart_id : ptr[mut usize]
+        ) -> Status #calling_convention(.c) #no_context,
+    }
+
     /** PROCESSOR_AS_BSP_BIT: ProcessorInfo.status's bit for the processor the firmware runs on. */
     PROCESSOR_BOOT : u32 : 1
     /** PROCESSOR_ENABLED_BIT: ProcessorInfo.status's bit for a processor that's enabled. */
@@ -504,6 +519,8 @@ import runtime from "base:runtime"
     GRAPHICS_OUTPUT_GUID :: Guid.{0x9042a9de, 0x23dc, 0x4a38, u8.[0x96, 0xfb, 0x7a, 0xde, 0xd0, 0x80, 0x51, 0x6a]}
     /** EFI_MP_SERVICES_PROTOCOL's GUID, for MpServices. */
     MP_SERVICES_GUID :: Guid.{0x3fdda605, 0xa76e, 0x4f46, u8.[0xad, 0x29, 0x12, 0xf4, 0x53, 0x1b, 0x3d, 0x08]}
+    /** RISCV_EFI_BOOT_PROTOCOL's GUID, for RiscvBoot. */
+    RISCV_BOOT_GUID :: Guid.{0xccd15fec, 0x6f73, 0x4eec, u8.[0x83, 0x95, 0x3e, 0x69, 0xe4, 0xb9, 0x40, 0xbf]}
     // Configuration tables
     /** The configuration table of ACPI 2.0 and later's RSDP. */
     ACPI_20_GUID :: Guid.{0x8868e871, 0xe4f1, 0x11d3, u8.[0xbc, 0x22, 0x00, 0x80, 0xc7, 0x3c, 0x88, 0x81]}

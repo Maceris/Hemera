@@ -6,7 +6,7 @@ package slop_os
  *
  * Each architecture's features have their own names here; a program only ever sees its own architecture's features
  * set. The values are part of the system ABI, each one a feature's bit index in CpuFeatures, so new features are only
- * ever appended, never renumbered: x86-64's take 0 to 63, AArch64's 64 to 127.
+ * ever appended, never renumbered: x86-64's take 0 to 63, AArch64's 64 to 127, RISC-V's 128 to 191.
  */
 CpuFeature :: enum #backed_by(u16) {
     // x86-64-v2
@@ -93,6 +93,55 @@ CpuFeature :: enum #backed_by(u16) {
     Aarch64HardwareAccessFlag = 84, /**< The access flag kept by the hardware (FEAT_HAFDBS). */
     // Control-flow integrity, numbered after the rest (the SlopOS repository's decisions/0186)
     Aarch64Gcs = 85, /**< The Guarded Control Stack (FEAT_GCS), a shadow stack. */
+
+    // RISC-V, from the device tree's riscv,isa-extensions or riscv,isa: the single-letter extensions
+    RiscvM = 128, /**< M, integer multiplication and division. */
+    RiscvA = 129, /**< A, atomics: load-reserved and store-conditional, and the AMOs. */
+    RiscvF = 130, /**< F, single precision floating point. */
+    RiscvD = 131, /**< D, double precision floating point. */
+    RiscvC = 132, /**< C, compressed instructions. */
+    RiscvV = 133, /**< V, the vector extension, with vectors of at least 128 bits. */
+    // Bit manipulation and the other instructions RVA23U64 has
+    RiscvZba         = 134, /**< Zba, address generation: sh1add, sh2add, sh3add and their .uw forms. */
+    RiscvZbb         = 135, /**< Zbb, basic bit manipulation: clz, ctz, cpop, min, max, rotations, rev8 and others. */
+    RiscvZbs         = 136, /**< Zbs, single-bit instructions: bset, bclr, binv, bext. */
+    RiscvZicond      = 137, /**< Zicond, conditional zeroing: czero.eqz and czero.nez. */
+    RiscvZcb         = 138, /**< Zcb, more compressed instructions. */
+    RiscvZfa         = 139, /**< Zfa, more floating point instructions: fli, fminm, fround and others. */
+    RiscvZfhmin      = 140, /**< Zfhmin, half precision floating point loads, stores and conversions. */
+    RiscvZicboz      = 141, /**< Zicboz, cbo.zero, zeroing a cache block. */
+    RiscvZihintpause = 142, /**< Zihintpause, pause, a hint that a spin loop waits. */
+    RiscvZawrs       = 143, /**< Zawrs, wrs.nto and wrs.sto, waiting on a reservation set. */
+    RiscvZimop       = 144, /**< Zimop, the may-be-operations, which shadow stack instructions are where Zicfiss is off. */
+    // Atomics past A
+    RiscvZacas = 145, /**< Zacas, atomic compare and swap, amocas. */
+    // Cryptography
+    RiscvZbc    = 146, /**< Zbc, carry-less multiplication: clmul, clmulh, clmulr. */
+    RiscvZbkb   = 147, /**< Zbkb, bit manipulation for cryptography: pack, brev8, zip, unzip. */
+    RiscvZknd   = 148, /**< Zknd, the AES decryption instructions on scalar registers. */
+    RiscvZkne   = 149, /**< Zkne, the AES encryption instructions on scalar registers. */
+    RiscvZknh   = 150, /**< Zknh, the SHA-256 and SHA-512 instructions on scalar registers. */
+    RiscvZvbb   = 151, /**< Zvbb, vector bit manipulation. */
+    RiscvZvbc   = 152, /**< Zvbc, vector carry-less multiplication. */
+    RiscvZvkned = 153, /**< Zvkned, the AES instructions on vectors. */
+    RiscvZvknhb = 154, /**< Zvknhb, the SHA-256 and SHA-512 instructions on vectors. */
+    RiscvZvkg   = 155, /**< Zvkg, GHASH on vectors, for AES-GCM. */
+    RiscvZkt    = 156, /**< Zkt, instructions whose time doesn't depend on the data they're given. */
+    // Random numbers
+    RiscvZkr = 157, /**< Zkr, the seed CSR, seeds straight from the hardware entropy source. */
+    // Control-flow integrity (the SlopOS repository's decisions/0186)
+    RiscvZicfilp = 158, /**< Zicfilp, landing pads: lpad, and indirect branches that must land on one. */
+    RiscvZicfiss = 159, /**< Zicfiss, shadow stacks. */
+    // System features, which only the kernel uses
+    RiscvSv48     = 160, /**< Sv48, four levels of page tables, 48-bit virtual addresses. */
+    RiscvSv57     = 161, /**< Sv57, five levels of page tables, 57-bit virtual addresses. */
+    RiscvSvpbmt   = 162, /**< Svpbmt, a page's memory type in its page table entry. */
+    RiscvSvnapot  = 163, /**< Svnapot, naturally aligned 64 KiB pages made of 4 KiB entries. */
+    RiscvSvinval  = 164, /**< Svinval, sfence.vma split into finer-grained instructions. */
+    RiscvSvadu    = 165, /**< Svadu, the accessed and dirty bits kept by the hardware rather than faulting. */
+    RiscvSstc     = 166, /**< Sstc, the supervisor's own timer compare register, stimecmp. */
+    RiscvSscofpmf = 167, /**< Sscofpmf, counter overflow interrupts and mode filtering. */
+    RiscvSsaia    = 168, /**< Ssaia, the supervisor's part of the Advanced Interrupt Architecture (the IMSIC). */
 }
 
 /**
