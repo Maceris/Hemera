@@ -355,10 +355,12 @@ allocation of `FIBER_BLOCK_SIZE` bytes, which is calculated from its parts:
 |--------------------------------------------------------------|----------------------------|------------------|
 | Fiber struct: state, resume state, links, waiter, root context | `size_of(Fiber)`         | 160 bytes        |
 | Stack guard                                                  | `STACK_GUARD`              | 256 bytes        |
-| Usable stack in the first segment                            | `FIBER_INITIAL_STACK_SIZE` | 1024 bytes       |
+| Usable stack in the first segment                            | `FIBER_INITIAL_STACK_SIZE` | 1024 bytes, 1536 on RISC-V |
 | Total                                                        | `FIBER_BLOCK_SIZE`         | 1440 bytes       |
 
-That leaves 96 bytes of each fiber's share of the budget for the allocator's own overhead. Most of `Fiber` is its root
+That leaves 96 bytes of each fiber's share of the budget for the allocator's own overhead. On RISC-V, whose frames save
+more registers (twelve callee-saved ones and `ra`), the first segment is 1536 bytes, so a fiber that can't grow, as in
+a kernel whose stack checks trap, has room for as many frames; its block is 1952 bytes, over the target. Most of `Fiber` is its root
 context (72 bytes); a suspended fiber's registers and resume state are on its own stack, and the resume loop's state
 while it runs is in the carrier block, so the `Fiber` keeps only where they are.
 

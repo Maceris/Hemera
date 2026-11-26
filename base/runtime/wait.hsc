@@ -20,7 +20,7 @@ import intrinsics from "base:intrinsics"
  * wait_on_value calls it, and so does each spin of std's locks and fiber pools.
  */
 deterministic_turn :: fn() #no_context {
-    #if OS == .SlopOS && (TARGET_ARCH == .x86_64 || TARGET_ARCH == .arm64) {
+    #if OS == .SlopOS && (TARGET_ARCH == .x86_64 || TARGET_ARCH == .arm64 || TARGET_ARCH == .riscv64) {
         if slop_os_deterministic() {
             _ = slop_os_call(SLOP_OS_CALL_CLOCK_MONOTONIC)
         }
@@ -30,7 +30,7 @@ deterministic_turn :: fn() #no_context {
 // Windows' are in windows.hsc, Linux's on x86-64 and AArch64 in linux.hsc, and SlopOS's in slop_os_threads.hsc
 #if OS != .Windows
     && !(OS == .Linux && (TARGET_ARCH == .x86_64 || TARGET_ARCH == .arm64 || TARGET_ARCH == .riscv64))
-    && !(OS == .SlopOS && (TARGET_ARCH == .x86_64 || TARGET_ARCH == .arm64)) {
+    && !(OS == .SlopOS && (TARGET_ARCH == .x86_64 || TARGET_ARCH == .arm64 || TARGET_ARCH == .riscv64)) {
     /**
      * Wait until the value at address isn't expected: here, without a system to sleep on, a spin hint and a return,
      * which callers looping on the value can't tell from a spurious wake.
@@ -87,7 +87,7 @@ deterministic_turn :: fn() #no_context {
 
 #if OS != .Windows
     && !(OS == .Linux && (TARGET_ARCH == .x86_64 || TARGET_ARCH == .arm64 || TARGET_ARCH == .riscv64))
-    && !(OS == .SlopOS && (TARGET_ARCH == .x86_64 || TARGET_ARCH == .arm64))
+    && !(OS == .SlopOS && (TARGET_ARCH == .x86_64 || TARGET_ARCH == .arm64 || TARGET_ARCH == .riscv64))
     && OS != .UEFI {
     /**
      * Write bytes to standard output or error: here there's neither, so they're dropped.

@@ -266,8 +266,46 @@ SlopOsGrant :: struct {
         return SlopOsAnswer.{tag = made.x0, first = made.x1, second = made.x2}
     }
 }
+#else_if OS == .SlopOS && TARGET_ARCH == .riscv64 {
+    import riscv64 from "base:intrinsics/riscv64"
 
-#if OS == .SlopOS && (TARGET_ARCH == .x86_64 || TARGET_ARCH == .arm64) {
+    /** What a system call gives back, in the system ABI's three result registers. */
+    SlopOsAnswer :: struct {
+        /** 0 if the call succeeded, or the kernel's error code. */
+        tag : u64,
+        /** The call's first result, like a handle it made; what it means is the call's. */
+        first : u64,
+        /** The call's second result, if it has one. */
+        second : u64,
+    }
+
+    /**
+     * Make a system call: ecall, the number in a7, the arguments in a0 to a5, the results in a0 to a2.
+     *
+     * @param number The call's number, one of the SLOP_OS_CALL_ values.
+     * @param a The call's first argument, or 0 if it takes fewer.
+     * @param b The call's second argument, or 0 if it takes fewer.
+     * @param c The call's third argument, or 0 if it takes fewer.
+     * @param d The call's fourth argument, or 0 if it takes fewer.
+     * @param e The call's fifth argument, or 0 if it takes fewer.
+     * @param f The call's sixth argument, or 0 if it takes fewer.
+     * @return What the kernel gave back: its tag 0 on success or an error code, and the call's results.
+     */
+    slop_os_call #no_context :: fn(
+        number : u64,
+        a : u64 = 0,
+        b : u64 = 0,
+        c : u64 = 0,
+        d : u64 = 0,
+        e : u64 = 0,
+        f : u64 = 0
+    ) -> SlopOsAnswer {
+        made :: riscv64.system_call(number, a, b, c, d, e, f)
+        return SlopOsAnswer.{tag = made.a0, first = made.a1, second = made.a2}
+    }
+}
+
+#if OS == .SlopOS && (TARGET_ARCH == .x86_64 || TARGET_ARCH == .arm64 || TARGET_ARCH == .riscv64) {
     /** The size of a page, in bytes: what mappings are rounded up to. */
     PAGE_SIZE : usize : 4096
     /**

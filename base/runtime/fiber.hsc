@@ -12,8 +12,19 @@ STACK_SEGMENT_SIZE :: 1024
  * without checking, so small leaf frames and morestack's own call fit before the end.
  */
 STACK_GUARD :: 256
-/** The usable stack in a fiber's first segment, in bytes, before it needs another segment. */
-FIBER_INITIAL_STACK_SIZE :: 1024
+// The usable stack in a fiber's first segment: more on RISC-V, whose frames save more registers
+#if TARGET_ARCH == .riscv64 {
+    /**
+     * The usable stack in a fiber's first segment, in bytes, before it needs another segment: 1536 on RISC-V, whose
+     * frames save more registers (twelve callee-saved ones and ra), so a fiber that can't grow, as in a kernel whose
+     * stack checks trap, has as many frames' room as on the others.
+     */
+    FIBER_INITIAL_STACK_SIZE :: 1536
+}
+#else {
+    /** The usable stack in a fiber's first segment, in bytes, before it needs another segment. */
+    FIBER_INITIAL_STACK_SIZE :: 1024
+}
 /**
  * The size in bytes of the one allocation each fiber is: the Fiber struct (which includes its root context),
  * then its first stack segment, which is the guard plus the usable stack.

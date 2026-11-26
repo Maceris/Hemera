@@ -5927,6 +5927,48 @@ namespace hemera {
 			return true;
 		}
 		/*
+		 * A thread's floating-point and vector registers, for a kernel switching threads: D and V turned on for these
+		 * instructions alone, as a kernel is built without them. The area is a0's; the temporaries they use are clobbered.
+		 * Floating point: f0 to f31, then fcsr at 256. Vectors: v0 to v31, vlenb bytes each, by whole groups of eight,
+		 * then vstart, vtype, vl and vcsr, which a restore puts back last, vsetvl first.
+		 */
+		if (name == "save_floating" || name == "restore_floating") {
+			const bool save = name == "save_floating";
+			std::string text = ".option push\n\t.option arch, +d\n\t";
+			if (!save) {
+				text += "ld t0, 256(a0)\n\tfscsr t0\n\t";
+			}
+			for (int i = 0; i < 32; ++i) {
+				text += std::format("{} f{}, {}(a0)\n\t", save ? "fsd" : "fld", i, i * 8);
+			}
+			if (save) {
+				text += "frcsr t0\n\tsd t0, 256(a0)\n\t";
+			}
+			text += ".option pop";
+			assembly(generator, mlir::Type(), arguments, text, "{x10},~{x5},~{memory}");
+			return true;
+		}
+		if (name == "save_vector" || name == "restore_vector") {
+			const bool save = name == "save_vector";
+			std::string text = ".option push\n\t.option arch, +v\n\tcsrr t4, vlenb\n\tslli t4, t4, 3\n\tmv t5, a0\n\t";
+			if (save) {
+				text += "csrr t0, vl\n\tcsrr t1, vtype\n\tcsrr t2, vstart\n\tcsrr t3, vcsr\n\t";
+			}
+			for (int group = 0; group < 4; ++group) {
+				text += std::format("{} v{}, (t5)\n\tadd t5, t5, t4\n\t", save ? "vs8r.v" : "vl8re8.v", group * 8);
+			}
+			if (save) {
+				text += "sd t2, 0(t5)\n\tsd t1, 8(t5)\n\tsd t0, 16(t5)\n\tsd t3, 24(t5)\n\t";
+			}
+			else {
+				text += "ld t2, 0(t5)\n\tld t1, 8(t5)\n\tld t0, 16(t5)\n\tld t3, 24(t5)\n\tvsetvl zero, t0, t1\n\t";
+				text += "csrw vstart, t2\n\tcsrw vcsr, t3\n\t";
+			}
+			text += ".option pop";
+			assembly(generator, mlir::Type(), arguments, text, "{x10},~{x5},~{x6},~{x7},~{x28},~{x29},~{x30},~{memory}");
+			return true;
+		}
+		/*
 		 * fence.i and pause as their encodings, which assemble whatever the target's features: Zifencei isn't in RVA23,
 		 * and a kernel may leave Zihintpause out
 		 */

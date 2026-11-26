@@ -10,6 +10,9 @@ import runtime from "base:runtime"
 #else_if TARGET_ARCH == .arm64 {
     import aarch64 from "base:intrinsics/aarch64"
 }
+#else_if TARGET_ARCH == .riscv64 {
+    import riscv64 from "base:intrinsics/riscv64"
+}
 
 /*
  * What the syscall table (Syscalls, syscalls.hsc) generates, at compile time (the SlopOS repository's
@@ -71,8 +74,12 @@ system_call :: fn(
         made :: aarch64.system_call(number, a, b, c, d, e, f)
         return SyscallAnswer.{tag = made.x0, first = made.x1, second = made.x2}
     }
+    #else_if TARGET_ARCH == .riscv64 {
+        made :: riscv64.system_call(number, a, b, c, d, e, f)
+        return SyscallAnswer.{tag = made.a0, first = made.a1, second = made.a2}
+    }
     #else {
-        // Only on x86-64 and AArch64 so far: other architectures' system call registers come with their user mode
+        // Only on x86-64, AArch64 and RISC-V: another architecture's system call registers come with its user mode
         intrinsics.trap()
     }
 }

@@ -10,7 +10,7 @@ import intrinsics from "base:intrinsics"
  *
  * There's no wait on an address in the kernel yet, so wait_on_value spins once, as without an operating system.
  */
-#if OS == .SlopOS && (TARGET_ARCH == .x86_64 || TARGET_ARCH == .arm64) {
+#if OS == .SlopOS && (TARGET_ARCH == .x86_64 || TARGET_ARCH == .arm64 || TARGET_ARCH == .riscv64) {
     /**
      * A thread's stack, in bytes, when it doesn't ask for a fixed one: a Segmented stack gets this much, since its
      * first segment isn't used yet.

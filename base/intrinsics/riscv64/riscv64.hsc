@@ -333,6 +333,37 @@ pause : fn() : ---
 /** Take a breakpoint exception (ebreak). */
 ebreak : fn() : ---
 
+// A thread's floating-point and vector registers, for a kernel switching threads
+
+/**
+ * Save the floating-point registers, f0 to f31, then fcsr, into an area: 264 bytes. They're reached with D's
+ * instructions whatever the target's features, as a kernel is built without them; sstatus.FS has to be on (not Off).
+ *
+ * @param area Where they go, 8-byte aligned: f0 at 0 to f31 at 248, fcsr at 256.
+ */
+save_floating : fn(area : rawptr) : ---
+/**
+ * Load the floating-point registers and fcsr from an area save_floating wrote, or one laid out as it lays them out.
+ * sstatus.FS has to be on.
+ *
+ * @param area Where they are, 8-byte aligned.
+ */
+restore_floating : fn(area : rawptr) : ---
+/**
+ * Save the vector registers, v0 to v31, vlenb bytes each, then vstart, vtype, vl and vcsr, 8 bytes each, into an area:
+ * 32 * vlenb + 32 bytes. They're reached with V's instructions whatever the target's features; sstatus.VS has to be on.
+ *
+ * @param area Where they go, 16-byte aligned.
+ */
+save_vector : fn(area : rawptr) : ---
+/**
+ * Load the vector registers from an area save_vector wrote, or one laid out as it lays them out, then vtype and vl
+ * with vsetvl, then vstart and vcsr. sstatus.VS has to be on.
+ *
+ * @param area Where they are, 16-byte aligned; a vtype with vill set leaves the vector unit unconfigured, as at reset.
+ */
+restore_vector : fn(area : rawptr) : ---
+
 // The supervisor binary interface, to the machine's firmware, like OpenSBI
 
 /** What sbi_call gives: the SBI's a0 and a1. */

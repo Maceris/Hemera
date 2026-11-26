@@ -52,6 +52,12 @@ import intrinsics from "base:intrinsics"
         /** x86-64's relative relocation, R_X86_64_RELATIVE: base plus addend, stored at the offset. */
         LIBRARY_RELATIVE_RELOCATION : u32 : 8
     }
+    #else_if TARGET_ARCH == .riscv64 {
+        /** ELF's e_machine for RISC-V, EM_RISCV; a library for another machine is refused. */
+        LIBRARY_ELF_MACHINE : u16 : 243
+        /** RISC-V's relative relocation, R_RISCV_RELATIVE: base plus addend, stored at the offset. */
+        LIBRARY_RELATIVE_RELOCATION : u32 : 3
+    }
     #else {
         /** ELF's e_machine for AArch64, EM_AARCH64; a library for another machine is refused. */
         LIBRARY_ELF_MACHINE : u16 : 183

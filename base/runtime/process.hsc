@@ -28,6 +28,8 @@ ProcessState :: struct {
     uefi_image : rawptr,
     /** On UEFI, the system table the entry was given (uefi.hsc). Null elsewhere. */
     uefi_system_table : rawptr,
+    /** On UEFI, 1 once the program has written to the console (os_write), atomically; 0 before, and elsewhere. */
+    uefi_console_written : u32,
     /** On SlopOS, the startup block the entry was given. Null elsewhere, or when there was none. */
     startup_block : rawptr,
     /**
@@ -102,7 +104,7 @@ LOCALE_NAME_BYTES :: 32
  *     for none.
  */
 locale_name :: fn() -> string {
-    #if OS == .SlopOS && (TARGET_ARCH == .x86_64 || TARGET_ARCH == .arm64) {
+    #if OS == .SlopOS && (TARGET_ARCH == .x86_64 || TARGET_ARCH == .arm64 || TARGET_ARCH == .riscv64) {
         return slop_os_locale_name()
     }
     #else {

@@ -123,7 +123,7 @@ CarrierBlock :: struct #align(64) {
  * @param fiber The fiber about to run on this thread; null for none, which puts the thread back on its own budget.
  */
 note_running_fiber :: fn(fiber : ptr[Fiber]?) #no_context {
-    #if OS == .SlopOS && (TARGET_ARCH == .x86_64 || TARGET_ARCH == .arm64) {
+    #if OS == .SlopOS && (TARGET_ARCH == .x86_64 || TARGET_ARCH == .arm64 || TARGET_ARCH == .riscv64) {
         carrier : ptr[mut CarrierBlock] : intrinsics.carrier()
         match fiber {
             case Some(running) => slop_os_note_fiber(carrier, cast[u64](cast[uintptr](running)), running.cpu_budget)
@@ -141,7 +141,7 @@ note_running_fiber :: fn(fiber : ptr[Fiber]?) #no_context {
  * @return True if it's noted; false if the system has no per-thread page, or one couldn't be made: then it's ignored.
  */
 bind_cpu_budget :: fn(budget : u64) -> bool #no_context {
-    #if OS == .SlopOS && (TARGET_ARCH == .x86_64 || TARGET_ARCH == .arm64) {
+    #if OS == .SlopOS && (TARGET_ARCH == .x86_64 || TARGET_ARCH == .arm64 || TARGET_ARCH == .riscv64) {
         carrier : ptr[mut CarrierBlock] : intrinsics.carrier()
         fiber : u64 = 0
         match carrier.current_fiber {

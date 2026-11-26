@@ -781,8 +781,13 @@ hart disables them (`sstatus.SIE`) on taking a trap. `riscv64.return_to_user(fra
 the register as a compile-time argument (`riscv64.Csr`, whose values are the registers' numbers), `fence`, with the
 kinds of access before and after as compile-time arguments, `fence_i` and `sfence_vma` in its four forms, `wfi`,
 `pause`, `ebreak`, `seed`, `read_tp` and `write_tp`, `sbi_call` to the machine's firmware, `enter` for a bootloader,
-and `semihosting`; and for user mode, `system_call`, which answers in a0, a1 and a2. `fence_i` and `pause` are written
-as their encodings, so they assemble whatever the target's features.
+and `semihosting`; and for user mode, `system_call`, which answers in a0, a1 and a2, and the four that keep a thread's
+state. `save_floating` and `restore_floating` keep f0 to f31 at 8 bytes each, then `fcsr` at 256, in an area of 272
+bytes. `save_vector` and `restore_vector` keep v0 to v31 at `vlenb` bytes each, then `vstart`, `vtype`, `vl` and
+`vcsr` at 8 bytes each, in an area of 32 times `vlenb` plus 32 bytes; `restore_vector` sets `vtype` and `vl` back with
+`vsetvl`. Each area is 8-byte aligned, and each is given in a0. These four enable D or V for their own instructions,
+so a kernel built without them can switch its threads' state, but `sstatus.FS` or `VS` has to be on when they run.
+`fence_i` and `pause` are written as their encodings, so they assemble whatever the target's features.
 
 ### Functions Entered from Outside
 

@@ -151,7 +151,7 @@ slop_os_events_padded #no_context :: fn(count : u64) -> u64 {
     return (count + 7) & ~cast[u64](7)
 }
 
-#if OS == .SlopOS && (TARGET_ARCH == .x86_64 || TARGET_ARCH == .arm64) {
+#if OS == .SlopOS && (TARGET_ARCH == .x86_64 || TARGET_ARCH == .arm64 || TARGET_ARCH == .riscv64) {
     // How many format strings' offsets and types' hashes a process remembers giving; past those, they're given again.
     /** How many format strings' offsets a process remembers giving; past those, each is given with every record. */
     SLOP_OS_EVENTS_FORMATS :: 128

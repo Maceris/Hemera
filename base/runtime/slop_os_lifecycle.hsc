@@ -11,7 +11,7 @@ import intrinsics from "base:intrinsics"
  * messages are 8 bytes, a kind and a sequence, read and written through the kernel's copy, so the runtime needs no
  * mapping or protocol code for them; std/os/slop_os's lifecycle is the other end.
  */
-#if OS == .SlopOS && (TARGET_ARCH == .x86_64 || TARGET_ARCH == .arm64) {
+#if OS == .SlopOS && (TARGET_ARCH == .x86_64 || TARGET_ARCH == .arm64 || TARGET_ARCH == .riscv64) {
     /** The kernel's error for a channel read whose other end has closed, which ends the lifecycle thread's serving. */
     SLOP_OS_ERROR_PEER_CLOSED : u64 : 12
 

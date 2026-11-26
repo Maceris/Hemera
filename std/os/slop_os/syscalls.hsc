@@ -1818,10 +1818,15 @@ InterceptAction :: enum #backed_by(u32) {
  * ThreadReadRegisters' and ThreadWriteRegisters' registers, u64s, in this order on x86-64: rax, rbx, rcx,
  * rdx, rsi, rdi, rbp, rsp, r8 to r15, rip, rflags. Writing rflags changes only its status flags and DF.
  * On AArch64: x0 to x30, sp, pc, pstate; writing pstate changes only its condition flags (NZCV).
+ * On RISC-V: x0 to x31 by number, then pc; x0 reads as 0, and writing it changes nothing.
  */
 #if TARGET_ARCH == .arm64 {
     /** How many registers thread_read_registers and thread_write_registers take: x0 to x30, sp, pc and pstate. */
     THREAD_REGISTERS : u32 : 34
+}
+#else_if TARGET_ARCH == .riscv64 {
+    /** How many registers thread_read_registers and thread_write_registers take: x0 to x31, then pc. */
+    THREAD_REGISTERS : u32 : 33
 }
 #else {
     /** How many registers thread_read_registers and thread_write_registers take: x86-64's 16, rip and rflags. */
@@ -1836,6 +1841,8 @@ ControllerKind :: enum #backed_by(u32) {
     GicDistributor = 2,
     /** A RISC-V platform-level interrupt controller. */
     Plic = 3,
+    /** A RISC-V advanced platform-level interrupt controller, the AIA's, which delivers its lines by message. */
+    Aplic = 4,
 }
 
 /**

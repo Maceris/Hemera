@@ -70,7 +70,7 @@ import intrinsics from "base:intrinsics"
         configuration_table : rawptr,
     }
 
-    /** EFI_SIMPLE_TEXT_OUTPUT_PROTOCOL, as far as its first two functions. */
+    /** EFI_SIMPLE_TEXT_OUTPUT_PROTOCOL: its functions the runtime calls, and its mode. */
     UefiTextOutput :: struct {
         /**
          * Reset the output device, given the protocol itself as this, and whether to test the device more thoroughly
@@ -82,6 +82,26 @@ import intrinsics from "base:intrinsics"
          * a line break takes a carriage return and a line feed both.
          */
         output_string : fn(this : rawptr, text : ptr[u16]) -> UefiStatus #calling_convention(.c) #no_context,
+        /** TestString to EnableCursor, which the runtime doesn't call. */
+        others : rawptr[7],
+        /** The output's mode: where its cursor is, among others; null if the firmware gives none. */
+        mode : ptr[UefiTextOutputMode]?,
+    }
+
+    /** SIMPLE_TEXT_OUTPUT_MODE: a text output's mode, and where its cursor is. */
+    UefiTextOutputMode :: struct {
+        /** How many modes the output has. */
+        max_mode : i32,
+        /** The mode it's in. */
+        mode : i32,
+        /** Its colours. */
+        attribute : i32,
+        /** The cursor's column, from 0. */
+        cursor_column : i32,
+        /** The cursor's row, from 0. */
+        cursor_row : i32,
+        /** Whether the cursor shows. */
+        cursor_visible : bool,
     }
 
     /** EFI_BOOT_SERVICES, as far as Exit, the functions the runtime doesn't call kept as addresses. */
@@ -200,6 +220,11 @@ import intrinsics from "base:intrinsics"
      * checked closely: a lead byte's continuation bytes are taken as they come. Nothing happens before the entry has
      * stored the system table, or without the output, and the firmware's errors are ignored.
      *
+     * The program's first write to the console starts on a line of its own: if the firmware's cursor isn't at column 0,
+     * as its own messages may leave it, a line break comes first, so the program's first line isn't wrapped short. It's
+     * the
+     * console's cursor that's asked, whichever stream is written, as standard error's mode may not follow the device's.
+     *
      * @param stream OUTPUT for the console; anything else for standard error.
      * @param bytes The first byte, UTF-8, which only has to stay valid for the call.
      * @param count How many bytes; 0 writes nothing.
@@ -212,6 +237,20 @@ import intrinsics from "base:intrinsics"
         }
         if cast[rawptr](out) == null {
             return void
+        }
+        state :: intrinsics.process_state()
+        // The console's own cursor: standard error's mode may not track it, though it's the same device
+        if intrinsics.interlocked_exchange_u32(&state.uefi_console_written, 1) == 0
+            && cast[rawptr](table.console_out) != null {
+            match table.console_out.mode {
+                case Some(mode) => {
+                    if mode.cursor_column != 0 {
+                        line_break : u16[3] = u16.[0x0d, 0x0a, 0]
+                        _ = out.output_string(cast[rawptr](out), &line_break[0])
+                    }
+                }
+                case None => {}
+            }
         }
         buffer : u16[128]
         used := cast[usize](0)
