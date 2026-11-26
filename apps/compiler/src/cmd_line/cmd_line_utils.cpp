@@ -1324,9 +1324,13 @@ namespace hemera {
 			}
 		}
 
-		// The object format and environment follow the OS, unless they're given (docs/compilation.md, Linking)
+		/*
+		 * The object format and environment follow the OS, unless they're given (docs/compilation.md, Linking). A
+		 * RISC-V UEFI application is linked as an ELF, then made into its image
+		 */
 		if (os_seen && !object_format_seen) {
-			output.object_format = OSType::Win32 == output.os || OSType::UEFI == output.os ? ObjectFormatType::COFF
+			output.object_format = OSType::Win32 == output.os || (OSType::UEFI == output.os && ArchType::riscv64 != output.architecture)
+				? ObjectFormatType::COFF
 				: OSType::Darwin == output.os || OSType::MacOSX == output.os ? ObjectFormatType::MachO
 				: ObjectFormatType::ELF;
 		}

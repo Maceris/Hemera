@@ -1559,6 +1559,72 @@ namespace hemera {
 		return text;
 	}
 
+	/*
+	 * On RISC-V (base/intrinsics/riscv64's RegisterFrame): x0 to x31, then sepc, sstatus, scause and stval, in a 288-byte
+	 * frame, which keeps the stack pointer 16-byte aligned. sscratch is the hart's TrapScratch in user mode and 0 in
+	 * supervisor mode, so the entry knows which stack to build the frame on.
+	 */
+	constexpr int RISCV64_FRAME_SIZE = 288;
+	constexpr int RISCV64_FRAME_SEPC = 256;
+	constexpr int RISCV64_FRAME_SSTATUS = 264;
+	constexpr int RISCV64_FRAME_SCAUSE = 272;
+	constexpr int RISCV64_FRAME_STVAL = 280;
+	// sstatus's SUM, which the entry clears so the kernel doesn't reach user memory unless it means to
+	constexpr int RISCV64_SSTATUS_SUM_UPPER = 0x40;
+	constexpr int RISCV64_SSTATUS_SPP = 0x100;
+
+	// x1 and x3 to x31 but those in skip, to or from the frame at base.
+	static std::string riscv64_registers(std::string_view operation, std::string_view base, std::initializer_list<int> skip) {
+		std::string text;
+		for (int i = 1; i < 32; ++i) {
+			if (i == 2 || std::find(skip.begin(), skip.end(), i) != skip.end()) {
+				continue;
+			}
+			text += std::format("\t{} x{}, {}({})\n", operation, i, i * 8, base);
+		}
+		return text;
+	}
+
+	/*
+	 * A RISC-V entry function's code, which stvec points at directly. tp and sscratch are swapped: from user mode tp is
+	 * then the TrapScratch, whose kernel_stack the frame goes on, user mode's stack pointer kept in it for a moment; from
+	 * supervisor mode it's 0, and the frame goes below the interrupted stack pointer, tp put back. Every register goes in
+	 * the frame, the interrupted tp from sscratch, which is cleared, then sepc, sstatus, scause and stval; SUM is
+	 * cleared, s0 and ra too, so stack walks end here, and the body is called with the frame. A body that returns is
+	 * followed by sepc and sstatus restored, sscratch set back to tp when returning to user mode, every register, and sret.
+	 */
+	static std::string entry_assembly_riscv64(std::string_view symbol, std::string_view body, bool returns) {
+		std::string text = std::format("\t.text\n\t.p2align 2\n{}:\n", assembly_name(symbol));
+		text += "\tcsrrw tp, sscratch, tp\n\tbeqz tp, 1f\n";
+		text += std::format("\tsd sp, 8(tp)\n\tld sp, 0(tp)\n\taddi sp, sp, -{0}\n\tsd t0, 40(sp)\n\tld t0, 8(tp)\n\tj 2f\n",
+			RISCV64_FRAME_SIZE);
+		text += std::format("1:\n\tcsrr tp, sscratch\n\taddi sp, sp, -{0}\n\tsd t0, 40(sp)\n\taddi t0, sp, {0}\n", RISCV64_FRAME_SIZE);
+		text += "2:\n\tsd t0, 16(sp)\n\tcsrr t0, sscratch\n\tsd t0, 32(sp)\n\tcsrw sscratch, zero\n\tsd zero, 0(sp)\n";
+		text += riscv64_registers("sd", "sp", { 4, 5 });
+		text += std::format("\tcsrr t0, sepc\n\tsd t0, {}(sp)\n\tcsrr t0, sstatus\n\tsd t0, {}(sp)\n", RISCV64_FRAME_SEPC, RISCV64_FRAME_SSTATUS);
+		text += std::format("\tcsrr t0, scause\n\tsd t0, {}(sp)\n\tcsrr t0, stval\n\tsd t0, {}(sp)\n", RISCV64_FRAME_SCAUSE, RISCV64_FRAME_STVAL);
+		text += std::format("\tlui t0, {:#x}\n\tcsrc sstatus, t0\n", RISCV64_SSTATUS_SUM_UPPER);
+		text += std::format("\tli s0, 0\n\tli ra, 0\n\tmv a0, sp\n\tcall {}\n", assembly_name(body));
+		if (!returns) {
+			return text + "\tunimp\n";
+		}
+		text += std::format("\tld t0, {}(sp)\n\tcsrw sepc, t0\n\tld t0, {}(sp)\n\tcsrw sstatus, t0\n", RISCV64_FRAME_SEPC, RISCV64_FRAME_SSTATUS);
+		text += std::format("\tandi t0, t0, {:#x}\n\tbnez t0, 3f\n\tcsrw sscratch, tp\n3:\n", RISCV64_SSTATUS_SPP);
+		text += riscv64_registers("ld", "sp", {});
+		text += "\tld sp, 16(sp)\n\tsret\n";
+		return text;
+	}
+
+	// riscv64.return_to_user(frame, scratch): sscratch, sepc and sstatus, then every register, a0 last, then sret.
+	static std::string return_to_user_assembly_riscv64() {
+		std::string text = std::format("\t.text\n\t.p2align 2\n{}:\n\tcsrw sscratch, a1\n", RETURN_TO_USER_SYMBOL);
+		text += std::format("\tld t0, {}(a0)\n\tcsrw sepc, t0\n\tld t0, {}(a0)\n\tcsrw sstatus, t0\n", RISCV64_FRAME_SEPC, RISCV64_FRAME_SSTATUS);
+		text += "\tld x2, 16(a0)\n";
+		text += riscv64_registers("ld", "a0", { 10 });
+		text += "\tld a0, 80(a0)\n\tsret\n";
+		return text;
+	}
+
 	// A function defined in the module's assembly, declared so code can take its address or call it.
 	static LLVM::LLVMFuncOp assembly_function(Generator& generator, const std::string& symbol, LLVM::LLVMFunctionType type) {
 		if (auto existing = generator.module.lookupSymbol<LLVM::LLVMFuncOp>(symbol)) {
@@ -1642,6 +1708,13 @@ namespace hemera {
 					"#calling_convention(.syscall_entry) is x86-64's: on AArch64, svc reaches the .entry function in the vector table");
 			}
 			text += entry_assembly_aarch64(symbol, body_symbol, !type->never_returns);
+		}
+		else if (ArchType::riscv64 == generator.options->architecture) {
+			if (has_convention(type, "syscall_entry")) {
+				unsupported(generator, declaration->node,
+					"#calling_convention(.syscall_entry) is x86-64's: on RISC-V, ecall reaches the .entry function stvec points at");
+			}
+			text += entry_assembly_riscv64(symbol, body_symbol, !type->never_returns);
 		}
 		else {
 			text += has_convention(type, "syscall_entry") ? syscall_entry_assembly(symbol, body_symbol, control_flow_integrity(*generator.options))
@@ -5785,10 +5858,133 @@ namespace hemera {
 	 * A RISC-V instruction (base/intrinsics/riscv64). Returns false for a name that isn't one of them, or isn't
 	 * generated yet.
 	 */
-	static bool emit_riscv64(Generator& generator, std::string_view name, const std::vector<mlir::Value>& arguments,
+	static bool emit_riscv64(Generator& generator, std::string_view name, Declaration* called, const std::vector<mlir::Value>& arguments,
 		TypeInfoFunction const* function, Emitted& result) {
 
 		mlir::Type i64 = integer_type(generator, 8);
+		auto generic_integer = [&](size_t index) {
+			const ConstantValue& constant = called->generic_values[index];
+			return static_cast<uint64_t>(ConstantValue::Kind::ENUM_MEMBER == constant.kind
+				? enum_value(function->input[index].type, intern(constant.member)) : constant.integer);
+		};
+		auto instruction = [&](const std::string& text, const std::vector<mlir::Value>& operands = {}) {
+			std::string constraints;
+			for (size_t i = 0; i < operands.size(); ++i) {
+				constraints += "r,";
+			}
+			assembly(generator, mlir::Type(), operands, text, constraints + "~{memory}");
+		};
+		// Registers' values in a struct of the function's result type, from the first of all's members on
+		auto registers_into = [&](mlir::Value all, size_t count) {
+			TypeInfo* type = function->output[0].type;
+			mlir::Value registers = zero_of(generator, llvm_type(generator, type));
+			const std::vector<int64_t> elements = generator.member_elements[static_cast<TypeInfoStruct const*>(base(type))];
+			for (size_t i = 0; i < count && i < elements.size(); ++i) {
+				registers = insert(generator, registers, extract(generator, all, static_cast<int64_t>(i)), { elements[i] });
+			}
+			return value(registers, type);
+		};
+		const size_t generics = called->generic_values.size();
+		// A control and status register, by its number, which the assembler takes as well as its name
+		if (generics == 1 && name.starts_with("csrr[")) {
+			result = intrinsic_value(assembly(generator, i64, {}, std::format("csrr $0, {:#x}", generic_integer(0) & 0xfff),
+				"=r,~{memory}"), function);
+			return true;
+		}
+		if (generics == 1 && name.starts_with("csrw[")) {
+			instruction(std::format("csrw {:#x}, $0", generic_integer(0) & 0xfff), { arguments.back() });
+			return true;
+		}
+		if (generics == 1 && (name.starts_with("csrrw[") || name.starts_with("csrrs[") || name.starts_with("csrrc["))) {
+			result = intrinsic_value(assembly(generator, i64, { arguments.back() },
+				std::format("{} $0, {:#x}, $1", name.substr(0, 5), generic_integer(0) & 0xfff), "=r,r,~{memory}"), function);
+			return true;
+		}
+		if (generics == 2 && name.starts_with("fence[")) {
+			auto kinds = [](uint64_t bits) {
+				std::string text;
+				for (const auto& [bit, letter] : { std::pair{ 8, 'i' }, { 4, 'o' }, { 2, 'r' }, { 1, 'w' } }) {
+					if ((bits & static_cast<uint64_t>(bit)) != 0) {
+						text += letter;
+					}
+				}
+				return text;
+			};
+			instruction(std::format("fence {}, {}", kinds(generic_integer(0)), kinds(generic_integer(1))));
+			return true;
+		}
+		// Zkr's seed (CSR 0x015), which only csrrw reads
+		if (name == "seed") {
+			result = intrinsic_value(assembly(generator, i64, {}, "csrrw $0, 0x15, zero", "=r,~{memory}"), function);
+			return true;
+		}
+		if (name == "read_tp") {
+			result = intrinsic_value(assembly(generator, pointer_type(generator), {}, "mv $0, tp", "=r,~{memory}"), function);
+			return true;
+		}
+		if (name == "write_tp") {
+			instruction("mv tp, $0", { arguments[0] });
+			return true;
+		}
+		/*
+		 * fence.i and pause as their encodings, which assemble whatever the target's features: Zifencei isn't in RVA23,
+		 * and a kernel may leave Zihintpause out
+		 */
+		const std::pair<std::string_view, std::string_view> plain[] = {
+			{ "fence_i", ".4byte 0x0000100f" }, { "pause", ".4byte 0x0100000f" }, { "wfi", "wfi" }, { "ebreak", "ebreak" },
+			{ "sfence_vma_all", "sfence.vma" },
+		};
+		for (const auto& [intrinsic, text] : plain) {
+			if (name == intrinsic) {
+				instruction(std::string(text));
+				return true;
+			}
+		}
+		if (name == "sfence_vma") {
+			instruction("sfence.vma $0, $1", { arguments[0], arguments[1] });
+			return true;
+		}
+		if (name == "sfence_vma_address") {
+			instruction("sfence.vma $0, zero", { arguments[0] });
+			return true;
+		}
+		if (name == "sfence_vma_asid") {
+			instruction("sfence.vma zero, $0", { arguments[0] });
+			return true;
+		}
+		// The SBI: the extension in a7, the function in a6, arguments in a0 to a5, the error and value in a0 and a1
+		if (name == "sbi_call") {
+			std::vector<mlir::Value> operands(arguments.begin() + 2, arguments.end());
+			operands.push_back(arguments[1]);
+			operands.push_back(arguments[0]);
+			mlir::Value both = assembly(generator, LLVM::LLVMStructType::getLiteral(generator.context, { i64, i64 }), operands,
+				"ecall", "={x10},={x11},0,1,{x12},{x13},{x14},{x15},{x16},{x17},~{memory}");
+			result = registers_into(both, 2);
+			return true;
+		}
+		if (name == "system_call") {
+			// a0, a1 and a2 go in as arguments and come back as results
+			mlir::Value all = assembly(generator, LLVM::LLVMStructType::getLiteral(generator.context, { i64, i64, i64 }), arguments,
+				"ecall", "={x10},={x11},={x12},{x17},0,1,2,{x13},{x14},{x15},~{memory}");
+			result = registers_into(all, 3);
+			return true;
+		}
+		if (name == "enter") {
+			assembly(generator, mlir::Type(), arguments,
+				"csrw satp, a0\n\tsfence.vma\n\tmv sp, a1\n\tmv a0, a3\n\tli s0, 0\n\tli ra, 0\n\tjr a2",
+				"{x10},{x11},{x12},{x13},~{memory}");
+			return true;
+		}
+		/*
+		 * Semihosting's marked ebreak: uncompressed, between slli and srai of zero, 16-byte aligned so the three are
+		 * in one page, where a debugger or QEMU reads them
+		 */
+		if (name == "semihosting") {
+			result = intrinsic_value(assembly(generator, i64, arguments,
+				".option push\n\t.option norvc\n\t.p2align 4\n\tslli zero, zero, 0x1f\n\tebreak\n\tsrai zero, zero, 7\n\t.option pop",
+				"={x10},{x10},{x11},~{memory}"), function);
+			return true;
+		}
 		if (name == "syscall") {
 			// Linux's convention: the number in a7, up to six arguments in a0 to a5, the result in a0
 			std::vector<mlir::Value> operands(arguments.begin() + 1, arguments.end());
@@ -7234,7 +7430,8 @@ namespace hemera {
 			if (generator.compile_time || (!coff && !elf)) {
 				return value(zero_of(generator, pointer_type(generator)), result_type);
 			}
-			const char* symbol = coff ? "__ImageBase" : "__ehdr_start";
+			// A UEFI image made from an ELF starts a page below the ELF's headers, where its linking defines __ImageBase
+			const char* symbol = coff || OSType::UEFI == generator.options->os ? "__ImageBase" : "__ehdr_start";
 			LLVM::GlobalOp base = generator.module.lookupSymbol<LLVM::GlobalOp>(symbol);
 			if (!base) {
 				mlir::OpBuilder::InsertionGuard guard(generator.builder);
@@ -7389,9 +7586,10 @@ namespace hemera {
 		}
 		// Generated assembly, made once (docs/calling_convention.md, Entry Functions)
 		if (name == "return_to_user") {
-			const bool aarch64 = ArchType::aarch64 == generator.options->architecture;
+			const ArchType architecture = generator.options->architecture;
 			if (!generator.module.lookupSymbol<LLVM::LLVMFuncOp>(RETURN_TO_USER_SYMBOL)) {
-				generator.module_assembly.push_back(aarch64 ? return_to_user_assembly_aarch64() : return_to_user_assembly());
+				generator.module_assembly.push_back(ArchType::aarch64 == architecture ? return_to_user_assembly_aarch64()
+					: ArchType::riscv64 == architecture ? return_to_user_assembly_riscv64() : return_to_user_assembly());
 			}
 			std::vector<mlir::Type> parameters(arguments.size(), pointer_type(generator));
 			LLVM::LLVMFuncOp helper = assembly_function(generator, std::string(RETURN_TO_USER_SYMBOL),
@@ -7403,7 +7601,8 @@ namespace hemera {
 			return result;
 		}
 		if (name.starts_with("entry_points[") && ArchType::x86_64 != generator.options->architecture) {
-			unsupported(generator, where, "entry_points is x86-64's: on AArch64, aarch64.vector_table makes an entry function's vector table");
+			unsupported(generator, where, "entry_points is x86-64's: on AArch64, aarch64.vector_table makes an entry function's vector "
+				"table, and on RISC-V, stvec points at the entry function itself");
 			return value(zero_of(generator, pointer_type(generator)), result_type);
 		}
 		if (name.starts_with("entry_points[") && called->generic_values.size() == 1) {
@@ -7453,7 +7652,7 @@ namespace hemera {
 		if (package.ends_with("intrinsics/aarch64") && emit_aarch64(generator, name, called, arguments, function, result)) {
 			return result;
 		}
-		if (package.ends_with("intrinsics/riscv64") && emit_riscv64(generator, name, arguments, function, result)) {
+		if (package.ends_with("intrinsics/riscv64") && emit_riscv64(generator, name, called, arguments, function, result)) {
 			return result;
 		}
 		unsupported(generator, where, std::format("the intrinsic {} can't be generated yet", full_name));
@@ -13823,7 +14022,9 @@ namespace hemera {
 		else if (target.os == "Linux" || target.os == "None" || target.os == "UEFI" || target.os == "SlopOS") {
 			result.os = target.os == "Linux" ? OSType::Linux : target.os == "UEFI" ? OSType::UEFI
 				: target.os == "SlopOS" ? OSType::SlopOS : OSType::UnknownOS;
-			result.object_format = target.os == "UEFI" ? ObjectFormatType::COFF : ObjectFormatType::ELF;
+			// A RISC-V UEFI application is linked as an ELF, then made into its image (docs/compilation.md, Linking)
+			result.object_format = target.os == "UEFI" && ArchType::riscv64 != result.architecture ? ObjectFormatType::COFF
+				: ObjectFormatType::ELF;
 			result.environment = EnvironmentType::UnknownEnvironment;
 			result.vendor = VendorType::UnknownVendor;
 		}
@@ -14188,7 +14389,20 @@ namespace hemera {
 	}
 
 	std::string target_abi(const Options& options) {
-		return ArchType::riscv64 == options.architecture ? "lp64d" : "";
+		if (ArchType::riscv64 != options.architecture) {
+			return "";
+		}
+		// Without D, or F, which D needs, like a kernel's code: floating point values in integer registers too
+		std::string_view features = options.cpu_features;
+		while (!features.empty()) {
+			const size_t comma = features.find(',');
+			const std::string_view feature = features.substr(0, comma);
+			if (feature == "-d" || feature == "-f") {
+				return "lp64";
+			}
+			features = comma == std::string_view::npos ? std::string_view() : features.substr(comma + 1);
+		}
+		return "lp64d";
 	}
 
 	/*

@@ -1,4 +1,5 @@
 #include "back_end/back_end.h"
+#include "back_end/efi_image.h"
 
 #include <algorithm>
 #include <chrono>
@@ -826,6 +827,18 @@ namespace hemera {
 			args.insert(args.end(), { "-o", output_name });
 			return args;
 		}
+		if (OSType::UEFI == options.os && options.startup_code) {
+			/*
+			 * A UEFI application lld-link can't link (docs/compilation.md, UEFI Applications): a position-independent
+			 * ELF whose only relocations are relative ones, each segment on pages of its own from 0x1000 up, leaving the
+			 * first page for the image's headers, which write_efi_image makes into the image. Its base is the image's,
+			 * a page below the ELF's headers
+			 */
+			args.insert(args.end(), { "-pie", "--no-dynamic-linker", "-z", "separate-loadable-segments", "-z", "norelro",
+				"--image-base=0x1000", "--defsym=__ImageBase=__ehdr_start-0x1000", "-e", std::string(HOSTED_ENTRY_SYMBOL),
+				"--strip-debug", "-o", output_name });
+			return args;
+		}
 		if (links_c) {
 			const char* loader = ArchType::aarch64 == options.architecture ? "/lib/ld-linux-aarch64.so.1"
 				: ArchType::riscv64 == options.architecture ? "/lib/ld-linux-riscv64-lp64d.so.1" : "/lib64/ld-linux-x86-64.so.2";
@@ -938,9 +951,12 @@ namespace hemera {
 		const bool split = splits_debug_info(options);
 		const std::string with_debug = options.output_name + ".with-debug";
 		std::vector<std::string> debug_args;
+		// A UEFI application linked as an ELF is made into its image afterwards, from the ELF beside it
+		const bool efi_image = ObjectFormatType::ELF == options.object_format && OSType::UEFI == options.os && options.startup_code;
+		const std::string efi_elf = options.output_name + ".elf";
 		if (ObjectFormatType::ELF == options.object_format) {
 			linker = "ld.lld";
-			args = elf_arguments(options, libraries, options.output_name, !options.debug_info || split);
+			args = elf_arguments(options, libraries, efi_image ? efi_elf : options.output_name, !options.debug_info || split);
 			if (split) {
 				debug_args = elf_arguments(options, libraries, with_debug, false);
 			}
@@ -982,8 +998,18 @@ namespace hemera {
 				}
 				return result == 0;
 			};
-			if (run(args) && split && run(debug_args)) {
+			const bool linked = run(args);
+			if (linked && split && run(debug_args)) {
 				write_debug_file(with_debug, options.output_name, debug_table);
+			}
+			if (linked && efi_image) {
+				std::string error;
+				if (!write_efi_image(efi_elf, options.output_name, error)) {
+					report_error(ErrorCode::E7000, efi_elf, 0, 0, std::format("the UEFI image couldn't be made: {}", error));
+				}
+				else if (!remove_written(efi_elf)) {
+					report_warning(WarningCode::W7000, efi_elf, 0, 0, "the ELF the UEFI image was made from couldn't be deleted");
+				}
 			}
 		}
 

@@ -22,6 +22,7 @@
 
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Module.h"
+#include "llvm/Object/COFF.h"
 #include "llvm/Object/ELFObjectFile.h"
 #include "llvm/Object/ObjectFile.h"
 #include "mlir/IR/BuiltinDialect.h"
@@ -229,6 +230,70 @@ TEST(Freestanding, CallsUEFIFunctionValuesWithMicrosoftsConvention)
 	EXPECT_NE(body.find("movq 48(%rbp), %rax"), std::string::npos) << body;
 	EXPECT_NE(body.find("movq %rax, 32(%rsp)"), std::string::npos) << body;
 	module.erase();
+}
+
+/*
+ * A RISC-V UEFI application, which lld-link can't link: linked as an ELF and made into a PE32+ image
+ * (docs/compilation.md, UEFI Applications). Running it takes edk2 under QEMU, which freestanding_tests.py does; here
+ * the image is read back as a PE: its machine and subsystem, its entry in its code, a section for each segment with
+ * the protection it had, and the ELF's relative relocations as DIR64 base relocations, each in a section's bytes.
+ */
+TEST(Freestanding, MakesRISCVUEFIImage)
+{
+	const std::filesystem::path output = std::filesystem::path(HEMERA_TEST_OUTPUT_DIR) / "uefi_riscv64" / "BOOTRISCV64.EFI";
+	build_elf(output, "uefi_riscv64", false, [](hemera::Options& options) {
+		options.architecture = hemera::ArchType::riscv64;
+		options.os = hemera::OSType::UEFI;
+	});
+	if (testing::Test::HasFatalFailure()) {
+		return;
+	}
+	EXPECT_FALSE(std::filesystem::exists(output.string() + ".elf"));
+
+	auto binary = llvm::object::ObjectFile::createObjectFile(output.string());
+	ASSERT_TRUE(static_cast<bool>(binary)) << llvm::toString(binary.takeError());
+	auto* image = llvm::dyn_cast<llvm::object::COFFObjectFile>(binary->getBinary());
+	ASSERT_NE(image, nullptr);
+	EXPECT_EQ(image->getMachine(), llvm::COFF::IMAGE_FILE_MACHINE_RISCV64);
+	const llvm::object::pe32plus_header* header = image->getPE32PlusHeader();
+	ASSERT_NE(header, nullptr);
+	EXPECT_EQ(header->Subsystem, llvm::COFF::IMAGE_SUBSYSTEM_EFI_APPLICATION);
+	EXPECT_EQ(header->SectionAlignment, 0x1000u);
+
+	std::map<std::string, const llvm::object::coff_section*> sections;
+	for (const llvm::object::SectionRef& section : image->sections()) {
+		auto name = section.getName();
+		ASSERT_TRUE(static_cast<bool>(name));
+		sections[name->str()] = image->getCOFFSection(section);
+	}
+	ASSERT_TRUE(sections.contains(".text"));
+	ASSERT_TRUE(sections.contains(".rdata"));
+	ASSERT_TRUE(sections.contains(".reloc"));
+	const llvm::object::coff_section* text = sections[".text"];
+	EXPECT_EQ(text->Characteristics & (llvm::COFF::IMAGE_SCN_MEM_EXECUTE | llvm::COFF::IMAGE_SCN_MEM_WRITE),
+		llvm::COFF::IMAGE_SCN_MEM_EXECUTE);
+	EXPECT_EQ(sections[".rdata"]->Characteristics & (llvm::COFF::IMAGE_SCN_MEM_EXECUTE | llvm::COFF::IMAGE_SCN_MEM_WRITE), 0u);
+	EXPECT_GE(header->AddressOfEntryPoint, text->VirtualAddress);
+	EXPECT_LT(header->AddressOfEntryPoint, text->VirtualAddress + text->VirtualSize);
+
+	size_t relocations = 0;
+	for (const llvm::object::BaseRelocRef& relocation : image->base_relocs()) {
+		uint8_t type = 0;
+		uint32_t address = 0;
+		ASSERT_FALSE(static_cast<bool>(relocation.getType(type)));
+		ASSERT_FALSE(static_cast<bool>(relocation.getRVA(address)));
+		if (type == llvm::COFF::IMAGE_REL_BASED_ABSOLUTE) {
+			continue;
+		}
+		EXPECT_EQ(type, llvm::COFF::IMAGE_REL_BASED_DIR64);
+		bool inside = false;
+		for (const auto& [name, section] : sections) {
+			inside = inside || (address >= section->VirtualAddress && address + 8 <= section->VirtualAddress + section->SizeOfRawData);
+		}
+		EXPECT_TRUE(inside) << std::format("{:#x}", address);
+		++relocations;
+	}
+	EXPECT_GT(relocations, 0u);
 }
 
 /*

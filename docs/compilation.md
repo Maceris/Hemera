@@ -687,6 +687,9 @@ as `link.exe` does `lld-link`'s. The object format follows the target's OS:
 | `Windows`, `UEFI` | PE/COFF |
 | `Mac` | Mach-O |
 
+A RISC-V UEFI application is the exception: linked as an ELF, then made into a PE image (see
+[UEFI Applications](#uefi-applications)).
+
 `TargetOptions.linker_script` places sections, for outputs loaded at fixed addresses like kernels.
 
 The libraries `#foreign` functions come from (`name.lib` for PE/COFF, `libname.so` or `libname.a` for ELF) are found in
@@ -705,7 +708,8 @@ looks where `LIB` says when it is, so a library path is the way to add a folder.
 ### UEFI Applications
 
 A program for `OS == .UEFI` is an application the firmware runs on its boot services, like a bootloader: a PE32+
-image with the EFI application subsystem, for x86-64 or AArch64, named as `output_path` says, like `BOOTX64.EFI`. Its
+image with the EFI application subsystem, for x86-64, AArch64 or RISC-V, named as `output_path` says, like
+`BOOTX64.EFI`. Its
 entry is the image's, which the firmware calls with the image's handle and the system table, in UEFI's convention;
 `base`'s runtime keeps both (`runtime.uefi_system_table()`), and then:
 
@@ -721,6 +725,20 @@ typed with their convention (see [directives.md](directives.md#functions)). A fr
 `__chkstk`, which the compiler provides as it does for Windows, on x86-64 and AArch64 alike; on AArch64 no function
 has unwind information, which Windows' code would otherwise have.
 `OutputType.FlatBinary` links the same way, then keeps only the loadable bytes.
+
+lld-link has no RISC-V, so a RISC-V application is linked by `ld.lld` as a position-independent ELF, beside the
+output with `.elf` added, and the compiler makes the image from it, as edk2's `GenFw` does, then deletes it:
+
+* each loadable segment, on pages of its own from `0x1000` up, becomes a section at the same address: `.text` if it's
+  executable, `.data` if it's writable, and `.rdata` otherwise, so the firmware can protect each as the segment was;
+* the image's base is 0, its headers in the first page, and `intrinsics.image_base` is where they're loaded;
+* the ELF's relative relocations, the only ones it may have, become `DIR64` base relocations in `.reloc`, with their
+  addends written where they apply;
+* nothing else is kept, debug info included, so stack traces can't be symbolized yet.
+
+Its code uses the LP64D ABI. edk2 is built for LP64, but the two pass integers and pointers alike, and the firmware's
+interfaces pass nothing else. A frame bigger than a page needs nothing more, since there's no `__chkstk` on RISC-V and the firmware's stack
+is all there already.
 
 ### Starting on Linux
 
@@ -799,6 +817,13 @@ floating-point values in floating-point registers. The carrier register is `s11`
 [calling_convention.md](calling_convention.md#carrier-register)), and a frame's record is RISC-V's own, below its
 frame pointer (see [Prologue Stack Check](calling_convention.md#prologue-stack-check)). An x86-64 Linux machine can run
 the programs with `qemu-user`.
+
+A freestanding RISC-V program, like a kernel, usually takes `--cpu-features=-f,-d,-zve32x,-zvl32b`, so nothing uses
+floating-point or vector registers, which trap until `sstatus` enables them. Leaving out `F` or `D` makes the ABI LP64,
+with floating-point values in integer registers, as code without those registers needs; `-zve32x` and `-zvl32b` leave
+out every vector extension and vector length RVA23 implies. Code linked above 2 GiB, like a kernel at `0x80200000`,
+takes `--code-model=medium` (RISC-V's `medany`), which reaches what it addresses relative to itself.
+`apps/compiler/test/freestanding_tests.py` boots one in QEMU's `virt` machine, started by OpenSBI in supervisor mode.
 
 ### Linking C on Linux
 

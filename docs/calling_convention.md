@@ -644,7 +644,7 @@ page_fault #calling_convention(.interrupt) :: fn(frame: ptr[x86_64.InterruptFram
 
 ### Entry Functions
 
-Entry functions are how a kernel is entered from user mode, and returns to it (x86-64 and AArch64). Unlike an
+Entry functions are how a kernel is entered from user mode, and returns to it (x86-64, AArch64 and RISC-V). Unlike an
 [interrupt function](#interrupt-functions), an entry function gets every register of the interrupted code as data,
 in a `RegisterFrame`, and doesn't have to return to it: a kernel can save the frame, switch to another thread, and
 leave with `x86_64.return_to_user`.
@@ -742,6 +742,47 @@ address translation maintenance, `wfi` and `wfe`, `rndr`, `brk`, and `semihostin
 `system_call`, which answers in x0, x1 and x2, and `save_fp_simd` and `restore_fp_simd`, which keep a thread's v0 to
 v31, FPCR and FPSR. Those two are written as the instructions' encodings, so a kernel built without floating
 point (`-fp-armv8`) can switch its threads' state.
+
+#### RISC-V
+
+On RISC-V every trap, an `ecall` included, goes to the one address in `stvec`, in direct mode, so there's only
+`#calling_convention(.entry)`, and the function's address is what goes there. The frame is a
+`riscv64.RegisterFrame`: `x0` to `x31` by number (`x[0]` is 0), `sepc`, `sstatus`, `scause` and `stval`, 288 bytes in
+all.
+
+```
+trap #calling_convention(.entry) :: fn(frame: ptr[mut riscv64.RegisterFrame]) {/* ... */}
+
+riscv64.csrw(.STVEC, cast[u64](trap))
+```
+
+The hardware switches no stack, so `sscratch` says where the frame goes: while a hart runs in user mode it points at
+the hart's `riscv64.TrapScratch`, whose `kernel_stack` the kernel sets for each thread, and in supervisor mode it's 0.
+
+1. The entry swaps `tp` and `sscratch`. From user mode, `tp` is then the `TrapScratch`: user mode's stack pointer is
+   kept in it for a moment and the frame goes on `kernel_stack`. From supervisor mode, `tp` is 0, so it's put back
+   from `sscratch`, and the frame goes below the interrupted stack pointer.
+2. Every register goes in the frame, the interrupted stack pointer and `tp` included, then `sepc`, `sstatus`, `scause`
+   and `stval`. `sscratch` is cleared, so a trap taken in the kernel from now on stays on its stack.
+3. `sstatus.SUM` is cleared, so the kernel reaches user memory only when it means to, `s0` and `ra` too, so stack walks
+   end at the entry, and the body is called with a pointer to the frame. As on the others, the body has no stack
+   check, carrier block or context until it sets them up.
+4. A body that returns is followed by `sepc` and `sstatus` restored from the frame, `sscratch` set back to `tp` when
+   it returns to user mode, every register, and `sret`. One that never returns is `#never_returns`.
+
+A trap from user mode leaves `tp` pointing at the `TrapScratch`, so a kernel can make it the start of its per-hart
+data and find that through `riscv64.read_tp` in the body, as the AArch64 entry finds it through `TPIDR_EL1`. Its body
+should leave `tp` there, since returning to user mode makes it the next `sscratch`. Interrupts stay disabled, as the
+hart disables them (`sstatus.SIE`) on taking a trap. `riscv64.return_to_user(frame, scratch)` sets `sscratch` to
+`scratch`, then restores every register from a frame and returns with `sret`; the frame's `sstatus` has `SPP` and
+`SIE` clear, and `SPIE` set when user mode runs with interrupts enabled.
+
+`base/intrinsics/riscv64` also has what a kernel needs around it: `csrr`, `csrw`, `csrrw`, `csrrs` and `csrrc`, with
+the register as a compile-time argument (`riscv64.Csr`, whose values are the registers' numbers), `fence`, with the
+kinds of access before and after as compile-time arguments, `fence_i` and `sfence_vma` in its four forms, `wfi`,
+`pause`, `ebreak`, `seed`, `read_tp` and `write_tp`, `sbi_call` to the machine's firmware, `enter` for a bootloader,
+and `semihosting`; and for user mode, `system_call`, which answers in a0, a1 and a2. `fence_i` and `pause` are written
+as their encodings, so they assemble whatever the target's features.
 
 ### Functions Entered from Outside
 
