@@ -142,6 +142,8 @@ CpuFeature :: enum #backed_by(u16) {
     RiscvSstc     = 166, /**< Sstc, the supervisor's own timer compare register, stimecmp. */
     RiscvSscofpmf = 167, /**< Sscofpmf, counter overflow interrupts and mode filtering. */
     RiscvSsaia    = 168, /**< Ssaia, the supervisor's part of the Advanced Interrupt Architecture (the IMSIC). */
+    /** Sdtrig's triggers, as the SBI's debug triggers extension gives them: hardware breakpoints, watchpoints, a step. */
+    RiscvSdtrig   = 169,
 }
 
 /**
