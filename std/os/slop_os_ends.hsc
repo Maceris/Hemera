@@ -598,6 +598,12 @@ LaunchEvents :: struct {
          * to run on the launcher's.
          */
         cpu_budget : slop_os.CpuBudget?,
+        /**
+         * The memory budget the program's is split off, which pays for it and needs RIGHT_BUDGET_CHARGE: one the
+         * launcher was given to launch from, so a program's memory comes out of another budget than the launcher's
+         * own. It stays the caller's. Null to split it off the launcher's own (the startup block's).
+         */
+        memory_budget : slop_os.MemoryBudget?,
         /** The clock page, given as the grant "clock" and then the program's; null to give none. */
         clock : slop_os.Memory?,
         /**
@@ -727,14 +733,15 @@ LaunchEvents :: struct {
      * @param name The program's name, for the manager's log; past GRANT_LABEL_SIZE bytes it's cut off.
      * @param executable The program's file, which stays the caller's: it's duplicated for the manager, executable too
      *     where the caller's handle allows it.
-     * @param budget How many bytes of memory the program's budget has, split off the caller's.
+     * @param budget How many bytes of memory the program's budget has, split off the caller's, or off
+     *     options.memory_budget where it's given.
      * @param F The program's entry's type, type_of(its entry): its parameters are what grants is checked against.
      *     A type rather than the function, so the caller's program doesn't take in the launched one's code.
      * @param grants The handles and values the program's entry takes. The handles are the program's once it's
      *     started; if the launch fails before the Load is sent, they're still the caller's.
      * @param options What the launch does beyond its grants (LaunchOptions).
      * @return The started program's process, budget, first thread and image's address, and its faults' intercept.
-     * @error NoBudget The caller's budget couldn't pay, or the arguments page couldn't be written.
+     * @error NoBudget The budget it's split off couldn't pay, or the arguments page couldn't be written.
      * @error BadGrants The grants don't fit a Load, or a handle couldn't be duplicated.
      * @error NoCpuBudget The process couldn't be put on the CPU budget given.
      * @error ProgramGone The executable couldn't be duplicated.
@@ -857,13 +864,14 @@ LaunchEvents :: struct {
      * @param port A port bound to manager's end (port_for), waited on for its answer.
      * @param name The program's name, for the manager's log; past GRANT_LABEL_SIZE bytes it's cut off.
      * @param executable The program's file, which stays the caller's, as launch takes it.
-     * @param budget How many bytes of memory the program's budget has, split off the caller's.
+     * @param budget How many bytes of memory the program's budget has, split off the caller's, or off
+     *     options.memory_budget where it's given.
      * @param grants Its grants, each a handle and the label of its parameter. The handles are the program's once it's
      *     started, and the caller's still if it isn't.
      * @param values Its values, each written already, with its type's schema hash; none gives no "arguments" grant.
      * @param options What the launch does beyond its grants (LaunchOptions).
      * @return The started program's process, budget, first thread and image's address, and its faults' intercept.
-     * @error NoBudget The caller's budget couldn't pay, or the arguments page couldn't be written.
+     * @error NoBudget The budget it's split off couldn't pay, or the arguments page couldn't be written.
      * @error BadGrants The grants don't fit a Load, or a handle couldn't be duplicated.
      * @error NoCpuBudget The process couldn't be put on the CPU budget given.
      * @error ProgramGone The executable couldn't be duplicated.
@@ -894,13 +902,14 @@ LaunchEvents :: struct {
      * @param port A port bound to manager's end (port_for), waited on for its answer.
      * @param name The program's name, for the manager's log.
      * @param executable The program's file, which stays the caller's.
-     * @param budget How many bytes of memory the program's budget has, split off the caller's.
+     * @param budget How many bytes of memory the program's budget has, split off the caller's, or off
+     *     options.memory_budget where it's given.
      * @param grants The grants by their labels; their handles are the program's once it's started.
      * @param arguments The page of the values written for the program, or null for none. It's the launch's: given to
      *     the program as the grant "arguments", or closed.
      * @param options What the launch does beyond its grants (LaunchOptions).
      * @return The started program's process, budget, first thread and image's address, and its faults' intercept.
-     * @error NoBudget The caller's budget couldn't pay for the program's budget, a port couldn't be duplicated for the
+     * @error NoBudget The budget it's split off couldn't pay for the program's, a port couldn't be duplicated for the
      *     watch or the intercept, or the manager couldn't make the watch or the intercept.
      * @error BadGrants The grants don't fit a Load, a label is too long, or the process or its budget couldn't be
      *     duplicated.
@@ -935,7 +944,8 @@ LaunchEvents :: struct {
          * program has what it was given
          */
         threads :: if options.lifecycle is_some { cast[u64](2) } else { cast[u64](1) }
-        child :: slop_os.memory_budget_create(block.budget, budget + slop_os.shadow_stacks_budget(threads))
+        parent :: options.memory_budget or_else block.budget
+        child :: slop_os.memory_budget_create(parent, budget + slop_os.shadow_stacks_budget(threads))
             or_return .Error(.NoBudget)
         load := process_manager.Load.{
             name = label_from(name),
