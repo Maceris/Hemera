@@ -56,6 +56,8 @@ import intrinsics from "base:intrinsics"
         stack_pages : rawptr,
         /** The stack's size in bytes, a whole number of pages. */
         stack_bytes : usize,
+        /** The thread's carrier block's address, the word its thread pointer points at (register_carrier). */
+        carrier_word : rawptr,
     }
 
     /**
@@ -190,6 +192,8 @@ import intrinsics from "base:intrinsics"
         thread.carrier.native_stack_limit = cast[rawptr](cast[u64](cast[uintptr](thread.stack_pages)) + STACK_RESERVE)
         thread.carrier.stack_limit = thread.carrier.native_stack_limit
         thread.carrier.segment_allocator = thread.starting_context.allocator
+        thread.carrier_word = cast[rawptr](&thread.carrier)
+        register_carrier(&thread.carrier_word)
         data : any
         match thread.data {
             case Some(given) => data = given

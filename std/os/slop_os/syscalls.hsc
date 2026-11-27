@@ -1385,6 +1385,15 @@ Syscalls :: struct {
      * @error MissingRight process lacks RIGHT_PROCESS_INSPECT.
      */
     channel_peer_owned_by : fn(end : Channel, process : Process) -> Result[bool, ControlError],
+    /**
+     * Set the calling thread's thread pointer, which it keeps until it sets another: x86-64's fs base, AArch64's
+     * TPIDR_EL0, RISC-V's tp. A thread starts with 0. AArch64's and RISC-V's are the thread's to write directly too;
+     * x86-64's only through this, as user mode can't write fs base itself.
+     *
+     * @param value The pointer: a user address, or 0 for none.
+     * @error BadAddress value isn't 0 or an address in user memory.
+     */
+    thread_set_pointer : fn(value : u64) -> Result[void, MemoryError],
 }
 
 // What process_set_control_flow is told a process's code was built for (the SlopOS repository's decisions/0186)

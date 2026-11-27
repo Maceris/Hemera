@@ -32,6 +32,12 @@ SLOP_OS_CALL_MEMORY_MAP : u64 : 27
 SLOP_OS_CALL_THREAD_SET_PAGE : u64 : 92
 
 /**
+ * The system call that sets the calling thread's thread pointer, which x86-64's user mode can't set itself: fs base
+ * there, TPIDR_EL0 on AArch64, tp on RISC-V.
+ */
+SLOP_OS_CALL_THREAD_SET_POINTER : u64 : 99
+
+/**
  * A thread's per-thread page, which the thread writes and the kernel reads (std/os/slop_os's ThreadPage, which has to
  * match it).
  */
@@ -365,8 +371,42 @@ SlopOsGrant :: struct {
         }
         carrier.native_stack_limit = cast[rawptr](startup.stack_base + STACK_RESERVE)
         carrier.stack_limit = carrier.native_stack_limit
+        // Where C calling back into Hemera finds it (register_carrier), on the start-up stack, which outlasts main
+        state.carrier_word = cast[rawptr](cast[uintptr](carrier))
+        register_carrier(cast[ptr[mut rawptr]](&state.carrier_word))
         // The lifecycle channel served from here on, before main (slop_os_lifecycle.hsc)
         slop_os_start_lifecycle()
+    }
+
+    /**
+     * Point the calling thread's thread pointer at the word that holds its carrier block's address, where a callback
+     * from foreign code finds it (the compiler's callback shim reads the word through the thread pointer, as ELF's
+     * thread-local storage starts with a word): x86-64's fs base, through SLOP_OS_CALL_THREAD_SET_POINTER, as user
+     * mode can't write it; AArch64's TPIDR_EL0 and RISC-V's tp, written directly.
+     *
+     * @param word The word, which holds the carrier block's address and has to last as long as the thread.
+     */
+    register_carrier #no_context :: fn(word : ptr[mut rawptr]) {
+        #if TARGET_ARCH == .x86_64 {
+            slop_os_call(SLOP_OS_CALL_THREAD_SET_POINTER, cast[u64](cast[uintptr](word)))
+        }
+        #else_if TARGET_ARCH == .arm64 {
+            aarch64.write_system_register(.TPIDR_EL0, cast[u64](cast[uintptr](word)))
+        }
+        #else_if TARGET_ARCH == .riscv64 {
+            riscv64.write_tp(cast[rawptr](word))
+        }
+    }
+
+    /**
+     * Find the carrier block of a thread a callback from foreign code found none on. Every thread on SlopOS is
+     * Hemera's, its thread pointer set as it starts, so there's always one; a callback shim calls this only if the
+     * word was 0, and then the program stops with a trap.
+     *
+     * @return Never returns.
+     */
+    callback_carrier #no_context :: fn() -> ptr[mut CarrierBlock] {
+        intrinsics.trap()
     }
 
     /**

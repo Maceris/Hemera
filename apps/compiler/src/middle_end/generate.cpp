@@ -2219,7 +2219,8 @@ namespace hemera {
 	 * it makes some itself), and calls the body with the context the foreign call it's inside saved,
 	 * or HOSTED_CONTEXT on a thread Hemera didn't start. The body runs where the shim was called:
 	 * the native stack, which a foreign call from a fiber moved to, with foreign_depth still counting
-	 * it, so nothing yields. Windows only, so far.
+	 * it, so nothing yields. Windows x64, Linux linking C, and SlopOS, whose runtime points each thread's
+	 * thread pointer at a word holding its carrier block (runtime.register_carrier), so far.
 	 */
 	static const char* carrier_to_operand(const Generator& generator);
 	static const char* operand_to_carrier(const Generator& generator);
@@ -2236,12 +2237,14 @@ namespace hemera {
 		const ArchType architecture = generator.options->architecture;
 		const bool linux_c = OSType::Linux == generator.options->os && generator.c_library
 			&& (ArchType::x86_64 == architecture || ArchType::aarch64 == architecture || ArchType::riscv64 == architecture);
-		if (!(system_v_on_windows(*generator.options) || linux_c) || carrier_declaration == nullptr || context_declaration == nullptr || hosted == nullptr
+		const bool slop_os = OSType::SlopOS == generator.options->os
+			&& (ArchType::x86_64 == architecture || ArchType::aarch64 == architecture || ArchType::riscv64 == architecture);
+		if (!(system_v_on_windows(*generator.options) || linux_c || slop_os) || carrier_declaration == nullptr || context_declaration == nullptr || hosted == nullptr
 			|| find_carrier == nullptr || carrier_declaration->type_value == nullptr || context_declaration->type_value == nullptr
 			|| !runtime_offset(generator, "CarrierBlock", "foreign_depth", foreign_depth)
 			|| !runtime_offset(generator, "CarrierBlock", "foreign_context", foreign_context)) {
 			unsupported(generator, declaration->node,
-				"callbacks from foreign code (.c functions with a context) are only made for Windows x64, and Linux linking C, so far");
+				"callbacks from foreign code (.c functions with a context) are only made for Windows x64, Linux linking C, and SlopOS, so far");
 			return;
 		}
 		TypeInfo* carrier_type = carrier_declaration->type_value;
@@ -2269,6 +2272,16 @@ namespace hemera {
 			// Linux: the thread-local slot, null on a thread that has never run Hemera code
 			LLVM::StoreOp::create(b, l, LLVM::LoadOp::create(b, l, pointer, LLVM::AddressOfOp::create(b, l, thread_carrier_global(generator))),
 				found);
+		}
+		else if (slop_os) {
+			/*
+			 * SlopOS: the word the thread pointer points at, as the runtime set it for every thread it started; 0 with
+			 * no thread pointer, where AArch64 and RISC-V can tell, and on x86-64 every thread has one
+			 */
+			const char* read = ArchType::x86_64 == architecture ? "movq %fs:0, $0"
+				: ArchType::aarch64 == architecture ? "mrs $0, tpidr_el0\n\tcbz $0, 1f\n\tldr $0, [$0]\n1:"
+				: "mv $0, zero\n\tbeqz tp, 1f\n\tld $0, 0(tp)\n1:";
+			LLVM::StoreOp::create(b, l, assembly(generator, pointer, {}, read, "=&r"), found);
 		}
 		else if (process && runtime_offset(generator, "ProcessState", "carrier_slot", carrier_slot)) {
 			mlir::Type i32 = integer_type(generator, 4);

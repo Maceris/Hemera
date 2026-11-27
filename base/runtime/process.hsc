@@ -71,6 +71,11 @@ ProcessState :: struct {
     events_log : rawptr,
     /** On SlopOS, how far mapping events_log has got: one of the CLOCK_PAGE_ constants, as clock_state. */
     events_state : u32,
+    /**
+     * On SlopOS, the first thread's carrier block's address, the word its thread pointer points at (register_carrier);
+     * null before the startup code sets it.
+     */
+    carrier_word : rawptr,
     /** On SlopOS, 1 once the lifecycle channel asked the program to stop (slop_os_lifecycle.hsc), 0 before. */
     stop_requested : u32,
     /** On SlopOS, the port to wake when the program is asked to stop, or 0 for none (slop_os_lifecycle.hsc). */

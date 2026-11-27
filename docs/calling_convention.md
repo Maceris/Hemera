@@ -432,8 +432,11 @@ are. Hemera code calling the function by name calls its body directly, with its 
 storage slot is the program's (`intrinsics.carrier_slot`), allocated by `runtime.register_carrier`, which the program's
 entry calls for the main thread and each thread's entry for itself. On Linux, for a program that links C, the
 slot is an ELF thread-local variable, which libc sets up on every thread, and a thread Hemera didn't start gets a carrier
-block with no stack limit, since its stack's bounds aren't known. Windows x64, and Linux x86-64, AArch64 and RISC-V
-linking C, so far.
+block with no stack limit, since its stack's bounds aren't known. On an OS whose runtime has no thread-local storage
+slot but a thread pointer of each thread's own (fs base, `TPIDR_EL0`, `tp`), the runtime points it at a word holding the
+thread's carrier block, as ELF's thread-local storage starts with a word, and the shim reads the word through it
+(`%fs:0`, or a load through `TPIDR_EL0` or `tp`). Windows x64, Linux x86-64, AArch64 and RISC-V linking C, and such an
+OS, so far.
 
 ### Suspending and Resuming a Fiber
 
@@ -830,7 +833,8 @@ cpu_start #calling_convention(.c) #no_context :: fn(info: ptr[MpInfo]) #never_re
 `#no_context` works with Hemera's own convention too, for Hemera code that runs before there's a carrier block.
 
 A `.c` function without `#no_context` is a callback from foreign code, which gets the entry shim described in
-[Calls to Foreign Code](#calls-to-foreign-code) to find its carrier and context (Windows x64, and Linux x86-64,
+[Calls to Foreign Code](#calls-to-foreign-code) to find its carrier and context (Windows x64, an OS whose runtime keeps
+it at the thread pointer, and Linux x86-64,
 AArch64 and RISC-V linking C, so far).
 
 ## Other Conventions
