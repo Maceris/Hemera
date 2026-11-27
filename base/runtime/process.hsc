@@ -131,14 +131,19 @@ CLOCK_PAGE_MAPPED : u32 : 2
 /** There's none, or mapping it failed; it isn't tried again. */
 CLOCK_PAGE_NONE : u32 : 3
 
-/** The number of size classes of PageHeap's small blocks: 16 bytes, doubling, to 2 KiB. */
-PAGE_HEAP_CLASSES :: 8
-/** The size in bytes of the chunks each class's blocks are carved from, mapped one at a time as a class runs out. */
+/** The number of size classes of PageHeap's blocks: 16 bytes, doubling, to 32 KiB. */
+PAGE_HEAP_CLASSES :: 12
+/**
+ * The least size in bytes of the chunks each class's blocks are carved from, mapped one at a time as a class runs out:
+ * 64 KiB, or for a class whose blocks are bigger, room for PAGE_HEAP_CHUNK_BLOCKS of them (page_heap_chunk).
+ */
 PAGE_HEAP_CHUNK :: 65536
+/** The fewest blocks a chunk holds, which makes the chunks of the biggest classes larger than PAGE_HEAP_CHUNK. */
+PAGE_HEAP_CHUNK_BLOCKS :: 4
 
 /**
- * A heap made from pages the system maps: blocks of up to 2 KiB come from one free list per size
- * class, carved from 64 KiB chunks, and bigger ones are pages of their own. Every block has 16
+ * A heap made from pages the system maps: blocks of up to 32 KiB come from one free list per size
+ * class, carved from chunks of at least 64 KiB, and bigger ones are pages of their own. Every block has 16
  * bytes in front of it: its class, or for a block of its own pages, how many bytes of pages there
  * are, then where they start. One lock guards it all, held for a few instructions (or a chunk's
  * mapping). Chunks are kept for the rest of the process.

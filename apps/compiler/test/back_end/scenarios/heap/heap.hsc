@@ -53,13 +53,23 @@ Shared :: struct {
     next : u64,
 }
 
+/** Sizes at and just past each of the heap's size classes' limits, 16 bytes doubling to 32 KiB, and past them. */
+BOUNDARIES :: usize.[16, 17, 2048, 2049, 4096, 4097, 8192, 8193, 16384, 16385, 32768, 32769, 40000]
+
 /**
  * Give the size of a thread's block number i.
  *
  * @param i The block's number.
- * @return From 1 to 6000 bytes.
+ * @return From 1 to 40000 bytes: every fourth block one of BOUNDARIES, the rest spread over 1 to 6000 bytes, and
+ *     every tenth over 1 to 40000.
  */
 size_of_block :: fn(i: usize) -> usize {
+    if i % 4 == 0 {
+        return BOUNDARIES[(i / 4) % BOUNDARIES.count]
+    }
+    if i % 10 == 1 {
+        return (i * 7919) % 40000 + 1
+    }
     return (i * 37) % 6000 + 1
 }
 
@@ -184,6 +194,46 @@ worker : runtime.ThreadFunction : fn(data #escaping : any) {
     if index < THREADS {
         shared.reports[index].problem = exercise(index + 1)
     }
+}
+
+/*
+ * Blocks of 4000 bytes, as many as a chunk holds, all within a few blocks' bytes of one another: they share a chunk,
+ * rather than each taking pages of its own. One freed and allocated again is the same block. Only Linux's heap is the
+ * runtime's own; elsewhere, nothing's checked but that they're allocated.
+ */
+packs_blocks_of_a_few_kib #test :: fn(t: ptr[mut testing.T]) -> testing.Outcome {
+    blocks : Block[8]
+    for i in 0..<blocks.count {
+        block, error :: runtime.new_array(u8, 4000)
+        testing.expect(t, error == null && block.count == 4000, "a 4000-byte block is allocated")
+        if error != null {
+            return .Ok
+        }
+        blocks[i].bytes = block
+    }
+    #if OS == .Linux {
+        lowest := cast[usize](blocks[0].bytes.data)
+        highest := lowest
+        for i in 0..<blocks.count {
+            at :: cast[usize](blocks[i].bytes.data)
+            lowest = if at < lowest { at } else { lowest }
+            highest = if at > highest { at } else { highest }
+        }
+        // Eight blocks of 4096 bytes and their headers, within two chunks' worth of one class, not eight mappings
+        testing.expect(t, highest - lowest < 2 * 65536, "blocks of a few KiB share chunks")
+    }
+    freed :: cast[usize](blocks[3].bytes.data)
+    runtime.free_array(blocks[3].bytes)
+    again, error :: runtime.new_array(u8, 4000)
+    testing.expect(t, error == null, "a block freed is allocated again")
+    #if OS == .Linux {
+        testing.expect(t, cast[usize](again.data) == freed, "the block freed is the one given again")
+    }
+    blocks[3].bytes = again
+    for i in 0..<blocks.count {
+        runtime.free_array(blocks[i].bytes)
+    }
+    return .Ok
 }
 
 allocates_on_one_thread #test :: fn(t: ptr[mut testing.T]) -> testing.Outcome {

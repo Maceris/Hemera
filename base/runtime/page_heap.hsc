@@ -65,7 +65,7 @@ import intrinsics from "base:intrinsics"
      * Find the smallest size class whose blocks hold size bytes.
      *
      * @param size The bytes wanted, not counting the block's 16-byte header; 0 is class 0.
-     * @return The class, from 0 for 16 bytes to PAGE_HEAP_CLASSES - 1 for 2 KiB, or PAGE_HEAP_CLASSES when the block
+     * @return The class, from 0 for 16 bytes to PAGE_HEAP_CLASSES - 1 for 32 KiB, or PAGE_HEAP_CLASSES when the block
      *     needs pages of its own.
      */
     heap_class #no_context :: fn(size : usize) -> usize {
@@ -80,6 +80,21 @@ import intrinsics from "base:intrinsics"
         }
         while class < PAGE_HEAP_CLASSES
         return PAGE_HEAP_CLASSES
+    }
+
+    /**
+     * Give the size of the chunks a class's blocks are carved from: PAGE_HEAP_CHUNK, or room for
+     * PAGE_HEAP_CHUNK_BLOCKS blocks where that's more, in whole pages.
+     *
+     * @param block_size The class's blocks' bytes, their 16-byte headers included.
+     * @return The chunk's bytes, a multiple of PAGE_SIZE.
+     */
+    page_heap_chunk #no_context :: fn(block_size : usize) -> usize {
+        least :: block_size * PAGE_HEAP_CHUNK_BLOCKS
+        if least <= PAGE_HEAP_CHUNK {
+            return PAGE_HEAP_CHUNK
+        }
+        return (least + PAGE_SIZE - 1) & ~(PAGE_SIZE - 1)
     }
 
     /**
@@ -110,10 +125,10 @@ import intrinsics from "base:intrinsics"
     /**
      * Allocate zeroed bytes from the process's heap.
      *
-     * A block of up to 2 KiB, aligned to at most 16, comes from its class's free list, which a new 64 KiB chunk fills
-     * when it's empty; anything else gets pages of its own.
+     * A block of up to 32 KiB, aligned to at most 16, comes from its class's free list, which a new chunk
+     * (page_heap_chunk) fills when it's empty; anything else gets pages of its own.
      *
-     * @param size How many bytes the block has to hold, which may be 0; above 2 KiB, it gets pages of its own.
+     * @param size How many bytes the block has to hold, which may be 0; above 32 KiB, it gets pages of its own.
      * @param alignment The alignment wanted, a power of two, or 0 for 16; above 16, the block gets pages of its own.
      * @return The block's first byte, after its 16-byte header, which heap_free takes back; or null when the system
      *     has no pages to map.
@@ -138,12 +153,13 @@ import intrinsics from "base:intrinsics"
         heap_lock(heap)
         if class < PAGE_HEAP_CLASSES && heap.free_lists[class] == null {
             // A new chunk of this class's blocks, each on the free list
-            chunk :: map_pages(PAGE_HEAP_CHUNK)
+            chunk_size :: page_heap_chunk(block_size)
+            chunk :: map_pages(chunk_size)
             if chunk == null {
                 heap_unlock(heap)
                 return null
             }
-            count :: PAGE_HEAP_CHUNK / block_size
+            count :: chunk_size / block_size
             for i in 0..<count {
                 block :: cast[ptr[mut rawptr]](cast[rawptr](cast[usize](chunk) + i * block_size))
                 block^ = heap.free_lists[class]
