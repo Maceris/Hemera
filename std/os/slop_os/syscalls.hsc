@@ -1444,7 +1444,7 @@ Syscalls :: struct {
      *
      * @param budget The budget; no right is needed.
      * @param cpus Where the set goes, CPU n bit n % 64 of cpus[n / 64] (has_cpu): as many of the kernel's words as fit,
-     *     and zeros in any past them.
+     *     and zeros past them up to its 64th word; words past the 64th are left as they were.
      * @return How many words the kernel's set has, (cpu_count + 63) / 64, which cpus needs to hold all of it.
      * @error BadBuffer cpus isn't memory the caller can write.
      */
