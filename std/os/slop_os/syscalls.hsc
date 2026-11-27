@@ -108,8 +108,10 @@ RIGHT_SPACE_THREADS : Rights : 1 << 8
 RIGHT_SPACE_MAP : Rights : 1 << 9
 /** A port: may wait on it. */
 RIGHT_PORT_WAIT : Rights : 1 << 8
-/** A port: may bind keys to it, set its timers and wake it. */
+/** A port: may bind keys to it, set its timers, and remove its bindings. */
 RIGHT_PORT_BIND : Rights : 1 << 9
+/** A port: may raise its wake bindings (port_wake), and nothing else, as a handle given to whoever is to wake it. */
+RIGHT_PORT_WAKE : Rights : 1 << 10
 /**
  * A channel end: may map its rings. Without it, they're reached through channel_read and channel_write
  * (decisions/0024).
@@ -117,6 +119,11 @@ RIGHT_PORT_BIND : Rights : 1 << 9
 RIGHT_CHANNEL_MAP : Rights : 1 << 8
 /** A memory budget: may pay for what's created with it, and split off child budgets (decisions/0011). */
 RIGHT_BUDGET_CHARGE : Rights : 1 << 8
+/**
+ * A memory budget: may watch it for pressure, setting its threshold (memory_budget_set_threshold) and binding a port
+ * to SIGNAL_PRESSURE, without paying for anything with it. Describing it needs no right.
+ */
+RIGHT_BUDGET_WATCH : Rights : 1 << 9
 /** A memory object: may map it readable, and read it through memory_read. Every mapping needs it. */
 RIGHT_MEMORY_READ : Rights : 1 << 8
 /** A memory object: may map it writable, write it through memory_write, and, for paged memory, act as its pager. */
@@ -159,6 +166,21 @@ RIGHT_CPU_BUDGET_SET : Rights : 1 << 9
 RIGHT_CPU_BUDGET_BIND : Rights : 1 << 10
 /** A range of I/O ports: may read and write them. */
 RIGHT_IO_PORTS_ACCESS : Rights : 1 << 8
+/**
+ * The Platform: may take the machine's hardware, for drivers: register interrupt controllers and IOMMUs and set their
+ * sources, make IRQs, devices, DMA domains, I/O port ranges and physical memory, and attach devices.
+ */
+RIGHT_PLATFORM_DEVICES : Rights : 1 << 8
+/**
+ * The Platform: may say how the machine turns off and resets, and end it (power_set_off, power_set_reset,
+ * power_end_with).
+ */
+RIGHT_PLATFORM_POWER : Rights : 1 << 9
+/**
+ * The Platform: may be copied (handle_duplicate), with RIGHT_DUPLICATE as well, so a holder given the hardware can't
+ * hand out copies of it unless it was given this too. A copy keeps only the rights asked for, as any does.
+ */
+RIGHT_PLATFORM_DUPLICATE : Rights : 1 << 10
 /** Every right, which an owning handle has. */
 RIGHTS_ALL : Rights : 0xffffffff
 
@@ -266,7 +288,7 @@ Syscalls :: struct {
     /**
      * Raise a wake binding: queue a User packet for key, or OR bits into the one already queued.
      *
-     * @param port The port, which needs RIGHT_PORT_BIND.
+     * @param port The port, which needs RIGHT_PORT_WAKE.
      * @param key A key port_bind_wake bound.
      * @param bits Bits for the packet's data[0], ORed with any raised since the packet was last taken.
      * @error NoSuchKey No wake binding has the key.
@@ -439,7 +461,7 @@ Syscalls :: struct {
      * @param key The binding's key, which its packets carry: one not bound on the port, or one bound to this same
      *     object, which is armed again.
      * @param object What to watch: a channel end, a process (which needs RIGHT_PROCESS_INSPECT), a thread, an IRQ, a
-     *     Device, a memory budget (which needs RIGHT_BUDGET_CHARGE), or a memory object through its owning handle, for
+     *     Device, a memory budget (which needs RIGHT_BUDGET_WATCH), or a memory object through its owning handle, for
      *     SIGNAL_UNHELD.
      * @param signals Which signals to see; ignored for an IRQ.
      * @param mode Once, disarmed once its packet is queued, or Persistent; any value but Once is taken as Persistent.
@@ -512,7 +534,7 @@ Syscalls :: struct {
      * Register an interrupt controller the firmware tables describe, for its lines' IRQs.
      *
      * @param platform A handle to the Platform object, the authority over the machine's hardware, which the root task
-     *     holds and passes on; a handle to another kind of object gives WrongKind.
+     *     holds and passes on, with RIGHT_PLATFORM_DEVICES; a handle to another kind of object gives WrongKind.
      * @param kind What kind of controller is at registers; a kind not there, or one the architecture hasn't, gives
      *     NoController.
      * @param registers The physical address of its registers, page-aligned, not in the kernel's memory.
@@ -530,7 +552,7 @@ Syscalls :: struct {
      * Make an IRQ for a controller's line, routed and unmasked, for a driver to bind to a port.
      *
      * @param platform A handle to the Platform object, the authority over the machine's hardware, which the root task
-     *     holds and passes on; a handle to another kind of object gives WrongKind.
+     *     holds and passes on, with RIGHT_PLATFORM_DEVICES; a handle to another kind of object gives WrongKind.
      * @param budget The memory budget that pays for it.
      * @param controller A number controller_register gave.
      * @param line The line, below the controller's count of lines.
@@ -557,7 +579,7 @@ Syscalls :: struct {
      * Make a memory object of device memory at a physical address, to map a device's registers or memory.
      *
      * @param platform A handle to the Platform object, the authority over the machine's hardware, which the root task
-     *     holds and passes on; a handle to another kind of object gives WrongKind.
+     *     holds and passes on, with RIGHT_PLATFORM_DEVICES; a handle to another kind of object gives WrongKind.
      * @param budget The memory budget that pays for it.
      * @param address The physical address, page-aligned, not in the kernel's memory.
      * @param size Its size in bytes, a whole number of pages.
@@ -794,7 +816,7 @@ Syscalls :: struct {
      * Make a Device for a PCIe function, for its message-signaled interrupts and its DMA domain.
      *
      * @param platform A handle to the Platform object, the authority over the machine's hardware, which the root task
-     *     holds and passes on; a handle to another kind of object gives WrongKind.
+     *     holds and passes on, with RIGHT_PLATFORM_DEVICES; a handle to another kind of object gives WrongKind.
      * @param budget The memory budget that pays for it.
      * @param address The function's address (device_address).
      * @param msi_source What the interrupt controller knows its message-signaled interrupts as: on AArch64, the ITS's
@@ -816,7 +838,7 @@ Syscalls :: struct {
      * Put a device's DMA in a domain: what an IOMMU will confine it to.
      *
      * @param platform A handle to the Platform object, the authority over the machine's hardware, which the root task
-     *     holds and passes on; a handle to another kind of object gives WrongKind.
+     *     holds and passes on, with RIGHT_PLATFORM_DEVICES; a handle to another kind of object gives WrongKind.
      * @param device The device; no right is needed.
      * @param domain The domain; no right is needed.
      * @error WrongIommu The device isn't behind the IOMMU its domain's other devices are, or behind none where
@@ -847,7 +869,7 @@ Syscalls :: struct {
      * trusted has DMA memory.
      *
      * @param platform A handle to the Platform object, the authority over the machine's hardware, which the root task
-     *     holds and passes on; a handle to another kind of object gives WrongKind.
+     *     holds and passes on, with RIGHT_PLATFORM_DEVICES; a handle to another kind of object gives WrongKind.
      * @param budget The memory budget that pays for it.
      * @param flags DMA_DOMAIN_TRUSTED, or 0.
      * @return An owning handle to the domain.
@@ -885,7 +907,7 @@ Syscalls :: struct {
      * requester IDs too. A device is attached through the IOMMU that covers it most narrowly.
      *
      * @param platform A handle to the Platform object, the authority over the machine's hardware, which the root task
-     *     holds and passes on; a handle to another kind of object gives WrongKind.
+     *     holds and passes on, with RIGHT_PLATFORM_DEVICES; a handle to another kind of object gives WrongKind.
      * @param kind What kind of IOMMU is at registers; a kind not there, or one the kernel can't drive, gives NoIommu.
      * @param registers Its registers: device memory itself (memory_create_physical, cached as Device), not a window
      *     onto it.
@@ -964,7 +986,7 @@ Syscalls :: struct {
      * Make an object of a range of I/O ports, on an architecture that has them (x86-64).
      *
      * @param platform A handle to the Platform object, the authority over the machine's hardware, which the root task
-     *     holds and passes on; a handle to another kind of object gives WrongKind.
+     *     holds and passes on, with RIGHT_PLATFORM_DEVICES; a handle to another kind of object gives WrongKind.
      * @param budget The memory budget that pays for it.
      * @param first The number of the range's first port; the range can't run past the last port there is (0xffff on
      *     x86-64).
@@ -1092,7 +1114,7 @@ Syscalls :: struct {
      * what it has charged reaches it, and again each time it does after falling below it; at once, if it's there
      * already.
      *
-     * @param budget The budget, which needs RIGHT_BUDGET_CHARGE.
+     * @param budget The budget, which needs RIGHT_BUDGET_WATCH.
      * @param threshold In bytes, or 0 for none.
      */
     memory_budget_set_threshold : fn(budget : MemoryBudget, threshold : u64) -> Result[void, HandleError],
@@ -1144,7 +1166,7 @@ Syscalls :: struct {
      * ACPI service started again does.
      *
      * @param platform A handle to the Platform object, the authority over the machine's hardware, which the root task
-     *     is given; no right is needed.
+     *     is given, with RIGHT_PLATFORM_POWER.
      * @param control_a The PM1a control register's I/O port, 1 to 65535.
      * @param control_b The PM1b control register's I/O port, 1 to 65535; 0 where there's no PM1b block.
      * @param sleep_a The sleep type written to PM1a's SLP_TYP for S5, 0 to 7.
@@ -1164,7 +1186,7 @@ Syscalls :: struct {
      * register when it's an I/O port. Without it, the kernel resets x86-64 through the chipset's register, 0xcf9.
      * Calling it again replaces what was set.
      *
-     * @param platform A handle to the Platform object; no right is needed.
+     * @param platform A handle to the Platform object, with RIGHT_PLATFORM_POWER.
      * @param port The reset register's I/O port, 1 to 65535.
      * @param value The byte written to it to reset, 0 to 255.
      * @error InvalidArgument A port of 0 or over 65535, or a value over 255; or an architecture without I/O ports or
@@ -1177,7 +1199,7 @@ Syscalls :: struct {
      * on the kernel's command line, the emulator is asked to exit with RootTaskEnded instead, unless test_power is on
      * it too. Calling it again replaces what was asked.
      *
-     * @param platform A handle to the Platform object; no right is needed.
+     * @param platform A handle to the Platform object, with RIGHT_PLATFORM_POWER.
      * @param action What to do.
      * @error NoPowerOff Off, on a machine the kernel can't turn off: on x86-64 until power_set_off, or on AArch64
      *     without PSCI.
@@ -1190,7 +1212,7 @@ Syscalls :: struct {
      * controller's lines are routed through the IOMMU's interrupt remapping, which takes their interrupts only from
      * it; without it, once an IOMMU remaps interrupts, irq_create refuses its lines (NoController).
      *
-     * @param platform A handle to the Platform object; no right is needed.
+     * @param platform A handle to the Platform object, with RIGHT_PLATFORM_DEVICES.
      * @param controller The controller's number, from controller_register.
      * @param source Its requester ID with its segment, as device_address makes it.
      * @error NoSuchController No controller is registered with that number.
@@ -1212,8 +1234,9 @@ Syscalls :: struct {
      * @error BadBuffer debug isn't memory the caller can read, or its size is smaller than its header or than its
      *     slot_count slots.
      * @error BadRegisters A slot the architecture can't set: an address outside user memory, a data slot's size not 1,
-     *     2, 4 or 8 or its address not a multiple of it, or more slots of a kind than the CPU has; more slots than
-     *     DEBUG_SLOTS; or reserved bytes that aren't zero.
+     *     2, 4 or 8 or its address not a multiple of it, or more slots of a kind than the CPU has (every slot, on
+     *     RISC-V, where the SBI has no debug triggers); more slots than DEBUG_SLOTS; or reserved bytes that aren't
+     *     zero.
      */
     thread_set_debug : fn(process : Process, thread : u64, debug : ptr[ThreadDebug]) -> Result[void, ControlError],
     /**
@@ -1349,14 +1372,17 @@ Syscalls :: struct {
      * for
      * each basic block of its code, bumped each time the block runs, wrapping past 255, copied into counters as far as
      * it reaches, then every one zeroed, so the next take counts from here. Only in a kernel built with them, a test
-     * build (the SlopOS build's coverage=on); any process may take them there.
+     * build (the SlopOS build's coverage=on), and only for a holder of the trace's right, as what they show of every
+     * process's code is what the trace shows (trace_set).
      *
+     * @param log The kernel's debug log, with RIGHT_DEBUG_LOG_TRACE.
      * @param counters Where they go, from its start; one shorter than the kernel's gets its first ones only.
      * @return How many counters the kernel has.
+     * @error MissingRight The log's handle lacks RIGHT_DEBUG_LOG_TRACE.
      * @error BadBuffer counters isn't the caller's to write.
      * @error NotCounted The kernel wasn't built with coverage counters.
      */
-    coverage_take : fn(counters : mut u8[]) -> Result[u64, CoverageError],
+    coverage_take : fn(log : DebugLog, counters : mut u8[]) -> Result[u64, CoverageError],
     /**
      * Tell what a memory object is: anonymous, paged, a window onto another, and so on. A server that maps memory a
      * client gave it, like a compositor a buffer, takes only anonymous memory: touching paged memory waits on its
@@ -2357,6 +2383,14 @@ MemoryError :: enum #backed_by(u32) {
  * What coverage_take can fail with (the SlopOS repository's decisions/0186). Tags shared with the others mean the same.
  */
 CoverageError :: enum #backed_by(u32) {
+    /** Not a handle of this process, or one already closed. */
+    InvalidHandle = 1,
+    /** The object was destroyed. */
+    ObjectGone = 2,
+    /** The handle lacks a right the call needs. */
+    MissingRight = 3,
+    /** The handle isn't to the kind of object the call takes. */
+    WrongKind = 4,
     /** A call number the kernel doesn't have: what any call answers on a kernel without it. */
     NoSuchCall = 7,
     /** Memory the call writes isn't there, or isn't the caller's to. */

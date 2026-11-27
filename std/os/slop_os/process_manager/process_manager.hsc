@@ -130,7 +130,7 @@ Load :: struct {
     name : u8[slop_os.GRANT_LABEL_SIZE],
     /**
      * The memory budget that pays for the program: its process, its address space and its memory, with
-     * RIGHT_BUDGET_CHARGE, RIGHT_DUPLICATE and RIGHT_TRANSFER.
+     * RIGHT_BUDGET_CHARGE, RIGHT_BUDGET_WATCH, RIGHT_DUPLICATE and RIGHT_TRANSFER.
      */
     budget : slop_os.MemoryBudget,
     /**
@@ -155,10 +155,10 @@ Load :: struct {
     /** The intercept's key, as intercept_attach takes it; unused without intercept_port. */
     intercept_key : u64,
     /**
-     * The calls the intercept stops at: the first word of intercept_attach's set, calls 0 to 63, as the manager passes
-     * it; calls past them stop only with STOP_ALL_CALLS among intercept_points. 0 for none.
+     * The calls the intercept stops at, as intercept_attach takes them: call n bit n % 64 of word n / 64, any number
+     * of words, in the message's data; none for none.
      */
-    intercept_calls : u64,
+    intercept_calls : slop_os.Relative[u64],
     /** The intercept's STOP_ bits, as intercept_attach takes them. */
     intercept_points : u32,
     /**

@@ -947,6 +947,8 @@ LaunchEvents :: struct {
         process := cast[slop_os.Process](slop_os.NO_HANDLE)
         watch : LaunchWatch? = null
         faults : LaunchedFaults? = null
+        // Whether its intercept stops at every call, as a debugger's does, or at none
+        every_call := false
         /*
          * Whether the Load's gone to the manager, whose its handles are then, and where its own copies of the
          * launcher's libraries start among its grants, none until they're added (the grants before are the caller's)
@@ -994,12 +996,11 @@ LaunchEvents :: struct {
                 else {
                     slop_os.STOP_FAULT | slop_os.STOP_FAULT_LIMITED
                 }
-                calls :: if reported.debugging || reported.points != 0 { ~cast[u64](0) } else { cast[u64](0) }
+                every_call = reported.debugging || reported.points != 0
                 load.intercept_port = cast[slop_os.Port](
                     slop_os.handle_duplicate(cast[slop_os.Handle](reported.port), port_rights) or_return .Error(.NoBudget)
                 )
                 load.intercept_key = reported.key
-                load.intercept_calls = calls
                 load.intercept_points = points
                 // What its intercept stops, read: its memory, and its threads' state
                 load.rights = cast[slop_os.Rights](cast[u32](load.rights)
@@ -1009,6 +1010,7 @@ LaunchEvents :: struct {
             case None => {}
         }
         budget_rights :: cast[slop_os.Rights](cast[u32](slop_os.RIGHT_BUDGET_CHARGE)
+            | cast[u32](slop_os.RIGHT_BUDGET_WATCH)
             | cast[u32](slop_os.RIGHT_DUPLICATE)
             | cast[u32](slop_os.RIGHT_TRANSFER))
         load.budget = cast[slop_os.MemoryBudget](slop_os.handle_duplicate(cast[slop_os.Handle](child), budget_rights)
@@ -1127,6 +1129,11 @@ LaunchEvents :: struct {
         }
         out := Outgoing.{}
         request :: begin[process_manager.Request](&out)
+        // Every call there is, and more, as the kernel ignores calls it hasn't
+        all_calls :: u64.[~cast[u64](0), ~cast[u64](0), ~cast[u64](0), ~cast[u64](0)]
+        if every_call {
+            load.intercept_calls = append(&out, all_calls[0..<all_calls.count])
+        }
         request^ = .Load(load)
         match process_manager.send_request(manager.end, port, &out) {
             case Some(error) => return .Error(.ManagerGone)
