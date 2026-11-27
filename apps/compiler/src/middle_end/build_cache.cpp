@@ -23,6 +23,7 @@
 #include "front_end/info.h"
 #include "front_end/names.h"
 #include "middle_end/build.h"
+#include "middle_end/generate.h"
 #include "memory/allocator.h"
 
 #include "llvm/Support/FileSystem.h"
@@ -37,7 +38,7 @@ namespace hemera {
 	namespace {
 
 		// What changes when an entry's layout or what its key covers does, so an older compiler's entries aren't used
-		constexpr std::string_view CACHE_VERSION = "hemera build cache 1";
+		constexpr std::string_view CACHE_VERSION = "hemera build cache 2";
 		// The most the cache holds once trimmed: 4 GiB, trimmed to three quarters of it so it isn't trimmed every build
 		constexpr uintmax_t CACHE_LIMIT = uintmax_t{ 4 } << 30;
 
@@ -183,6 +184,40 @@ namespace hemera {
 		line("sysroot", options.sysroot.generic_string());
 		for (const std::filesystem::path& folder : options.library_paths) {
 			line("library_path", folder.generic_string());
+		}
+		/*
+		 * Each library a #library or #foreign names, by the bytes of every file in the library folders the linker could
+		 * take for it (lib<name>.a or lib<name>.so for ELF, <name>.lib for PE/COFF), so a library that changed links
+		 * the program again. What the linker finds on its own search path isn't covered
+		 */
+		if (auto libraries = module->getAttrOfType<mlir::ArrayAttr>(LIBRARIES_ATTRIBUTE)) {
+			const bool coff = ObjectFormatType::COFF == options.object_format;
+			for (mlir::Attribute library : libraries) {
+				const auto name = llvm::dyn_cast<mlir::StringAttr>(library);
+				if (!name) {
+					continue;
+				}
+				const std::string base = name.getValue().str();
+				const std::vector<std::string> files = coff
+					? std::vector<std::string>{ base + ".lib" }
+					: std::vector<std::string>{ "lib" + base + ".a", "lib" + base + ".so" };
+				for (const std::filesystem::path& folder : options.library_paths) {
+					for (const std::string& file : files) {
+						const std::filesystem::path path = folder / file;
+						std::error_code error;
+						if (!std::filesystem::is_regular_file(path, error)) {
+							continue;
+						}
+						bool read = false;
+						const std::string bytes = read_bytes(path, read);
+						if (!read) {
+							return {};
+						}
+						line("library_file", std::format("{} {}", path.generic_string(),
+							hex_of(llvm::xxh3_128bits(reinterpret_cast<const uint8_t*>(bytes.data()), bytes.size()))));
+					}
+				}
+			}
 		}
 		if (!options.linker_script.empty()) {
 			bool read = false;
@@ -360,7 +395,7 @@ namespace hemera {
 		thread_local FileRecord* current_record = nullptr;
 
 		// What changes when a target's entry's layout does
-		constexpr std::string_view TARGET_VERSION = "hemera target 1";
+		constexpr std::string_view TARGET_VERSION = "hemera target 2";
 
 		// The bytes compile-time code reads for path: an overlay's, or the file's; read is false if neither can be read
 		std::string reading_bytes(const Options& options, const std::string& path, bool& read) {
@@ -386,6 +421,36 @@ namespace hemera {
 			std::string text;
 			for (const std::string& name : names) {
 				text += name;
+				text += '\n';
+			}
+			return hash_text(text);
+		}
+
+		/*
+		 * A library folder's files, not its subfolders', each by its name, size and modification time, sorted: so a
+		 * library the linker takes from it that changed builds the target again, its program's key telling by the
+		 * library's bytes whether it links again (build_cache_key)
+		 */
+		std::string library_folder_of(const std::filesystem::path& folder) {
+			std::vector<std::string> files;
+			std::error_code error;
+			for (const auto& entry : std::filesystem::directory_iterator(folder, error)) {
+				std::error_code status;
+				if (!entry.is_regular_file(status)) {
+					continue;
+				}
+				const auto size = entry.file_size(status);
+				const auto written = entry.last_write_time(status);
+				files.push_back(std::format("{} {} {}", entry.path().filename().generic_string(), status ? 0 : size,
+					status ? 0 : written.time_since_epoch().count()));
+			}
+			if (error) {
+				return "missing";
+			}
+			std::sort(files.begin(), files.end());
+			std::string text;
+			for (const std::string& file : files) {
+				text += file;
 				text += '\n';
 			}
 			return hash_text(text);
@@ -442,7 +507,7 @@ namespace hemera {
 				line("builtin", std::format("{} {}", static_cast<int>(package), folder.generic_string()));
 			}
 			for (const std::filesystem::path& folder : options.library_paths) {
-				line("library_path", folder.generic_string());
+				line("library_path", std::format("{} {}", folder.generic_string(), library_folder_of(folder)));
 			}
 			for (const LinkedLibrary& library : options.libraries) {
 				line("library", std::format("{} {}", library.root.generic_string(), library.file));

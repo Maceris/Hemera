@@ -978,6 +978,9 @@ A program's key is a hash of:
 * the options lowering, optimizing and linking read: the target's architecture, OS, CPU and its features, code and
   relocation models, optimization level, debug info, entry and startup code, and the like, the output file's name,
   the linker named and the library folders, and its linker script's bytes;
+* each library a `#library` names, by the bytes of every file in the library folders the linker could take for it
+  (`lib<name>.a` or `lib<name>.so` for ELF, `<name>.lib` for PE/COFF), so a library that changed links the program
+  again;
 * the linker that links it, as it's found: the one named, or `ld.lld` or `lld-link` on the PATH, by its path, size
   and modification time, since two lld versions may link the same objects differently, as one that doesn't know a
   property note drops it;
@@ -987,8 +990,8 @@ So a program built into another folder takes what was kept from one built elsewh
 folder each time does. A change that doesn't change the generated program, like a comment, needs nothing built; one
 in a package that only some targets import builds only those.
 
-What the linker finds itself, like an import library in a library folder or on its own search path, isn't in the key:
-one that changes on its own without the program changing isn't seen. Neither is where a PE/COFF program's PDB is written,
+What the linker finds on its own search path, rather than in a library folder, isn't in the key: a library there that
+changes without the program changing isn't seen. Neither is where a PE/COFF program's PDB is written,
 which the PDB records, so a PE/COFF program with debug info is only taken for the same output path. A program whose
 lowering, optimizing or linking reported anything, a warning included, isn't kept, so building it again reports it
 again; nor is one fuzzed (`--fuzz`), nor one stopped short of linking.
@@ -1004,7 +1007,8 @@ whose every file is as it was doesn't check or build it at all. What it used is:
   compiler as they run (`compiler.note_file`), and each `#file_data`'s file;
 * what it was built from besides: the build package's own files, each package `compiler.load_package` loaded and each
   folder `compiler.subfolders` listed, what each `compiler.declares` answered (not the files it parsed), the build's
-  options and settings, the target as the build registered it, and the compiler.
+  options and settings, the files in its library folders, by name, size and modification time, the target as the
+  build registered it, and the compiler.
 
 Its key is made from the last of those, and kept with it are the others, each with its bytes' hash, and what its
 compile-time code wrote through std (`os.write_entire_file`, `os.delete_file`, `os.make_directory` and the like), as it

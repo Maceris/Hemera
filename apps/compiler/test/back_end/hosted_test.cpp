@@ -2542,6 +2542,87 @@ TEST(Build, PassesLibraryPathsToTargets)
 	module.erase();
 }
 
+/*
+ * hemera_library_paths.lib in folder, an import library for kernel32's GetCurrentProcessId, and for
+ * GetCurrentThreadId too if both: two libraries whose bytes differ, though either links scenarios/library_paths.
+ */
+static void write_library_paths_library(const std::filesystem::path& folder, bool both) {
+	std::filesystem::create_directories(folder);
+	std::vector<llvm::object::COFFShortExport> exports(1);
+	exports[0].Name = "GetCurrentProcessId";
+	if (both) {
+		exports.emplace_back();
+		exports[1].Name = "GetCurrentThreadId";
+	}
+	llvm::Error error = llvm::object::writeImportLibrary("kernel32.dll", (folder / "hemera_library_paths.lib").string(), exports,
+		llvm::COFF::IMAGE_FILE_MACHINE_AMD64, false);
+	EXPECT_FALSE(static_cast<bool>(error)) << llvm::toString(std::move(error));
+}
+
+/*
+ * scenarios/library_paths_build, its library folder libraries, built to output with the build cache in cache: whether
+ * it built.
+ */
+static bool build_library_paths_cached(const std::filesystem::path& libraries, const std::string& output,
+	const std::filesystem::path& cache) {
+	hemera::reset_reporting_storage();
+	hemera::reset_build_registry();
+	mlir::MLIRContext context;
+	context.loadDialect<mlir::BuiltinDialect>();
+	context.loadDialect<hmir::HemeraDialect>();
+	mlir::OpBuilder builder(&context);
+	mlir::ModuleOp module = mlir::ModuleOp::create(builder, builder.getUnknownLoc(), "build");
+	auto program_info = std::make_unique<hemera::ProgramInfo>(&context, &builder, &module);
+	hemera::Options options;
+	options.input = std::filesystem::canonical(scenario("library_paths_build") / "build");
+	options.output_name = output + "_build";
+	options.builtin_paths[hemera::BuiltinPackage::STD] = std::filesystem::canonical(std_folder());
+	options.settings = { { "output", output }, { "libs", libraries.string() } };
+	options.use_cache = true;
+	options.cache_folder = cache;
+	hemera::kick_off_processing(program_info.get(), &options);
+	hemera::Allocator<> alloc;
+	const bool built = hemera::error_count() == 0 && hemera::build_targets(program_info.get(), options, alloc)
+		&& hemera::error_count() == 0;
+	hemera::reset_build_registry();
+	module.erase();
+	return built;
+}
+
+// The entries the build cache in cache holds for programs, each holding its outputs, not a target's record.
+static size_t program_entries(const std::filesystem::path& cache) {
+	size_t count = 0;
+	for (const std::filesystem::path& entry : cache_entries(cache)) {
+		count += std::filesystem::is_regular_file(entry / "0") ? 1 : 0;
+	}
+	return count;
+}
+
+/*
+ * docs/compilation.md, The Build Cache: a library a program links, changed in its library folder, is in the program's
+ * key, so the program is linked again rather than taken from the cache; unchanged, it's taken.
+ */
+TEST(Build, LinksAgainWhenALinkedLibraryChanges)
+{
+	StringCacheGuard string_cache;
+	const std::filesystem::path folder = std::filesystem::path(HEMERA_TEST_OUTPUT_DIR) / "build_cache_library";
+	const std::filesystem::path cache = folder / "cache";
+	const std::filesystem::path libraries = folder / "libs";
+	std::filesystem::remove_all(folder);
+	write_library_paths_library(libraries, false);
+	const std::string output = (folder / "library_paths").string();
+	ASSERT_TRUE(build_library_paths_cached(std::filesystem::canonical(libraries), output, cache));
+	EXPECT_EQ(std::system(std::format("\"{}.exe\"", output).c_str()), 42);
+	ASSERT_EQ(program_entries(cache), 1u);
+	ASSERT_TRUE(build_library_paths_cached(std::filesystem::canonical(libraries), output, cache));
+	EXPECT_EQ(program_entries(cache), 1u);
+	// Its bytes changed, in the same folder under the same name
+	write_library_paths_library(libraries, true);
+	ASSERT_TRUE(build_library_paths_cached(std::filesystem::canonical(libraries), output, cache));
+	EXPECT_EQ(std::system(std::format("\"{}.exe\"", output).c_str()), 42);
+	EXPECT_EQ(program_entries(cache), 2u);
+}
+
 // A target that doesn't check fails the build, reporting its own error once, and the others still build.
 TEST(Build, ReportsEachTargetsErrors)
 {

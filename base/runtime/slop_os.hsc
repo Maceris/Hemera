@@ -358,8 +358,8 @@ SlopOsArgument :: struct {
     /**
      * Take addresses from the startup block's free range, for the program to map something at.
      *
-     * Addresses taken from it aren't given out again, even when what was to be mapped there fails to be; safe to call
-     * from several threads at once.
+     * Addresses taken from it aren't given out again, even when what was to be mapped there fails to be; a request
+     * that doesn't fit takes none, so a smaller one after it still can. Safe to call from several threads at once.
      *
      * @param size How many bytes are wanted, rounded up to a whole number of pages; 0 takes none and gives the
      *     range's next address.
@@ -372,12 +372,41 @@ SlopOsArgument :: struct {
             return null
         }
         startup :: cast[ptr[SlopOsStartup]](state.startup_block)
-        total :: cast[u64]((size + PAGE_SIZE - 1) & ~(PAGE_SIZE - 1))
-        offset :: intrinsics.interlocked_exchange_add_u64(&state.mapped, total)
-        if offset + total > startup.free_size || offset + total < offset {
+        // Checked before it's rounded up, which could wrap
+        if cast[u64](size) > startup.free_size {
             return null
         }
-        return startup.free_base + offset
+        total :: cast[u64]((size + PAGE_SIZE - 1) & ~(PAGE_SIZE - 1))
+        // The offset moves only past what fits, so the range's end is never passed
+        offset := intrinsics.atomic_load_u64_acquire(&state.mapped)
+        loop {
+            if offset > startup.free_size || total > startup.free_size - offset {
+                return null
+            }
+            old, won :: intrinsics.interlocked_compare_exchange_u64(&state.mapped, offset + total, offset)
+            if won {
+                return startup.free_base + offset
+            }
+            offset = old
+        }
+    }
+
+    /**
+     * Give back addresses reserve_addresses took, if they're the last it took, as when what was to be mapped there
+     * couldn't be; otherwise they stay taken.
+     *
+     * @param address What reserve_addresses gave.
+     * @param size The size it was given.
+     */
+    release_addresses #no_context :: fn(address : u64, size : usize) {
+        state :: intrinsics.process_state()
+        if state.startup_block == null {
+            return void
+        }
+        startup :: cast[ptr[SlopOsStartup]](state.startup_block)
+        offset :: address - startup.free_base
+        total :: cast[u64]((size + PAGE_SIZE - 1) & ~(PAGE_SIZE - 1))
+        _, _ :: intrinsics.interlocked_compare_exchange_u64(&state.mapped, offset, offset + total)
     }
 
     /**
@@ -452,16 +481,28 @@ SlopOsArgument :: struct {
      * @param size How many bytes are wanted, rounded up to a whole number of pages; one page more is taken for the
      *     handle.
      * @return The address of the first page after the handle's, page-aligned, which unmap_pages gives back; or null if
-     *     the free range is used up, or the kernel wouldn't make or map the memory. The free range's addresses taken
-     *     for a call that fails aren't given back.
+     *     the kernel wouldn't make or map the memory, or the free range is used up. The memory is made before the
+     *     free range's addresses are taken, so a size the budget can't give takes none; those taken for a mapping
+     *     that then fails are given back if nothing was taken after them (release_addresses).
      */
     map_pages #no_context :: fn(size : usize) -> rawptr {
         startup :: cast[ptr[SlopOsStartup]](intrinsics.process_state().startup_block)
+        // Checked before it's rounded up, which could wrap
+        if cast[u64](size) > startup.free_size {
+            return null
+        }
         total :: cast[u64]((size + PAGE_SIZE - 1) & ~(PAGE_SIZE - 1)) + cast[u64](PAGE_SIZE)
-        address :: reserve_addresses(cast[usize](total)) or_return null
         created :: slop_os_call(SLOP_OS_CALL_MEMORY_CREATE, cast[u64](startup.budget), total)
         if created.tag != 0 {
             return null
+        }
+        address := cast[u64](0)
+        match reserve_addresses(cast[usize](total)) {
+            case Some(taken) => address = taken
+            case None => {
+                slop_os_call(SLOP_OS_CALL_HANDLE_CLOSE, created.first)
+                return null
+            }
         }
         mapped :: slop_os_call(
             SLOP_OS_CALL_MEMORY_MAP,
@@ -474,6 +515,7 @@ SlopOsArgument :: struct {
         )
         if mapped.tag != 0 {
             slop_os_call(SLOP_OS_CALL_HANDLE_CLOSE, created.first)
+            release_addresses(address, cast[usize](total))
             return null
         }
         cast[ptr[mut u64]](cast[rawptr](address))^ = created.first
