@@ -111,9 +111,12 @@ Ask :: struct {
 Match :: struct {
     /** The file's path, UTF-8, beneath the directory asked. */
     name : slop_os.Relative[u8],
-    /** The file's number in its volume, the same for as long as it's there, which a live query's events name too. */
+    /**
+     * The file's number in its volume, the same for as long as it's there, which a live query's events name too; 0
+     * for none, when the server looked at as many files as it does a request without finding one, name then empty.
+     */
     file : u64,
-    /** The cursor to give the next Query, for the file after this one. */
+    /** The cursor to give the next Query, for the file after this one, or to go on from where it got to. */
     next : Cursor,
 }
 
@@ -130,8 +133,8 @@ EventKind :: enum #backed_by(u32) {
     /** A file that matched doesn't any more, or is gone. */
     Gone = 5,
     /**
-     * More changed at once than the query could keep track of, so it begins again: each file that matches now is
-     * Matched once more, then Current.
+     * More changed at once than the query could keep track of, or an index of its type was declared or dropped, so
+     * it begins again: each file that matches now is Matched once more, then Current.
      */
     Resync = 6,
 }
@@ -153,8 +156,8 @@ Event :: struct {
 Request :: union {
     /**
      * The next event. Answered with Event, at once if there's one, or once a commit makes one; Failed with NoSpace if
-     * more files match than the query can keep, and then it ends; Failed with another error if the volume couldn't
-     * be read.
+     * more files match than the query can keep, or NotFound once an index it names is dropped, and then it's ended,
+     * each Next after answered the same; Failed with another error if the volume couldn't be read.
      */
     Next,
 }

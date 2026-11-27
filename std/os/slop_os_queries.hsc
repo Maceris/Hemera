@@ -6,12 +6,15 @@ package os
  * joined with and, or and not, asked beneath a directory once (query_in) or live (open_live_query), each event as a
  * commit makes it.
  *
- *     _ = os.declare_index[Task](directory, "level")
+ *     _ = os.declare_index[Task](root, "level")
  *     predicate := os.Predicate.{}
  *     defer os.free_predicate(&predicate)
- *     os.where_number[Task](directory, &predicate, "level", .GreaterOrEqual, 3) or_return 1
+ *     os.where_number[Task](root, &predicate, "level", .GreaterOrEqual, 3) or_return 1
  *     found :: os.query_in(directory, &predicate) or_return 1
  *     defer os.free_matches(&found)
+ *
+ * An index is declared, dropped and found on a connection to its volume's root, which the indexes are of; a query is
+ * asked beneath any directory.
  */
 #if OS == .SlopOS {
     import runtime from "base:runtime"
@@ -69,14 +72,17 @@ package os
     }
 
     /**
-     * Declare an index of a field of T's on the volume a directory is on, built from the files of T there are.
+     * Declare an index of a field of T's on the volume a directory is the root of, built from the files of T there
+     * are before it's answered. A file of T's is in all of T's indexes or none, so one whose value doesn't hold the
+     * field drops out of T's others.
      *
      * @tparam T The files' value's type, a struct.
-     * @param directory The open directory, which stays the caller's; it has to be writable.
+     * @param directory The open directory, which stays the caller's: its volume's root, writable, not reached through
+     *     a stored link.
      * @param field The name of one of T's own fields: an integer, a bool, or text (a Relative of bytes).
      * @return The index's number; the same number if it's declared already.
      * @error WrongType The field isn't one of T's, or isn't of a type an index can be of.
-     * @error AccessDenied The directory was reached through a stored link, which changes no index.
+     * @error AccessDenied The directory isn't its volume's root, is read only, or was reached through a stored link.
      * @error OutOfMemory The schema couldn't be written, or the server hadn't the memory.
      * @error Other The volume keeps as many indexes as it can, keeps none, or the server didn't answer.
      */
@@ -103,13 +109,14 @@ package os
     }
 
     /**
-     * Find the index of a field of T's on a directory's volume.
+     * Find the index of a field of T's on the volume a directory is the root of.
      *
      * @tparam T The files' value's type.
-     * @param directory The open directory, which stays the caller's.
+     * @param directory The open directory, which stays the caller's: its volume's root, as only it lists the indexes.
      * @param field The field's name.
      * @return The index's number and kind.
      * @error NotFound No index of the field is declared.
+     * @error AccessDenied The directory isn't its volume's root, is read only, or was reached through a stored link.
      * @error Other The indexes couldn't be listed: the file system keeps none, or the server didn't answer.
      */
     index_of :: fn[T](directory : Directory, field : string) -> Result[IndexFound, OsError] {
@@ -145,13 +152,15 @@ package os
      * Add a comparison of a field of T's with a number to a predicate, finding the field's index.
      *
      * @tparam T The files' value's type, whose index of field has to be declared.
-     * @param directory The open directory whose volume's indexes are asked, which stays the caller's.
+     * @param directory The open directory whose volume's indexes are asked, which stays the caller's: its volume's
+     *     root, as index_of says.
      * @param predicate The predicate, which the comparison is pushed on.
      * @param field The field's name: an integer or a bool's.
      * @param comparison How the field is compared with value.
-     * @param value The constant: a signed or an unsigned integer's value, or 0 or 1 for a bool.
-     * @return Null once it's added; NotFound if no index of the field is declared, WrongType for a text field, or
-     *     index_of's error.
+     * @param value The constant: a signed integer's value, an unsigned one's from 0 to i64's greatest (one past it is
+     *     compared with compare_number, as its bits), or 0 or 1 for a bool.
+     * @return Null once it's added; NotFound if no index of the field is declared, WrongType for a text field, a
+     *     negative value for an unsigned field or a bool, or a bool's past 1, or index_of's error.
      */
     where_number :: fn[T](
         directory : Directory,
@@ -165,7 +174,7 @@ package os
             case Ok(index) => found = index
             case Error(error) => return error
         }
-        if found.kind == .Text {
+        if found.kind == .Text || (found.kind != .Signed && value < 0) || (found.kind == .Bool && value > 1) {
             return OsError.WrongType
         }
         compare_number(predicate, found.number, comparison, cast[u64](value))
@@ -176,10 +185,12 @@ package os
      * Add a comparison of a text field of T's with a text to a predicate, finding the field's index.
      *
      * @tparam T The files' value's type, whose index of field has to be declared.
-     * @param directory The open directory whose volume's indexes are asked, which stays the caller's.
+     * @param directory The open directory whose volume's indexes are asked, which stays the caller's: its volume's
+     *     root, as index_of says.
      * @param predicate The predicate, which the comparison is pushed on.
      * @param field The text field's name.
-     * @param comparison How the field is compared with text, byte by byte.
+     * @param comparison How the field is compared with text, byte by byte; a server may compare only a text's first
+     *     bytes, as many as its index keeps, and refuse an = or ≠ of a longer constant when the query's asked.
      * @param text The constant, UTF-8.
      * @return Null once it's added; NotFound if no index of the field is declared, WrongType for a field that isn't
      *     text, or index_of's error.
@@ -201,6 +212,30 @@ package os
         }
         compare_text(predicate, found.number, comparison, text)
         return null
+    }
+
+    /**
+     * Drop an index from the volume a directory is the root of: its records taken out, and the files of its type
+     * indexed again by the type's other indexes. A live query naming it ends.
+     *
+     * @param directory The open directory, which stays the caller's: its volume's root, writable, not reached through
+     *     a stored link.
+     * @param index The index's number, as declare_index or index_of give it.
+     * @return Null once it's dropped; NotFound for no such index, AccessDenied for a directory that isn't the root
+     *     (as declare_index says), or Other if the file system keeps no indexes or the server didn't answer.
+     */
+    drop_index :: fn(directory : Directory, index : u32) -> OsError? {
+        out := Outgoing.{}
+        begin[dir.Request](&out)^ = .DropIndex(index)
+        into := Incoming.{}
+        if !ask_directory(directory_of(directory), &out, &into) {
+            return OsError.Other
+        }
+        match message_of[dir.Response](&into)^ {
+            case Done => return null
+            case Failed(failure) => return error_of_file(failure)
+            case _ => return OsError.Other
+        }
     }
 
     /**
@@ -286,7 +321,8 @@ package os
     }
 
     /**
-     * Ask the files beneath a directory a predicate holds for, every one, a page at a time.
+     * Ask the files beneath a directory a predicate holds for, every one, a page at a time, going on past each page
+     * that found none in what the server looked at.
      *
      * @param directory The open directory, which stays the caller's.
      * @param predicate The predicate, only read.
@@ -311,6 +347,11 @@ package os
             }
             match message_of[dir.Response](&into)^ {
                 case Matched(matched) => {
+                    // None in the files the server looked at this time: on from where it got to
+                    if matched.file == 0 {
+                        cursor = matched.next
+                        continue
+                    }
                     name :: items(&into, matched.name)
                     copy, error :: runtime.new_array(u8, name.count)
                     if error != null {
@@ -394,6 +435,7 @@ package os
      * @param name Where the event's file's path goes, as much as fits.
      * @param deadline Until when to wait, in nanoseconds of the monotonic clock; slop_os.NO_DEADLINE for ever.
      * @return The event; null if none came by the deadline, the Next left waiting for the next call.
+     * @error NotFound The query ended, an index it names dropped.
      * @error Other The query ended (more matched than the server keeps), the volume couldn't be read, or the
      *     connection failed.
      */

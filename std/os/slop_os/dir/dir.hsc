@@ -189,34 +189,41 @@ Request :: union {
     OpenSnapshot(slop_os.Relative[u8]),
     /**
      * An index of a typed file's field declared on this directory's whole volume, and built from the files of the
-     * type there are: from then on, each file of the type is in it as it's committed. Declaring one there is already
-     * gives it again. Answered with Declared, or Failed: WrongType for a schema or field it can't be of, NoSpace for
-     * a volume with as many indexes as it keeps, ReadOnly on a connection reached through a stored link. Unsupported
-     * on a file system without indexes, and on a transaction.
+     * type there are, before it's answered: from then on, each file of the type is in it as it's committed. A file
+     * is in all of its type's indexes or none, so one whose value doesn't hold the new field drops out of the type's
+     * others. Declaring one there is already gives it again. Only the volume's root may: answered with Declared, or
+     * Failed: WrongType for a schema or field it can't be of, NoSpace for a volume with as many indexes as it keeps,
+     * NoMemory, or ReadOnly on a connection that isn't to the volume's root, is read only, or was reached through a
+     * stored link. Unsupported on a file system without indexes, and on a transaction.
      */
     DeclareIndex(files.IndexOf),
     /**
-     * The index with this number taken out of this directory's volume. Answered with Done, or Failed: NotFound for
-     * no such index, ReadOnly on a connection reached through a stored link. Unsupported on a file system without
-     * indexes, and on a transaction.
+     * The index with this number taken out of this directory's volume, the type's files indexed again by its other
+     * indexes. Only the volume's root may: answered with Done, or Failed: NotFound for no such index, ReadOnly as
+     * DeclareIndex is. Unsupported on a file system without indexes, and on a transaction.
      */
     DropIndex(u32),
     /**
-     * The volume's index at or after a cursor: 0 for the first, then each IndexListed's next. Answered with
-     * IndexListed, End once none is left, or Failed. Unsupported on a file system without indexes.
+     * The volume's index at or after a cursor: 0 for the first, then each IndexListed's next. Only the volume's root
+     * may list them, as they say what's kept of every directory's files: answered with IndexListed, End once none is
+     * left, or Failed: ReadOnly as DeclareIndex is. Unsupported on a file system without indexes, and on a
+     * transaction.
      */
     Indexes(u32),
     /**
      * The first file beneath this directory, from a cursor, that a predicate over the volume's indexes holds for
      * (query's Predicate): the files of its indexes' type, in an order of the server's. Answered with Matched, End
      * once none is left, or Failed: WrongType for a predicate that doesn't hold together or names indexes of more
-     * than one type, NotFound for an index that isn't there. Unsupported on a file system without indexes.
+     * than one type, NotFound for an index that isn't there. A server may look at only so many files a request:
+     * then Matched's file is 0, its name empty, and its next the cursor to go on from. Unsupported on a file system
+     * without indexes, and on a transaction, as it answers from what's committed.
      */
     Query(query.Ask),
     /**
      * A live query: the files beneath this directory a predicate holds for, then each one added, changed or gone as
      * the volume's transactions commit, on a new connection (query's Query). Answered with Live, or Failed as Query
-     * is, or NoSpace if the server has as many as it keeps. Unsupported on a file system without indexes.
+     * is, or NoSpace if the server has as many as it keeps, or this connection as many as it may open. Unsupported
+     * on a file system without indexes, and on a transaction.
      */
     LiveQuery(query.Predicate),
 }
