@@ -162,21 +162,28 @@ CpuFeatures :: struct {
  * Tell whether a set of features has one.
  *
  * @param features The set to look in, only read.
- * @param feature The feature to look for. A feature of another architecture than the one running is never set.
+ * @param feature The feature to look for. A feature of another architecture than the one running is never set, nor
+ *     one whose value is past the set's 256 bits.
  * @return True if the set has the feature, false if it doesn't.
  */
 has_feature :: fn(features : ptr[CpuFeatures], feature : CpuFeature) -> bool {
-    index :: cast[u16](feature)
-    return (features.bits[index / 64] >> (index % 64)) & 1 == 1
+    index :: cast[usize](cast[u16](feature))
+    if index / 64 >= features.bits.count {
+        return false
+    }
+    return (features.bits[index / 64] >> cast[u64](index % 64)) & 1 == 1
 }
 
 /**
  * Add a feature to a set; adding one it already has changes nothing.
  *
  * @param features The set to add to, changed in place.
- * @param feature The feature to add.
+ * @param feature The feature to add; one whose value is past the set's 256 bits isn't, and changes nothing.
  */
 add_feature :: fn(features : ptr[mut CpuFeatures], feature : CpuFeature) {
-    index :: cast[u16](feature)
-    features.bits[index / 64] |= cast[u64](1) << (index % 64)
+    index :: cast[usize](cast[u16](feature))
+    if index / 64 >= features.bits.count {
+        return void
+    }
+    features.bits[index / 64] |= cast[u64](1) << cast[u64](index % 64)
 }

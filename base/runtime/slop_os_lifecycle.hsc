@@ -126,7 +126,7 @@ import intrinsics from "base:intrinsics"
             return void
         }
         signals :: SLOP_OS_SIGNAL_READABLE | SLOP_OS_SIGNAL_PEER_CLOSED
-        if slop_os_call(SLOP_OS_CALL_PORT_BIND, port.first, channel, signals, 0, SLOP_OS_BIND_PERSISTENT).tag != 0 {
+        if slop_os_call(SLOP_OS_CALL_PORT_BIND, port.first, 0, channel, signals, SLOP_OS_BIND_PERSISTENT).tag != 0 {
             return void
         }
         loop {

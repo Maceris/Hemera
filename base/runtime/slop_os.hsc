@@ -66,10 +66,10 @@ SLOP_OS_PROTECTION_READ : u64 : 1
 SLOP_OS_PROTECTION_READ_WRITE : u64 : 3
 // The startup block's version, and a grant's kinds by name (os_entry_grant): ObjectKind's values
 /**
- * The startup block's ABI version this runtime reads; a block of another version ends the process with
- * SLOP_OS_EXIT_WRONG_ABI before main (os_prepare_carrier).
+ * The startup block's ABI version this runtime was built for; a block of an earlier version, a kernel older than the
+ * program, ends the process with SLOP_OS_EXIT_WRONG_ABI before main (os_prepare_carrier). A later one is read.
  */
-SLOP_OS_ABI_VERSION : u32 : 14
+SLOP_OS_ABI_VERSION : u32 : 15
 /** A grant's kind: a memory budget, which memory objects are made from. */
 SLOP_OS_KIND_MEMORY_BUDGET : u32 : 1
 /** A grant's kind: a CPU budget. */
@@ -101,10 +101,10 @@ SLOP_OS_KIND_DEBUG_LOG : u32 : 14
 /** A grant's kind: a device. */
 SLOP_OS_KIND_DEVICE : u32 : 15
 /*
- * How a process ends before its entry runs: started by a kernel of another ABI version, or without a
+ * How a process ends before its entry runs: started by a kernel of an earlier ABI version, or without a
  * grant its entry needs (os_entry_grant)
  */
-/** The exit code of a process started with a startup block of another ABI version, or one too small to read. */
+/** The exit code of a process started with a startup block of an earlier ABI version, or one too small to read. */
 SLOP_OS_EXIT_WRONG_ABI : u32 : 125
 /**
  * The exit code of a process without a grant or value its entry requires, or with one of the wrong kind, protocol
@@ -142,9 +142,9 @@ SlopOsResultHeader :: struct {
  * Only the part the runtime reads is declared; the kernel's block may be longer, which size says.
  */
 SlopOsStartup :: struct {
-    /** The block's ABI version, which has to be SLOP_OS_ABI_VERSION for the rest to be read. */
+    /** The block's ABI version, which has to be SLOP_OS_ABI_VERSION or later for the rest to be read. */
     abi_version : u32,
-    /** The block's size in bytes, at least this struct's for it to be read. */
+    /** The block's size in bytes, at least this struct's, through cpu_features, for it to be read. */
     size : u32,
     /** A handle to the process itself. */
     process : u32,
@@ -166,6 +166,11 @@ SlopOsStartup :: struct {
     grants : u64,
     /** A random seed for the process, which SYSTEM_RANDOM's bytes come from; all zeros means there's none. */
     seed : u8[32],
+    /**
+     * The CPU's features, 256 bits, a feature n bit n % 64 of word n / 64, which the runtime doesn't read itself but
+     * std's has_feature does, so a block has to be big enough to hold them.
+     */
+    cpu_features : u64[4],
 }
 
 /**
@@ -194,6 +199,36 @@ SlopOsGrant :: struct {
     /** The handle the grant gives, which the process owns. */
     handle : u32,
 }
+
+/*
+ * The grant "arguments" (docs/compilation.md, Entry Parameters): the values of an entry's parameters that aren't
+ * handles, which whoever launched the program wrote (std/os's launch). Its header, then each value: the header of
+ * its parameter, the parameter's name, and the value as schema_write_value writes one, each padded to 8 bytes.
+ */
+/** The grant "arguments"' first four bytes, "HARG" read as a little-endian u32; anything else isn't read. */
+SLOP_OS_ARGUMENTS_MAGIC : u32 : 0x47524148
+/** The header at the start of the grant "arguments", which a SlopOsArgument and its bytes follow for each value. */
+SlopOsArguments :: struct {
+    /** SLOP_OS_ARGUMENTS_MAGIC. */
+    magic : u32,
+    /** How many values follow. */
+    count : u32,
+    /** Every byte of it, the header's too; more than 16 MiB, rounded up to pages, isn't mapped. */
+    total : u64,
+}
+
+/** A value's header: its parameter's name's bytes, its own, and its type's schema hash. */
+SlopOsArgument :: struct {
+    /** How many bytes the parameter's name has, which follow this header, padded to 8. */
+    name_bytes : u32,
+    /** How many bytes the value has, as schema_write_value writes it, which follow the name, padded to 8. */
+    value_bytes : u32,
+    /** The schema hash of the type the value was written as (schema_hash). */
+    hash : u8[32],
+}
+
+#assert size_of(SlopOsArguments) == 16
+#assert size_of(SlopOsArgument) == 40
 
 // A system call, and what it gives in the system ABI's three result registers, on each architecture
 #if OS == .SlopOS && TARGET_ARCH == .x86_64 {
@@ -353,8 +388,9 @@ SlopOsGrant :: struct {
      * left as it is and the lifecycle channel isn't served.
      *
      * @param carrier The first thread's carrier block, whose native_stack_limit and stack_limit are set.
-     * @note A startup block of another ABI version, or smaller than SlopOsStartup, ends the process with
-     *     SLOP_OS_EXIT_WRONG_ABI, so nothing reads what it can't.
+     * @note A startup block of an earlier ABI version than SLOP_OS_ABI_VERSION, from a kernel older than the program,
+     *     or smaller than SlopOsStartup, ends the process with SLOP_OS_EXIT_WRONG_ABI, so nothing reads what it can't.
+     *     A later version is read, as a later kernel keeps what earlier ones wrote.
      */
     os_prepare_carrier #no_context :: fn(carrier : ptr[mut CarrierBlock]) {
         state :: intrinsics.process_state()
@@ -362,8 +398,8 @@ SlopOsGrant :: struct {
             return void
         }
         startup :: cast[ptr[SlopOsStartup]](state.startup_block)
-        // A block of another version can't be read: the process ends before anything reads it
-        if startup.abi_version != SLOP_OS_ABI_VERSION || cast[u64](startup.size) < cast[u64](size_of(SlopOsStartup)) {
+        // An older kernel's block can't be read: the process ends before anything reads it
+        if startup.abi_version < SLOP_OS_ABI_VERSION || cast[u64](startup.size) < cast[u64](size_of(SlopOsStartup)) {
             os_exit_process(SLOP_OS_EXIT_WRONG_ABI)
         }
         if startup.stack_size <= STACK_RESERVE {
@@ -968,33 +1004,6 @@ SlopOsGrant :: struct {
             return null
         }
         return cast[rawptr](address)
-    }
-
-    /*
-     * The grant "arguments" (docs/compilation.md, Entry Parameters): the values of an entry's parameters that aren't
-     * handles, which whoever launched the program wrote (std/os's launch). Its header, then each value: the header of
-     * its parameter, the parameter's name, and the value as schema_write_value writes one, each padded to 8 bytes.
-     */
-    /** The grant "arguments"' first four bytes, "HARG" read as a little-endian u32; anything else isn't read. */
-    SLOP_OS_ARGUMENTS_MAGIC : u32 : 0x47524148
-    /** The header at the start of the grant "arguments", which a SlopOsArgument and its bytes follow for each value. */
-    SlopOsArguments :: struct {
-        /** SLOP_OS_ARGUMENTS_MAGIC. */
-        magic : u32,
-        /** How many values follow. */
-        count : u32,
-        /** Every byte of it, the header's too; more than 16 MiB, rounded up to pages, isn't mapped. */
-        total : u64,
-    }
-
-    /** A value's header: its parameter's name's bytes, its own, and its type's schema hash. */
-    SlopOsArgument :: struct {
-        /** How many bytes the parameter's name has, which follow this header, padded to 8. */
-        name_bytes : u32,
-        /** How many bytes the value has, as schema_write_value writes it, which follow the name, padded to 8. */
-        value_bytes : u32,
-        /** The schema hash of the type the value was written as (schema_hash). */
-        hash : u8[32],
     }
 
     /**

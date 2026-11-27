@@ -162,9 +162,9 @@ import intrinsics from "base:intrinsics"
         bound :: slop_os_call(
             SLOP_OS_CALL_PORT_BIND,
             port.first,
+            0,
             handle,
             SLOP_OS_SIGNAL_TERMINATED,
-            0,
             SLOP_OS_BIND_ONCE
         )
         if bound.tag == 0 {

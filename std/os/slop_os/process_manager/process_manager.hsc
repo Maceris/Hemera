@@ -152,9 +152,14 @@ Load :: struct {
      * closed once it's attached; NO_HANDLE for none.
      */
     intercept_port : slop_os.Port,
-    /** The intercept's key, calls and STOP_ bits, as intercept_attach takes them. */
+    /** The intercept's key, as intercept_attach takes it; unused without intercept_port. */
     intercept_key : u64,
+    /**
+     * The calls the intercept stops at: the first word of intercept_attach's set, calls 0 to 63, as the manager passes
+     * it; calls past them stop only with STOP_ALL_CALLS among intercept_points. 0 for none.
+     */
     intercept_calls : u64,
+    /** The intercept's STOP_ bits, as intercept_attach takes them. */
     intercept_points : u32,
     /**
      * Rights the requester's handle to the process has beside RIGHT_PROCESS_KILL, RIGHT_PROCESS_INSPECT,

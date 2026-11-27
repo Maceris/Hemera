@@ -97,7 +97,7 @@ UserBuffer :: struct {
 }
 
 /** How many argument registers a call has: six words, a slice taking two of them. */
-SYSCALL_ARGUMENT_WORDS :: 6
+SYSCALL_ARGUMENT_WORDS : u32 : 6
 
 /**
  * Generate the call numbers: SYSCALL_<NAME> :: number, a u32, for each call.
@@ -160,6 +160,16 @@ syscall_dispatch :: fn(location := #caller_location) -> compiler.Code {
         array_add(&made, dispatch(member, cast[u64](i), location))
     }
     return compiler.list(made)
+}
+
+/**
+ * Count the system calls: one more than the greatest call number, which grows as calls are appended. Meant for compile
+ * time, as the kernel sizes its sets of calls by it (intercept_attach's calls).
+ *
+ * @return How many members Syscalls has.
+ */
+syscall_count :: fn() -> u32 {
+    return cast[u32](table().members.count)
 }
 
 /**
@@ -240,7 +250,7 @@ argument_words :: fn(
             array_add(&made, word_of(input.type, argument, location))
         }
     }
-    if #is_compile_time && made.count > SYSCALL_ARGUMENT_WORDS {
+    if #is_compile_time && made.count > cast[usize](SYSCALL_ARGUMENT_WORDS) {
         compiler.report(
             .Error,
             #package_name,

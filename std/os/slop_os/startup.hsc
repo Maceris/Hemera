@@ -6,15 +6,19 @@ import runtime from "base:runtime"
 /**
  * What a process starts with (knowledge/design/system-abi.md §6, docs/specs/programs.md): its first
  * thread's argument points at this, in memory its loader mapped into it, read-only, which stays for the
- * life of the process. The entry point's typed arguments are still to come (roadmap M6, 6d).
+ * life of the process. Size-prefixed: a later ABI version may append fields, which size tells a reader are there.
+ * The entry point's typed arguments that aren't handles are in the grant "arguments" (ArgumentsHeader).
  */
 StartupBlock :: struct {
     /**
-     * The ABI_VERSION of the kernel that started the process; base's runtime ends a process whose block has another
-     * with EXIT_WRONG_ABI, before main.
+     * The ABI_VERSION of the kernel that started the process; base's runtime ends a process whose block has an earlier
+     * one than the program was built for with EXIT_WRONG_ABI, before main, and reads a later one's.
      */
     abi_version : u32,
-    /** The size of StartupBlock as its writer knew it, in bytes; fields past it weren't written. */
+    /**
+     * The size of StartupBlock as its writer knew it, in bytes; fields past it weren't written. base's runtime ends a
+     * process whose block is too small to hold cpu_features with EXIT_WRONG_ABI.
+     */
     size : u32,
     /** The process itself, a handle of its own. */
     process : Process,
@@ -35,7 +39,7 @@ StartupBlock :: struct {
     stack_base : u64,
     /** How many bytes the first thread's stack has, from stack_base. */
     stack_size : u64,
-    /** Where the grants are: grant_count Grants, this many bytes from the block's start. */
+    /** Where the grants are: grant_count Grants, this many bytes from the block's start, an offset, not a pointer. */
     grants : u64,
     /**
      * A random seed, which base's runtime seeds context.random from: the boot's for the root task, and one its
@@ -47,7 +51,7 @@ StartupBlock :: struct {
 }
 
 /** The most bytes of a grant's label; a shorter label is padded with zeros. */
-GRANT_LABEL_SIZE :: 32
+GRANT_LABEL_SIZE : u32 : 32
 
 /**
  * A handle the process starts with, besides its own, and what it's for: a label like "platform",
@@ -142,13 +146,44 @@ FramebufferLayout :: struct {
     blue_shift : u8,
 }
 
+/*
+ * The grant "arguments" (Hemera's docs/compilation.md, Entry Parameters), which whoever launched the program wrote and
+ * base's runtime reads as its own copies (runtime.SlopOsArguments and SlopOsArgument): an ArgumentsHeader, then for
+ * each value an ArgumentHeader, the parameter's name and the value as schema_write_value writes one, the name and the
+ * value each padded with zeros to a multiple of 8 bytes.
+ */
+/** The grant "arguments"' first four bytes, "HARG" read as a little-endian u32; a grant with any other isn't read. */
+ARGUMENTS_MAGIC : u32 : 0x47524148
+
+/** The header at the start of the grant "arguments". */
+ArgumentsHeader :: struct {
+    /** ARGUMENTS_MAGIC. */
+    magic : u32,
+    /** How many values follow, each with its ArgumentHeader. */
+    count : u32,
+    /** Every byte of the grant's that's used, this header's too; more than 16 MiB, rounded up to pages, isn't read. */
+    total : u64,
+}
+
+/** A value's header in the grant "arguments": the bytes of its parameter's name and its own, and its type. */
+ArgumentHeader :: struct {
+    /** How many bytes the parameter's name has, UTF-8, which follow this header, then zeros to a multiple of 8. */
+    name_bytes : u32,
+    /** How many bytes the value has, as schema_write_value writes it, which follow the name, padded to 8 as it is. */
+    value_bytes : u32,
+    /** The schema hash of the type the value was written as (std's schema_hash); a reader of another type skips it. */
+    hash : u8[32],
+}
+
+#assert size_of(ArgumentsHeader) == 16
+#assert size_of(ArgumentHeader) == 40
 #assert size_of(FirmwareTables) == 16
 #assert size_of(FirmwareTable) == 24
 #assert size_of(FramebufferLayout) == 20
 
 /**
- * The exit code of a process that ended before its entry ran because it was started by a kernel of another ABI
- * version, or with a startup block too small to read.
+ * The exit code of a process that ended before its entry ran because it was started by a kernel of an earlier ABI
+ * version than its own, or with a startup block too small to read.
  */
 EXIT_WRONG_ABI : u32 : runtime.SLOP_OS_EXIT_WRONG_ABI
 /**
@@ -228,7 +263,15 @@ find_grant :: fn(block : ptr[StartupBlock], label : string, kind : ObjectKind) -
 #assert offset_of(StartupBlock, stack_size) == offset_of(runtime.SlopOsStartup, stack_size)
 #assert offset_of(StartupBlock, grants) == offset_of(runtime.SlopOsStartup, grants)
 #assert offset_of(StartupBlock, seed) == offset_of(runtime.SlopOsStartup, seed)
-#assert size_of(runtime.SlopOsStartup) <= size_of(StartupBlock)
+#assert offset_of(StartupBlock, cpu_features) == offset_of(runtime.SlopOsStartup, cpu_features)
+#assert size_of(runtime.SlopOsStartup) == size_of(StartupBlock)
+#assert ARGUMENTS_MAGIC == runtime.SLOP_OS_ARGUMENTS_MAGIC
+#assert size_of(ArgumentsHeader) == size_of(runtime.SlopOsArguments)
+#assert offset_of(ArgumentsHeader, count) == offset_of(runtime.SlopOsArguments, count)
+#assert offset_of(ArgumentsHeader, total) == offset_of(runtime.SlopOsArguments, total)
+#assert size_of(ArgumentHeader) == size_of(runtime.SlopOsArgument)
+#assert offset_of(ArgumentHeader, value_bytes) == offset_of(runtime.SlopOsArgument, value_bytes)
+#assert offset_of(ArgumentHeader, hash) == offset_of(runtime.SlopOsArgument, hash)
 #assert size_of(runtime.SlopOsGrant) == size_of(Grant)
 #assert offset_of(Grant, kind) == offset_of(runtime.SlopOsGrant, kind)
 #assert offset_of(Grant, handle) == offset_of(runtime.SlopOsGrant, handle)

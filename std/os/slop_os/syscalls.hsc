@@ -11,9 +11,9 @@ package slop_os
 
 /**
  * The version of the system ABI this package describes. The startup block carries the kernel's, and a program built
- * against another refuses to start, until ABI v1.
+ * against a later one than its kernel's refuses to start (base's runtime, EXIT_WRONG_ABI); a later kernel starts it.
  */
-ABI_VERSION : u32 : 14
+ABI_VERSION : u32 : 15
 
 /**
  * A handle as user space sees it: opaque, chosen by the kernel, and good only in the process whose table it's in.
@@ -349,14 +349,14 @@ Syscalls :: struct {
      * Readable on the other end.
      *
      * @param end The caller's end; no right is needed.
-     * @param payload The message's bytes, copied; at most channel_max_payload of the ring's size.
+     * @param bytes The message's payload, copied; at most channel_max_payload of the ring's size.
      * @param batch The handle batch channel_send_handles filled for this message, or NO_BATCH for none.
      * @error PeerClosed The other end is closed.
      * @error Full The ring has no room for the message now; wait for Writable.
      * @error TooBig The message is bigger than the ring takes.
-     * @error BadBuffer The payload isn't memory the caller can read.
+     * @error BadBuffer The bytes aren't memory the caller can read.
      */
-    channel_write : fn(end : Channel, payload : u8[], batch : u32) -> Result[void, ChannelError],
+    channel_write : fn(end : Channel, bytes : u8[], batch : u32) -> Result[void, ChannelError],
     /**
      * Read the next message from the other end's ring through the kernel, for a holder that hasn't mapped it.
      *
@@ -436,20 +436,22 @@ Syscalls :: struct {
      * it empty.
      *
      * @param port The port, which needs RIGHT_PORT_BIND.
+     * @param key The binding's key, which its packets carry: one not bound on the port, or one bound to this same
+     *     object, which is armed again.
      * @param object What to watch: a channel end, a process (which needs RIGHT_PROCESS_INSPECT), a thread, an IRQ, a
-     *     Device, or a memory budget (which needs RIGHT_BUDGET_CHARGE).
+     *     Device, a memory budget (which needs RIGHT_BUDGET_CHARGE), or a memory object through its owning handle, for
+     *     SIGNAL_UNHELD.
      * @param signals Which signals to see; ignored for an IRQ.
-     * @param key The binding's key, which its packets carry.
-     * @param mode Once, disarmed once its packet is queued, or Persistent.
+     * @param mode Once, disarmed once its packet is queued, or Persistent; any value but Once is taken as Persistent.
      * @error WrongKind An object no port can watch.
-     * @error KeyInUse The key is bound already.
+     * @error KeyInUse The key is bound already, to something else.
      * @error TooManyBindings The object has as many bindings as it takes.
      */
     port_bind : fn(
         port : Port,
+        key : u64,
         object : Handle,
         signals : Signals,
-        key : u64,
         mode : BindMode
     ) -> Result[void, PortError],
     /**
@@ -589,14 +591,18 @@ Syscalls :: struct {
         size : u64
     ) -> Result[Memory, MemoryError],
     /**
-     * List the threads of a process's subtree.
+     * List the threads of a process's subtree, by ID, the least first, from an ID on: a list longer than one call
+     * writes is had by calling again from the last ID written plus 1, which neither misses nor repeats a thread that
+     * lived throughout, as IDs are never reused.
      *
      * @param process The process, which needs RIGHT_PROCESS_INSPECT.
-     * @param ids Where their IDs are written, at most 64 of them however big it is.
-     * @return How many threads the subtree has, which can be more than were written.
+     * @param from The least ID listed; 0 (or 1, the least an ID is) for all of them.
+     * @param ids Where the IDs of from and past are written, in increasing order: as many as fit, and at most 64
+     *     however big it is.
+     * @return How many threads of the subtree have IDs of from and past, which can be more than were written.
      * @error BadBuffer The IDs aren't memory the caller can write.
      */
-    process_threads : fn(process : Process, ids : mut u64[]) -> Result[u32, ControlError],
+    process_threads : fn(process : Process, from : u64, ids : mut u64[]) -> Result[u32, ControlError],
     /**
      * Copy bytes from an address space in a process's subtree into the caller's buffer.
      *
@@ -618,14 +624,14 @@ Syscalls :: struct {
      * @param process The process, which needs RIGHT_PROCESS_WRITE_STATE.
      * @param space An address space in its subtree, through a handle the caller has.
      * @param address Where in space to write to.
-     * @param buffer The bytes to write.
+     * @param bytes The bytes to write.
      * @error BadAddress The space isn't in the subtree, or the range isn't mapped there or in the caller's memory.
      */
     process_write_memory : fn(
         process : Process,
         space : AddressSpace,
         address : u64,
-        buffer : u8[]
+        bytes : u8[]
     ) -> Result[void, ControlError],
     /**
      * Suspend a thread in a process's subtree until thread_resume. Suspending one already suspended changes nothing.
@@ -673,16 +679,19 @@ Syscalls :: struct {
      * @param process The process, which needs RIGHT_PROCESS_INTERCEPT.
      * @param port The port stops are reported to, which needs RIGHT_PORT_BIND.
      * @param key The Stop packets' key.
-     * @param calls Which system calls stop at entry or exit: a bit per call number below 64 (syscall_bit).
+     * @param calls Which system calls stop at entry or exit: a set of call numbers, call n bit n % 64 of calls[n / 64]
+     *     (add_call), of any length; calls past its end don't stop, and bits past the kernel's calls are ignored, as
+     *     those calls don't exist. Empty for none, as with only faults or STOP_ALL_CALLS.
      * @param points STOP_ bits: where threads stop.
      * @return An owning handle to the intercept; closing it lets the subtree run on unintercepted.
      * @error AlreadyIntercepted The process is intercepted already.
+     * @error BadBuffer The calls aren't memory the caller can read.
      */
     intercept_attach : fn(
         process : Process,
         port : Port,
         key : u64,
-        calls : u64,
+        calls : u64[],
         points : u32
     ) -> Result[Intercept, ControlError],
     /**
@@ -1099,10 +1108,10 @@ Syscalls :: struct {
      *
      * @param memory The paged memory, which needs RIGHT_MEMORY_WRITE.
      * @param offset The page's offset in bytes.
-     * @return 1 if it was touched, 0 if it wasn't; always 0 where the hardware doesn't keep the marks.
+     * @return True if it was touched, false if it wasn't; always false where the hardware doesn't keep the marks.
      * @error NotPaged Not paged memory.
      */
-    memory_page_accessed : fn(memory : Memory, offset : u64) -> Result[u64, MemoryError],
+    memory_page_accessed : fn(memory : Memory, offset : u64) -> Result[bool, MemoryError],
     /**
      * Run the calling thread on a CPU budget from now on, or on its process's again: a server running a
      * connection's work on the budget its client lent it (the SlopOS repository's decisions 0037, 0130). Destroyed
@@ -1191,12 +1200,14 @@ Syscalls :: struct {
      *
      * @param process The process, which needs RIGHT_PROCESS_WRITE_STATE.
      * @param thread The thread's ID, as process_threads gives it.
-     * @param debug What's set; all of it replaces what the thread had.
+     * @param debug What's set, read as far as its size says; all of it replaces what the thread had.
      * @error NoSuchThread No live thread with that ID in the subtree.
      * @error NotStopped The thread isn't parked: stopped or suspended, and off its CPU.
-     * @error BadBuffer debug isn't memory the caller can read.
+     * @error BadBuffer debug isn't memory the caller can read, or its size is smaller than its header or than its
+     *     slot_count slots.
      * @error BadRegisters A slot the architecture can't set: an address outside user memory, a data slot's size not 1,
-     *     2, 4 or 8 or its address not a multiple of it, or more slots of a kind than the CPU has.
+     *     2, 4 or 8 or its address not a multiple of it, or more slots of a kind than the CPU has; more slots than
+     *     DEBUG_SLOTS; or reserved bytes that aren't zero.
      */
     thread_set_debug : fn(process : Process, thread : u64, debug : ptr[ThreadDebug]) -> Result[void, ControlError],
     /**
@@ -1204,11 +1215,12 @@ Syscalls :: struct {
      * stay stopped until they're let go.
      *
      * @param intercept The intercept, which needs RIGHT_INTERCEPT_STEER.
-     * @param calls Which system calls stop at entry or exit from now: a bit per call number below 64 (syscall_bit).
+     * @param calls Which system calls stop at entry or exit from now, a set of call numbers as intercept_attach's.
      * @param points STOP_ bits: where threads stop from now.
      * @error MissingRight The intercept's handle lacks RIGHT_INTERCEPT_STEER.
+     * @error BadBuffer The calls aren't memory the caller can read; nothing is changed.
      */
-    intercept_set : fn(intercept : Intercept, calls : u64, points : u32) -> Result[void, ControlError],
+    intercept_set : fn(intercept : Intercept, calls : u64[], points : u32) -> Result[void, ControlError],
     /**
      * Set what a process's threads trap on (decisions/0183, 12c): TRAP_COUNTER for reading the CPU's counter in user
      * mode, for a recording. A trapped read is run by the kernel, and then is a fault stop, FAULT_COUNTER, for an
@@ -1264,8 +1276,9 @@ Syscalls :: struct {
      * instead, so a step past a breakpoint doesn't stop at it again. A hit is a fault stop, as thread_set_debug's are.
      *
      * @param process The process, which needs RIGHT_PROCESS_WRITE_STATE.
-     * @param debug Its slots, which replace the process's; none Off turns them off. step must be false.
-     * @error BadBuffer debug isn't memory the caller can read.
+     * @param debug Its slots, read as far as its size says, which replace the process's; all Off turns them off. step
+     *     must be false.
+     * @error BadBuffer debug isn't memory the caller can read, or its size is too small, as for thread_set_debug.
      * @error BadRegisters step is set, or a slot the architecture can't set, as for thread_set_debug.
      */
     process_set_debug : fn(process : Process, debug : ptr[ThreadDebug]) -> Result[void, ControlError],
@@ -1454,7 +1467,7 @@ ProcessCpu :: struct {
 }
 
 /** The most address spaces memory_evict takes a page from at once. */
-MAX_EVICT_SPACES :: 16
+MAX_EVICT_SPACES : u32 : 16
 
 /**
  * What cpu_budget_info gives, in the order of its words.
@@ -1485,7 +1498,7 @@ CpuBudgetInfo :: struct {
 }
 
 /** How many words cpu_budget_info writes: one for each of CpuBudgetInfo's fields. */
-CPU_BUDGET_INFO_WORDS :: 8
+CPU_BUDGET_INFO_WORDS : u32 : 8
 
 /**
  * Describe a CPU budget: cpu_budget_info's words, as a CpuBudgetInfo. Needs no context.
@@ -1523,13 +1536,19 @@ EXIT_KILLED : u64 : 1 << 32
 #insert syscall_stubs()
 
 /**
- * Give a call's bit, for intercept_attach's calls.
+ * Add a call to a set of calls, for intercept_attach's and intercept_set's: bit number % 64 of calls[number / 64].
  *
- * @param number The call's number (SYSCALL_<NAME>), below 64 for the bit to mean anything.
- * @return The call's bit; 0 for numbers 64 and up on x86-64, whose shifts wrap.
+ * @param calls The set, changed in place; it's at least number / 64 + 1 words long to hold the call.
+ * @param number The call's number (SYSCALL_<NAME>); any value.
+ * @return True if it's in the set now; false if the set is too short for it, which leaves the set as it was.
  */
-syscall_bit :: fn(number : u32) -> u64 #no_context {
-    return cast[u64](1) << cast[u64](number)
+add_call :: fn(calls : mut u64[], number : u32) -> bool #no_context {
+    word :: cast[usize](number / 64)
+    if word >= calls.count {
+        return false
+    }
+    calls[word] |= cast[u64](1) << cast[u64](number % 64)
+    return true
 }
 
 /** What a memory object is, as memory_kind says. */
@@ -1550,13 +1569,17 @@ MemoryKind :: enum #backed_by(u8) {
     Device = 7,
 }
 
-/** What handle_info gives. */
+/** What handle_info gives, in its two result registers: the rights, then the kind. */
 HandleInfo :: struct {
-    /** The kind of object the handle is to. */
-    kind : ObjectKind,
     /** The rights the handle has. */
     rights : Rights,
+    /** The kind of object the handle is to. */
+    kind : ObjectKind,
+    /** Unused, zeros: not in a result register, so a later meaning for them takes a call of its own. */
+    reserved : u8[3],
 }
+
+#assert size_of(HandleInfo) == 8
 
 /** What channel_create gives: owning handles to a new channel's two ends. */
 ChannelPair :: struct {
@@ -1598,7 +1621,11 @@ MsiMessage :: struct {
     address : u64,
     /** The value it writes. */
     data : u32,
+    /** Unused, zero: not in a result register, so a later meaning for it takes a call of its own. */
+    reserved : u32,
 }
+
+#assert size_of(MsiMessage) == 16
 
 /**
  * Make a PCIe function's address, for device_create: its segment, then its requester ID.
@@ -1614,7 +1641,7 @@ device_address :: fn(segment : u16, bus : u8, device : u8, function : u8) -> u32
     return cast[u32](segment) << 16 | cast[u32](bus) << 8 | (cast[u32](device) & 0x1f) << 3 | (cast[u32](function) & 7)
 }
 
-// For intercept_attach's points: where threads stop. Its calls is a bit per syscall number below 64.
+// For intercept_attach's points: where threads stop. Its calls is a set of call numbers (add_call).
 /** At the entry of a system call in intercept_attach's calls, before it runs. */
 STOP_SYSCALL_ENTRY : u32 : 1 << 0
 /** At the exit of a system call in intercept_attach's calls, before user mode sees its result. */
@@ -1623,14 +1650,14 @@ STOP_SYSCALL_EXIT : u32 : 1 << 1
 STOP_FAULT : u32 : 1 << 2
 /**
  * With STOP_SYSCALL_ENTRY or STOP_SYSCALL_EXIT: every system call stops there, whatever intercept_attach's calls say,
- * those numbered 64 and up too, as a recording needs.
+ * those the kernel has but the caller's package didn't too, as a recording needs.
  */
 STOP_ALL_CALLS : u32 : 1 << 4
 /** A new thread, before its first instruction, so a recording can run one thread at a time from the start. */
 STOP_THREAD_START : u32 : 1 << 5
 
 /** How many of its scheduler's events each CPU keeps for trace_read: the last of them. */
-TRACE_EVENTS :: 1024
+TRACE_EVENTS : u32 : 1024
 
 /** What a TraceEvent is. */
 TraceKind :: enum #backed_by(u32) {
@@ -1658,9 +1685,9 @@ TraceEvent :: struct {
 }
 
 /** How many return addresses a Sample holds, its program counter among them. */
-SAMPLE_FRAMES :: 8
+SAMPLE_FRAMES : u32 : 8
 /** How many samples an intercept keeps for intercept_samples: the last of them. */
-SAMPLES :: 1024
+SAMPLES : u32 : 1024
 
 /** A sample of a thread's stack at a tick (intercept_sample). */
 Sample :: struct {
@@ -1668,11 +1695,15 @@ Sample :: struct {
     thread : u64,
     /** The fiber its per-thread page said was running (ThreadPage.fiber); 0 for none. */
     fiber : u64,
-    /** How many of frames are used, 1 or more. */
+    /** How many of frames are used, 1 to SAMPLE_FRAMES. */
     count : u32,
+    /** Unused, zero, so frames is aligned. */
+    reserved : u32,
     /** Its program counter, then each caller's return address, innermost first, as its frame pointers chain them. */
     frames : u64[SAMPLE_FRAMES],
 }
+
+#assert size_of(Sample) == 88
 
 /**
  * For process_set_traps: reading the CPU's counter in user mode (x86-64's RDTSC, AArch64's CNTVCT_EL0 and CNTPCT_EL0).
@@ -1756,7 +1787,7 @@ FAULT_LANDING_PAD : u32 : 13
 FAULT_AUTHENTICATION : u32 : 14
 
 /** How many hardware breakpoints and watchpoints a thread can have, as ThreadDebug's slots. */
-DEBUG_SLOTS :: 4
+DEBUG_SLOTS : u32 : 4
 
 /** What a DebugSlot watches. */
 DebugSlotKind :: enum #backed_by(u8) {
@@ -1778,15 +1809,34 @@ DebugSlot :: struct {
     kind : DebugSlotKind,
     /** How many bytes a watchpoint watches, 1, 2, 4 or 8, its address a multiple of it; ignored for Execute. */
     size : u8,
+    /** Unused, zeros; a slot with any other is refused (BadRegisters), so they can be given a meaning later. */
+    reserved : u8[6],
 }
 
-/** A thread's debugging state, for thread_set_debug. */
+#assert size_of(DebugSlot) == 16
+
+/**
+ * A thread's debugging state, for thread_set_debug and process_set_debug: size-prefixed, so it can grow, in more slots
+ * or fields after them; the kernel reads as much of it as size says, and takes what's past that as zeros.
+ */
 ThreadDebug :: struct {
+    /**
+     * How many bytes of it the caller wrote: the ThreadDebug it knew, as the default does. At least the header's 16
+     * bytes and slot_count slots; a size past the kernel's own ThreadDebug's is read only as far as its own.
+     */
+    size : u32 = 16 + 16 * DEBUG_SLOTS,
+    /** How many slots follow, from 0 to DEBUG_SLOTS, as the default does; more is refused (BadRegisters). */
+    slot_count : u32 = DEBUG_SLOTS,
     /** Whether it stops after each instruction it runs, as a FAULT_SINGLE_STEP. */
     step : bool,
-    /** Its hardware breakpoints and watchpoints; slots that are Off are unused. */
+    /** Unused, zeros; any other is refused (BadRegisters), so they can be given a meaning later. */
+    reserved : u8[7],
+    /** Its hardware breakpoints and watchpoints, the first slot_count of them; slots that are Off are unused. */
     slots : DebugSlot[DEBUG_SLOTS],
 }
+
+#assert size_of(ThreadDebug) == 16 + 16 * cast[usize](DEBUG_SLOTS)
+#assert offset_of(ThreadDebug, slots) == 16
 
 /**
  * Name a fault's kind, for a person reading a report.
@@ -2065,7 +2115,7 @@ HandleError :: enum #backed_by(u32) {
     TableFull = 5,
     /** The kernel has no memory for what the call makes. */
     OutOfMemory = 6,
-    /** A number the kernel doesn't have. */
+    /** A call number the kernel doesn't have: what any call answers on a kernel without it. */
     NoSuchCall = 7,
     /** Memory the call reads isn't the caller's to. */
     BadBuffer = 10,
@@ -2087,6 +2137,8 @@ PortError :: enum #backed_by(u32) {
     WrongKind = 4,
     /** The kernel has no memory for the binding or the port. */
     OutOfMemory = 6,
+    /** A call number the kernel doesn't have: what any call answers on a kernel without it. */
+    NoSuchCall = 7,
     /** The key is bound already. */
     KeyInUse = 8,
     /** No binding has that key, or not one of that kind. */
@@ -2115,6 +2167,8 @@ ChannelError :: enum #backed_by(u32) {
     TableFull = 5,
     /** The kernel has no memory for what the call makes. */
     OutOfMemory = 6,
+    /** A call number the kernel doesn't have: what any call answers on a kernel without it. */
+    NoSuchCall = 7,
     /** Memory the call reads or writes isn't the caller's to. */
     BadBuffer = 10,
     /** The other end is closed. */
@@ -2167,6 +2221,8 @@ MemoryError :: enum #backed_by(u32) {
     TableFull = 5,
     /** The kernel has no memory for what the call makes. */
     OutOfMemory = 6,
+    /** A call number the kernel doesn't have: what any call answers on a kernel without it. */
+    NoSuchCall = 7,
     /** Not a page-aligned user address range, or it overlaps a mapping. */
     BadAddress = 18,
     /** Not a whole number of pages, none at all, more than MAX_MEMORY_SIZE, or past the memory object's end. */
@@ -2178,15 +2234,15 @@ MemoryError :: enum #backed_by(u32) {
     /** Writable and executable at once, or no access at all. */
     BadProtection = 27,
     /** The port has no wake binding with that key, or is gone. */
-    NoPager = 28,
+    NoPager = 49,
     /** No page of the paged memory is waited for that hasn't been reported. */
-    NothingWanted = 29,
+    NothingWanted = 50,
     /** Not paged memory. */
-    NotPaged = 30,
+    NotPaged = 51,
     /** A page of paged memory that hasn't been supplied. */
-    NotSupplied = 31,
+    NotSupplied = 52,
     /** A page mapped in more address spaces than memory_evict takes it from at once. */
-    MappedWidely = 32,
+    MappedWidely = 53,
 }
 
 /** The largest memory object, 1 GiB, in bytes. */
@@ -2196,6 +2252,8 @@ MAX_MEMORY_SIZE : u64 : 1 << 30
  * What coverage_take can fail with (the SlopOS repository's decisions/0186). Tags shared with the others mean the same.
  */
 CoverageError :: enum #backed_by(u32) {
+    /** A call number the kernel doesn't have: what any call answers on a kernel without it. */
+    NoSuchCall = 7,
     /** Memory the call writes isn't there, or isn't the caller's to. */
     BadBuffer = 10,
     /** The kernel wasn't built with coverage counters. */
@@ -2216,6 +2274,8 @@ ControlError :: enum #backed_by(u32) {
     TableFull = 5,
     /** The kernel has no memory for what the call makes. */
     OutOfMemory = 6,
+    /** A call number the kernel doesn't have: what any call answers on a kernel without it. */
+    NoSuchCall = 7,
     /** Memory the call reads or writes isn't there, or isn't the caller's to. */
     BadBuffer = 10,
     /** From intercept_next: no stop is left to report. */
@@ -2255,6 +2315,8 @@ DeviceError :: enum #backed_by(u32) {
     TableFull = 5,
     /** The kernel has no memory for what the call makes, or to map the controller's registers. */
     OutOfMemory = 6,
+    /** A call number the kernel doesn't have: what any call answers on a kernel without it. */
+    NoSuchCall = 7,
     /** Not page-aligned, or memory the kernel owns. */
     BadAddress = 18,
     /** A size the call can't take: not a whole number of pages, none, or too big. */
@@ -2343,9 +2405,11 @@ Protocol :: struct {
 }
 
 /** Who pays for a server's work on a protocol's connections (decisions/0037). */
-Lending :: enum {
+Lending :: enum #backed_by(u32) {
     /** The client's budget, lent for each of its connections. */
     PerConnection,
     /** The server's own. */
     Server,
 }
+
+#assert size_of(Protocol) == 24

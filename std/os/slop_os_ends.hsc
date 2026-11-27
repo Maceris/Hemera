@@ -374,7 +374,7 @@ port_for :: fn(budget : slop_os.MemoryBudget, end : slop_os.Channel) -> slop_os.
     signals :: cast[slop_os.Signals](cast[u32](slop_os.SIGNAL_READABLE)
         | cast[u32](slop_os.SIGNAL_WRITABLE)
         | cast[u32](slop_os.SIGNAL_PEER_CLOSED))
-    match slop_os.port_bind(port, cast[slop_os.Handle](end), signals, 0, .Persistent) {
+    match slop_os.port_bind(port, 0, cast[slop_os.Handle](end), signals, .Persistent) {
         case Ok => return port
         case Error(error) => {
             _ = slop_os.handle_close(cast[slop_os.Handle](port))

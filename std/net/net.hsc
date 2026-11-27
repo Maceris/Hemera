@@ -567,7 +567,7 @@ package net
      */
     listener_on :: fn(listener : ptr[Listener], port : slop_os.Port, key : u64) -> bool {
         signals :: cast[slop_os.Signals](cast[u32](slop_os.SIGNAL_READABLE) | cast[u32](slop_os.SIGNAL_PEER_CLOSED))
-        return slop_os.port_bind(port, cast[slop_os.Handle](listener.channel.end), signals, key, .Persistent) is_ok
+        return slop_os.port_bind(port, key, cast[slop_os.Handle](listener.channel.end), signals, .Persistent) is_ok
     }
 
     /**
@@ -654,7 +654,7 @@ package net
             _ = slop_os.handle_close(cast[slop_os.Handle](tcp.port))
         }
         signals :: cast[slop_os.Signals](cast[u32](slop_os.SIGNAL_READABLE) | cast[u32](slop_os.SIGNAL_PEER_CLOSED))
-        if slop_os.port_bind(port, cast[slop_os.Handle](tcp.stream.end), signals, key, .Persistent) is_error {
+        if slop_os.port_bind(port, key, cast[slop_os.Handle](tcp.stream.end), signals, .Persistent) is_error {
             tcp.port = cast[slop_os.Port](slop_os.NO_HANDLE)
             return false
         }
