@@ -186,6 +186,25 @@ Request :: union {
      * served.
      */
     OpenSnapshot(slop_os.Relative[u8]),
+    /**
+     * An index of a typed file's field declared on this directory's whole volume, and built from the files of the
+     * type there are: from then on, each file of the type is in it as it's committed. Declaring one there is already
+     * gives it again. Answered with Declared, or Failed: WrongType for a schema or field it can't be of, NoSpace for
+     * a volume with as many indexes as it keeps, ReadOnly on a connection reached through a stored link. Unsupported
+     * on a file system without indexes, and on a transaction.
+     */
+    DeclareIndex(files.IndexOf),
+    /**
+     * The index with this number taken out of this directory's volume. Answered with Done, or Failed: NotFound for
+     * no such index, ReadOnly on a connection reached through a stored link. Unsupported on a file system without
+     * indexes, and on a transaction.
+     */
+    DropIndex(u32),
+    /**
+     * The volume's index at or after a cursor: 0 for the first, then each IndexListed's next. Answered with
+     * IndexListed, End once none is left, or Failed. Unsupported on a file system without indexes.
+     */
+    Indexes(u32),
 }
 
 /** What a directory's server answers. */
@@ -235,6 +254,10 @@ Response :: union {
      * next.
      */
     SnapshotListed(files.Snapshot),
+    /** The answer to DeclareIndex: the index's number. */
+    Declared(u32),
+    /** The answer to Indexes: an index, its field's name in the message's variable-size data, and the cursor after. */
+    IndexListed(files.Index),
 }
 
 /**
@@ -244,8 +267,8 @@ Response :: union {
  * that make something once: a transaction's, Replace, the link requests that change what's issued, and Snapshot.
  *
  * @param request The request, which isn't changed.
- * @return False for Remove, Rename, Begin, Commit, Replace, Grant, Link, Revoke and Snapshot, and an OpenFile of a
- *     New file; true for the rest.
+ * @return False for Remove, Rename, Begin, Commit, Replace, Grant, Link, Revoke, Snapshot and DropIndex, and an
+ *     OpenFile of a New file; true for the rest, DeclareIndex among them, which gives the index declared again.
  */
 is_idempotent :: fn(request : ptr[Request]) -> bool {
     return match request^ {
@@ -275,6 +298,9 @@ is_idempotent :: fn(request : ptr[Request]) -> bool {
         case Snapshot => false
         case Snapshots(_) => true
         case OpenSnapshot(_) => true
+        case DeclareIndex(_) => true
+        case DropIndex(_) => false
+        case Indexes(_) => true
     }
 }
 

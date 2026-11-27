@@ -199,4 +199,46 @@ Features :: struct {
     snapshots : bool,
     /** Whether a directory's Changes gives what changed beneath it. */
     change_cursors : bool,
+    /** Whether a directory's DeclareIndex, DropIndex and Indexes keep indexes of typed files' fields. */
+    indexes : bool,
+}
+
+/** What an indexed field holds, as Indexes says, and so what a query compares it with. */
+IndexedKind :: enum #backed_by(u32) {
+    /** An unsigned integer of 1, 2, 4 or 8 bytes, compared with a number. */
+    Unsigned = 1,
+    /** A signed integer of 1, 2, 4 or 8 bytes, compared with a number's two's complement bits. */
+    Signed = 2,
+    /** A bool, compared with 0 or 1. */
+    Bool = 3,
+    /** Text, a Relative of bytes, compared byte by byte with a text. */
+    Text = 4,
+}
+
+/**
+ * What DeclareIndex declares: an index of a typed file's field (the SlopOS repository's decisions 0046, 0201), by
+ * the type's schema and the field's name.
+ */
+IndexOf :: struct {
+    /**
+     * The type's schema, its bytes as std's schema writes them, of a struct; the server works out its hash from
+     * them, so the index is of the files of exactly that type, laid out as the bytes say.
+     */
+    schema : slop_os.Relative[u8],
+    /** The name of one of the struct's own fields, UTF-8: an integer, a bool, or text (a Relative of bytes). */
+    field : slop_os.Relative[u8],
+}
+
+/** An index a volume keeps, as Indexes answers: its number, what it's of, and the cursor after it. */
+Index :: struct {
+    /** Its number, which a query names it by. */
+    number : u32,
+    /** What its field holds. */
+    kind : IndexedKind,
+    /** The schema hash of the files it indexes. */
+    schema : u8[32],
+    /** Its field's name, UTF-8. */
+    field : slop_os.Relative[u8],
+    /** The cursor to give the next Indexes, for the index after this one; opaque, only given back. */
+    next : u32,
 }
