@@ -676,9 +676,11 @@ for `morestack`.
 
 ## Linking
 
-The compiler links the output itself, with LLVM's `lld`: `lld-link` for PE/COFF and `ld.lld` for ELF, found on the
-PATH. A build package can give a target another with `TargetOptions.linker`: a program's name, found on the PATH, or
-its path, relative to the build package's folder. It's given the same arguments `lld` would be, so it has to take them,
+The compiler links the output itself, with LLVM's `lld`: `lld-link` for PE/COFF and `ld.lld` for ELF, found in the
+compiler's own folder first and then on the PATH. Hemera's build puts the ones its own LLVM builds there, beside
+`hemera`, with Hemera's patches, so a compiler and its linkers come together, whatever the PATH has. A build package can
+give a target another with `TargetOptions.linker`: a program's name, found the same way, or its path, relative to the
+build package's folder. It's given the same arguments `lld` would be, so it has to take them,
 as `link.exe` does `lld-link`'s. The object format follows the target's OS:
 
 | OS | Format |
@@ -940,7 +942,8 @@ Checking is the packages read, resolved and checked; generating makes the progra
 optimizing and assembling is LLVM's passes and machine code: for a program generated in parts, the whole module
 simplified first, then the parts at once (see [Generating in Parallel](#generating-in-parallel)). A build package's
 targets each have their own phases, and the time its checks take, and what describing the program to them takes, is
-shown too. The linker is run directly, found on the PATH: `lld-link` for PE/COFF and `ld.lld` for ELF.
+shown too. The linker is run directly, found beside the compiler or on the PATH: `lld-link` for PE/COFF and `ld.lld`
+for ELF.
 
 A check has `reach` where a build has `generate` (see [Checking Without Building](#checking-without-building)). Since a
 build package's targets are built several at once, each target also gets a line saying when, in milliseconds since its
@@ -1106,7 +1109,7 @@ patch 0012). Stack traces strip return addresses' authentication codes, for a 48
 
 The note is the linker's to merge, keeping a feature only where every object has it. An lld that doesn't know
 RISC-V's, as lld 19 doesn't, leaves it out, and the program then runs without either, as its operating system reads
-the note; the lld built from Hemera's own LLVM (its `lld` target) keeps it.
+the note; the lld built from Hemera's own LLVM (its `lld` target), which is beside the compiler, keeps it.
 
 Only ELF targets: on Windows and UEFI the option does nothing.
 

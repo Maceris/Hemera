@@ -1,4 +1,5 @@
 #include "middle_end/build_cache.h"
+#include "back_end/linker.h"
 
 #include <algorithm>
 #include <atomic>
@@ -111,17 +112,16 @@ namespace hemera {
 	}
 
 	/*
-	 * Which linker links a program, as the back end finds it (BackendLLVM::link): the target's own, or ld.lld or
-	 * lld-link on the PATH. Its path, size and modification time, as two linkers on the PATH can give different
-	 * outputs, like an older lld that drops a property note another keeps; empty where none is found.
+	 * Which linker links a program, as the back end finds it (BackendLLVM::link, find_linker): the target's own, or
+	 * ld.lld or lld-link beside the compiler or on the PATH. Its path, size and modification time, as two linkers can
+	 * give different outputs, like an older lld that drops a property note another keeps; empty where none is found.
 	 */
 	static std::string linker_identity(const Options& options) {
 		std::string linker = options.linker;
 		if (linker.empty()) {
 			linker = ObjectFormatType::COFF == options.object_format ? "lld-link" : "ld.lld";
 		}
-		llvm::ErrorOr<std::string> program = std::filesystem::path(linker).is_absolute() ? llvm::ErrorOr<std::string>(linker)
-			: llvm::sys::findProgramByName(linker);
+		llvm::ErrorOr<std::string> program = find_linker(linker);
 		if (!program) {
 			return {};
 		}

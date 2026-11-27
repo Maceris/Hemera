@@ -1,5 +1,6 @@
 #include "back_end/back_end.h"
 #include "back_end/efi_image.h"
+#include "back_end/linker.h"
 
 #include <algorithm>
 #include <chrono>
@@ -971,14 +972,14 @@ namespace hemera {
 		}
 		args.insert(args.end(), files.begin(), files.end());
 		debug_args.insert(debug_args.end(), files.begin(), files.end());
-		// The target's own, given the same arguments: a path, made absolute by add_target, or a name to find on the PATH
+		// The target's own, given the same arguments: a path, made absolute by add_target, or a name to find beside the
+		// compiler or on the PATH (find_linker)
 		if (!options.linker.empty()) {
 			linker = options.linker;
 		}
-		llvm::ErrorOr<std::string> program = std::filesystem::path(linker).is_absolute() ? llvm::ErrorOr<std::string>(linker)
-			: llvm::sys::findProgramByName(linker);
+		llvm::ErrorOr<std::string> program = find_linker(linker);
 		if (!program) {
-			report_error(ErrorCode::E7000, object_file, 0, 0, std::format("{} isn't on the PATH", linker));
+			report_error(ErrorCode::E7000, object_file, 0, 0, std::format("{} isn't beside the compiler or on the PATH", linker));
 		}
 		else {
 			auto run = [&](const std::vector<std::string>& given) {

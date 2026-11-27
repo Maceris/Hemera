@@ -223,6 +223,38 @@ ENDIF()
 
 # A compiler: the library LIBRARY, of everything but main and the generated sources too, for the compiler's tests and
 # the tools built on it; and the program PROGRAM, which is main linked with it
+# Where the DLLs the compiler and lld load are looked for, besides the PATH, where LLVM was built against them, as on
+# Windows with vcpkg's zlib and libxml2: each import library's bin folder, beside its lib folder
+SET(HEMERA_RUNTIME_FOLDERS)
+IF(WIN32)
+  FOREACH(HEMERA_IMPORT_LIBRARY ${ZLIB_LIBRARY_RELEASE} ${LIBXML2_LIBRARY})
+    GET_FILENAME_COMPONENT(HEMERA_IMPORT_FOLDER ${HEMERA_IMPORT_LIBRARY} DIRECTORY)
+    IF(IS_DIRECTORY ${HEMERA_IMPORT_FOLDER}/../bin)
+      LIST(APPEND HEMERA_RUNTIME_FOLDERS ${HEMERA_IMPORT_FOLDER}/../bin)
+    ENDIF()
+  ENDFOREACH()
+ENDIF()
+
+# The toolchain beside a program that compiles: the linkers Hemera's own LLVM builds, with Hemera's patches, which the
+# compiler looks for there before the PATH (back_end/linker.h), lld being one program that acts as the linker it's
+# named as; and on Windows the DLLs both load, and those load in turn (copy_runtime_dlls.cmake), so neither needs
+# anything on the PATH
+FUNCTION(HEMERA_COPY_TOOLCHAIN PROGRAM)
+  ADD_DEPENDENCIES(${PROGRAM} lld)
+  ADD_CUSTOM_COMMAND(TARGET ${PROGRAM} POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:lld> $<TARGET_FILE_DIR:${PROGRAM}>/ld.lld${CMAKE_EXECUTABLE_SUFFIX}
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:lld> $<TARGET_FILE_DIR:${PROGRAM}>/lld-link${CMAKE_EXECUTABLE_SUFFIX})
+  IF(WIN32)
+    # Each list one argument, its semicolons kept
+    STRING(REPLACE ";" "$<SEMICOLON>" FOLDERS "${HEMERA_RUNTIME_FOLDERS}")
+    ADD_CUSTOM_COMMAND(TARGET ${PROGRAM} POST_BUILD
+      COMMAND ${CMAKE_COMMAND} "-DEXECUTABLES=$<TARGET_FILE:${PROGRAM}>$<SEMICOLON>$<TARGET_FILE:lld>"
+        "-DDESTINATION=$<TARGET_FILE_DIR:${PROGRAM}>" "-DFOLDERS=${FOLDERS}"
+        -P ${SOURCE_DIR}/copy_runtime_dlls.cmake
+      VERBATIM)
+  ENDIF()
+ENDFUNCTION()
+
 FUNCTION(HEMERA_ADD_COMPILER LIBRARY PROGRAM)
   ADD_LIBRARY(${LIBRARY} ${HEADER_FILES} ${HEMERA_GENERATED} ${SOURCE_FILES})
   TARGET_LINK_LIBRARIES(${LIBRARY} PUBLIC
@@ -242,6 +274,7 @@ FUNCTION(HEMERA_ADD_COMPILER LIBRARY PROGRAM)
   TARGET_COMPILE_DEFINITIONS(${PROGRAM} PRIVATE ${HEMERA_DEFINITIONS})
   TARGET_COMPILE_OPTIONS(${PROGRAM} PRIVATE ${HEMERA_OPTIONS} ${HEMERA_WARNING_OPTIONS})
   ADD_DEPENDENCIES(${PROGRAM} HemeraGenerated)
+  HEMERA_COPY_TOOLCHAIN(${PROGRAM})
 ENDFUNCTION()
 
 HEMERA_ADD_COMPILER(HemeraLib Hemera)
@@ -295,6 +328,8 @@ ENDIF()
 enable_testing()
 
 ADD_EXECUTABLE(HemeraTest ${HEADER_FILES} ${TEST_FILES} ${HEMERA_MANIFEST})
+# The toolchain beside it too, as beside the compiler, which the tests are in place of
+HEMERA_COPY_TOOLCHAIN(HemeraTest)
 
 TARGET_COMPILE_OPTIONS(HemeraTest PRIVATE ${HEMERA_OPTIONS})
 # Where tests write what they build, like the hosted test's program

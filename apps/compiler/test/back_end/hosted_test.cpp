@@ -209,6 +209,30 @@ static bool build_from(const std::filesystem::path& sources, const std::filesyst
 }
 
 /*
+ * docs/compilation.md, Linking: with nothing on the PATH, a program for Windows and one for Linux are linked by the
+ * lld-link and ld.lld beside the compiler, which its build puts there with the DLLs they load; the tests run from the
+ * same folder.
+ */
+TEST(Hosted, LinksWithTheLinkerBesideTheCompiler)
+{
+	const char* kept = std::getenv("PATH");
+	const std::string path = kept != nullptr ? kept : "";
+	const std::filesystem::path empty = std::filesystem::path(HEMERA_TEST_OUTPUT_DIR) / "linker_beside" / "empty";
+	std::filesystem::create_directories(empty);
+	ASSERT_EQ(_putenv_s("PATH", empty.string().c_str()), 0);
+	const std::filesystem::path output = std::filesystem::path(HEMERA_TEST_OUTPUT_DIR) / "linker_beside";
+	std::filesystem::remove(output / "windows.exe");
+	std::filesystem::remove(output / "linux");
+	const bool windows = build_from(scenario("assertion"), output / "windows", false, false);
+	const bool linux = build_from(scenario("assertion"), output / "linux", true, false);
+	ASSERT_EQ(_putenv_s("PATH", path.c_str()), 0);
+	EXPECT_TRUE(windows);
+	EXPECT_TRUE(linux);
+	EXPECT_TRUE(std::filesystem::exists(output / "windows.exe"));
+	EXPECT_TRUE(std::filesystem::exists(output / "linux"));
+}
+
+/*
  * docs/compilation.md, Deterministic Output: one package's sources in two folders, at different depths, built to the
  * same output path for Windows and for Linux, with and without debug info, give the same bytes, PDB and all. Its
  * #caller_location and debug info name its files relative to it, and base's and std's as <base>/... and <std>/....
@@ -2624,7 +2648,7 @@ TEST(Build, ReadsTargetOptions)
 	EXPECT_EQ(hemera::error_list()->size(), 2u) << reported;
 	EXPECT_EQ(std::count(hemera::error_list()->begin(), hemera::error_list()->end(), hemera::ErrorCode::E7000), 1) << reported;
 	EXPECT_EQ(std::count(hemera::error_list()->begin(), hemera::error_list()->end(), hemera::ErrorCode::E6001), 1) << reported;
-	EXPECT_NE(reported.find("hemera-no-such-linker isn't on the PATH"), std::string::npos) << reported;
+	EXPECT_NE(reported.find("hemera-no-such-linker isn't beside the compiler or on the PATH"), std::string::npos) << reported;
 	EXPECT_NE(reported.find("framed.fill's stack frame is"), std::string::npos) << reported;
 	EXPECT_NE(reported.find("more than the target's max_frame_size of 16384"), std::string::npos) << reported;
 	EXPECT_FALSE(std::filesystem::exists(unlinked + ".exe"));
