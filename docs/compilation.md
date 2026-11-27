@@ -975,6 +975,9 @@ A program's key is a hash of:
 * the options lowering, optimizing and linking read: the target's architecture, OS, CPU and its features, code and
   relocation models, optimization level, debug info, entry and startup code, and the like, the output file's name,
   the linker named and the library folders, and its linker script's bytes;
+* the linker that links it, as it's found: the one named, or `ld.lld` or `lld-link` on the PATH, by its path, size
+  and modification time, since two lld versions may link the same objects differently, as one that doesn't know a
+  property note drops it;
 * the compiler, by its executable's bytes, `base` being part of it.
 
 So a program built into another folder takes what was kept from one built elsewhere, as a test that builds into a new
@@ -1080,20 +1083,28 @@ caller whose frame was reused (see [calling_convention.md](calling_convention.md
 `control_flow_integrity` in `TargetOptions` (`--control-flow-integrity`) builds an ELF program for the hardware's
 control-flow integrity, which its operating system turns on where the CPU has it:
 
-| | x86-64 | AArch64 |
-|---|---|---|
-| Landing pads, at a function's entry where it can be reached indirectly | `endbr64` (indirect branch tracking) | `bti c` (branch target identification) |
-| Landing pads after every call | `endbr64` | `bti j` |
-| Return addresses | Checked by a shadow stack, which the code needs nothing for | Signed with the stack pointer at entry (`paciasp`), checked before returning (`autiasp`), and checked by the Guarded Control Stack |
-| The ELF's `.note.gnu.property` | `IBT` and `SHSTK` | `BTI`, `PAC` and `GCS` |
+| | x86-64 | AArch64 | RISC-V |
+|---|---|---|---|
+| Landing pads, at a function's entry where it can be reached indirectly | `endbr64` (indirect branch tracking) | `bti c` (branch target identification) | `lpad 0` (Zicfilp), which takes any label |
+| Landing pads after every call | `endbr64` | `bti j` | `lpad 0`, the call aligned so it's at a 4-byte boundary |
+| Return addresses | Checked by a shadow stack, which the code needs nothing for | Signed with the stack pointer at entry (`paciasp`), checked before returning (`autiasp`), and checked by the Guarded Control Stack | Pushed onto the shadow stack at entry (`sspush ra`) and checked against it before returning (`sspopchk ra`), Zicfiss |
+| The ELF's `.note.gnu.property` | `IBT` and `SHSTK` | `BTI`, `PAC` and `GCS` | `CFI_LP_UNLABELED` and `CFI_SS` |
 
-Each instruction does nothing on a CPU without its feature, so one build runs anywhere. The landing pads after calls
+Each instruction does nothing on a CPU without its feature, so one build runs anywhere: RISC-V's are encoded in its
+may-be-operations (Zimop), which RVA23 has. For QEMU 11.1, whose `sspopchk` leaves the rest of its translation block
+with the wrong pc when the check passes, the RISC-V CPU feature `+branch-to-sspopchk` (in `cpu_features`, from
+Hemera's LLVM patch 0011) reaches each epilogue's `sspopchk` by a branch, a taken branch an epilogue that QEMU's later
+fix makes unneeded. The landing pads after calls
 are for resumed fibers, whose frames the resume loop re-enters with an indirect branch to the instruction after a
 call, and on AArch64 every frame keeps its frame record at the top, so the loop can sign its own return address as
 the frame's prologue signed the one it replaces (calling_convention.md, Resuming); both come from Hemera's LLVM
 patches. The hand-written sequences (the fiber switches, morestack, the foreign shims, and on x86-64 the entry
 functions' stubs and SYSCALL's entry, which interrupt delivery and SYSCALL reach under indirect branch tracking) have
 their landing pads too. Stack traces strip return addresses' authentication codes, for a 48-bit address space.
+
+The note is the linker's to merge, keeping a feature only where every object has it. An lld that doesn't know
+RISC-V's, as lld 19 doesn't, leaves it out, and the program then runs without either, as its operating system reads
+the note; the lld built from Hemera's own LLVM (its `lld` target) keeps it.
 
 Only ELF targets: on Windows and UEFI the option does nothing.
 

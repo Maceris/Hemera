@@ -1405,11 +1405,15 @@ SHADOW_STACK_BYTES : u64 : 64 * 1024
  * channel (the SlopOS repository's decisions/0186).
  *
  * @param threads How many threads' shadow stacks: 1 or more; 0 gives 0.
- * @return The bytes; 0 where the CPU has neither CET's shadow stacks nor AArch64's Guarded Control Stack.
+ * @return The bytes; 0 where the CPU has none of CET's shadow stacks, AArch64's Guarded Control Stack and RISC-V's
+ *     Zicfiss.
  */
 shadow_stacks_budget :: fn(threads : u64) -> u64 {
     features :: &startup_block().cpu_features
-    if threads == 0 || (!has_feature(features, .X86ShadowStack) && !has_feature(features, .Aarch64Gcs)) {
+    shadow_stacks :: has_feature(features, .X86ShadowStack)
+        || has_feature(features, .Aarch64Gcs)
+        || has_feature(features, .RiscvZicfiss)
+    if threads == 0 || !shadow_stacks {
         return 0
     }
     return threads * (SHADOW_STACK_BYTES + 3 * 4096) + 3 * 4096

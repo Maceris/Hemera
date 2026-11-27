@@ -456,6 +456,18 @@ TrapScratch :: struct {
     kernel_stack : u64,
     /** Where the trap entry keeps user mode's stack pointer for a moment; nothing else uses it. */
     user_sp : u64,
+    /**
+     * Where ssp starts in the kernel, a trap from user mode putting it there: the top of the hart's kernel shadow stack
+     * (Zicfiss), which the kernel sets; 0 when the kernel has none, and then a trap leaves ssp alone, as it may not
+     * exist.
+     */
+    kernel_shadow_stack : u64,
+    /**
+     * User mode's ssp, with a kernel_shadow_stack: kept here by a trap from user mode, and put back by a return to it,
+     * from the entry or return_to_user. The kernel sets it for the thread it returns to; unused without a
+     * kernel_shadow_stack.
+     */
+    user_shadow_stack : u64,
 }
 
 /**

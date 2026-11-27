@@ -591,7 +591,16 @@ As on AArch64, with RISC-V's frame record, the return address at `s0 - 8` and th
 * The loop keeps its state in `t3` to `t6`, which no function returns anything in, leaving `t2`, Zicfilp's label,
   alone.
 
-No shadow stack or landing pads yet (Zicfiss and Zicfilp).
+With control-flow integrity ([compilation.md](compilation.md#control-flow-integrity)):
+* **The shadow stack (Zicfiss).** A call pushes nothing onto it; each frame's prologue pushes its return address
+  (`sspush ra`) and its epilogue checks the one it returns through against it (`sspopchk ra`). So `fiber_reenter`
+  pushes the loop's return address, which it stores at `frame - 8`, before jumping into the frame. As on AArch64, the
+  switches keep `ssp` as the scheduler switches to a fiber, in `shadow_stack_base` (`ssrdp`, which gives 0 where the
+  thread has no shadow stack), and put it back when they switch back, dropping the fiber's entries; `ssp` is written
+  only where it was read as something other than 0.
+* **Landing pads (Zicfilp).** `lpad 0` after every call, where the loop's `jr` lands, each call aligned so the landing
+  pad after it is at a 4-byte boundary, and at the switches' entries. The loop's jump and morestack's call of the body
+  go through `t4` and `t5`, not `ra`, `t0` or `t2`, which Zicfilp exempts, so they're checked.
 
 #### Walking the Stack
 
@@ -766,16 +775,21 @@ the hart's `riscv64.TrapScratch`, whose `kernel_stack` the kernel sets for each 
    and `stval`. `sscratch` is cleared, so a trap taken in the kernel from now on stays on its stack.
 3. `sstatus.SUM` is cleared, so the kernel reaches user memory only when it means to, `s0` and `ra` too, so stack walks
    end at the entry, and the body is called with a pointer to the frame. As on the others, the body has no stack
-   check, carrier block or context until it sets them up.
-4. A body that returns is followed by `sepc` and `sstatus` restored from the frame, `sscratch` set back to `tp` when
-   it returns to user mode, every register, and `sret`. One that never returns is `#never_returns`.
+   check, carrier block or context until it sets them up. From user mode, where the `TrapScratch` has a
+   `kernel_shadow_stack`, user mode's `ssp` is kept in its `user_shadow_stack` and `ssp` starts from the kernel's,
+   since a hart has one `ssp` for every mode (Zicfiss).
+4. A body that returns is followed by `sepc` and `sstatus` restored from the frame, `sscratch` set back to `tp` and,
+   with a `kernel_shadow_stack`, `ssp` back to the `user_shadow_stack` when it returns to user mode, every register,
+   and `sret`. One that never returns is `#never_returns`.
 
 A trap from user mode leaves `tp` pointing at the `TrapScratch`, so a kernel can make it the start of its per-hart
 data and find that through `riscv64.read_tp` in the body, as the AArch64 entry finds it through `TPIDR_EL1`. Its body
 should leave `tp` there, since returning to user mode makes it the next `sscratch`. Interrupts stay disabled, as the
 hart disables them (`sstatus.SIE`) on taking a trap. `riscv64.return_to_user(frame, scratch)` sets `sscratch` to
-`scratch`, then restores every register from a frame and returns with `sret`; the frame's `sstatus` has `SPP` and
-`SIE` clear, and `SPIE` set when user mode runs with interrupts enabled.
+`scratch`, `ssp` to its `user_shadow_stack` where it has a `kernel_shadow_stack`, then restores every register from a
+frame and returns with `sret`; the frame's `sstatus` has `SPP` and `SIE` clear, and `SPIE` set when user mode runs with
+interrupts enabled. `ssp` is only touched where a `kernel_shadow_stack` says the kernel turned shadow stacks on, as
+until then it doesn't exist. The kernel sets `user_shadow_stack` for the thread it returns to.
 
 `base/intrinsics/riscv64` also has what a kernel needs around it: `csrr`, `csrw`, `csrrw`, `csrrs` and `csrrc`, with
 the register as a compile-time argument (`riscv64.Csr`, whose values are the registers' numbers), `fence`, with the

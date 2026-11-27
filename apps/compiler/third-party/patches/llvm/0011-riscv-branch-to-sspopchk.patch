@@ -1,0 +1,64 @@
+diff --git a/llvm/lib/Target/RISCV/RISCVFeatures.td b/llvm/lib/Target/RISCV/RISCVFeatures.td
+--- a/llvm/lib/Target/RISCV/RISCVFeatures.td
++++ b/llvm/lib/Target/RISCV/RISCVFeatures.td
+@@ -2036,6 +2036,11 @@ def FeatureExactAssembly
+     : SubtargetFeature<"exact-asm", "EnableExactAssembly", "true",
+                        "Enable Exact Assembly (Disables Compression and Relaxation)">;
+ 
++def FeatureBranchToSSPopChk
++    : SubtargetFeature<"branch-to-sspopchk", "BranchToSSPopChk", "true",
++                       "Branch to each epilogue's sspopchk, so an emulator "
++                       "begins a translation block with it">;
++
+ foreach i = {1-31} in
+   def FeatureReserveX#i :
+       SubtargetFeature<"reserve-x"#i, "UserReservedXRegs["#i#"]",
+diff --git a/llvm/lib/Target/RISCV/RISCVFrameLowering.cpp b/llvm/lib/Target/RISCV/RISCVFrameLowering.cpp
+--- a/llvm/lib/Target/RISCV/RISCVFrameLowering.cpp
++++ b/llvm/lib/Target/RISCV/RISCVFrameLowering.cpp
+@@ -191,6 +191,17 @@ static void emitSCSEpilogue(MachineFunction &MF, MachineBasicBlock &MBB,
+     // `sspopchk x5` is the only compressible form, but this would require using
+     // `x5` as the return address everywhere, which would also mean reserving
+     // it. We prefer to just use `x1` to avoid that complexity.
++    // With branch-to-sspopchk, `beq zero, zero, .+4` first: it isn't
++    // compressible, so it always reaches the sspopchk just after it, and it ends
++    // an emulator's translation block, so the sspopchk begins the next one.
++    // QEMU 11.1 loses track of the pc after a sspopchk that passes, in the rest
++    // of its block, unless the sspopchk is the block's first instruction.
++    if (STI.branchToSSPopChk())
++      BuildMI(MBB, MI, DL, TII->get(RISCV::BEQ))
++          .addReg(RISCV::X0)
++          .addReg(RISCV::X0)
++          .addImm(4)
++          .setMIFlag(MachineInstr::FrameDestroy);
+     BuildMI(MBB, MI, DL, TII->get(RISCV::SSPOPCHK))
+         .addReg(RAReg)
+         .setMIFlag(MachineInstr::FrameDestroy);
+diff --git a/llvm/test/CodeGen/RISCV/branch-to-sspopchk.ll b/llvm/test/CodeGen/RISCV/branch-to-sspopchk.ll
+new file mode 100644
+--- /dev/null
++++ b/llvm/test/CodeGen/RISCV/branch-to-sspopchk.ll
+@@ -0,0 +1,23 @@
++; RUN: llc -mtriple=riscv64 -mattr=+c,+zicfiss,+branch-to-sspopchk < %s | FileCheck %s
++; RUN: llc -mtriple=riscv64 -mattr=+c,+zicfiss < %s | FileCheck %s --check-prefix=PLAIN
++
++; With branch-to-sspopchk, each epilogue's sspopchk is reached by a branch to
++; it, which isn't compressed, so the sspopchk begins an emulator's translation
++; block.
++
++declare void @g()
++
++define void @f() "hw-shadow-stack" {
++; CHECK-LABEL: f:
++; CHECK:       sspush ra
++; CHECK:       call g
++; CHECK:       beqz zero, 4
++; CHECK-NEXT:  sspopchk ra
++; CHECK-NEXT:  ret
++; PLAIN-LABEL: f:
++; PLAIN-NOT:   beq
++; PLAIN:       sspopchk ra
++; PLAIN-NEXT:  ret
++  call void @g()
++  ret void
++}

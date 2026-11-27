@@ -176,3 +176,30 @@ generic code to shrink it back, and each undid the other forever. The form is no
 costs no more.
 
 Includes `llvm/test/CodeGen/RISCV/shrink-demanded-constant-no-loop.ll`, which hung before.
+
+## 0010-riscv-landing-pads-after-calls.patch
+
+0005's `"landing-pads-after-calls"` on RISC-V, where Zicfilp's landing pad, `lpad`, must be at a 4-byte boundary, which
+the instruction after a call needn't be with compressed instructions. LLVM already has a call that's followed by an
+aligned `lpad`, for `returns_twice` calls (`LPAD_CALL`, which the assembly printer aligns and keeps from being
+relaxed); in a function with the attribute, where the module enables Zicfilp's landing pads (`"cf-protection-branch"`),
+every call is made that way. A call is taken as indirect, through a register, when its callee is by then neither a
+global nor an external symbol: a library call has no call site to ask, and one the call site counts as direct, like
+a call to a constant address, may have a register for its callee by then, which the direct `lpad` call took for a
+symbol and crashed writing the object. Apply it after 0007, whose prologue stack check calls morestack with an aligned `lpad`
+after it too, as the resume loop re-enters that small frame at the call's continuation like any other.
+
+Includes `llvm/test/CodeGen/RISCV/landing-pads-after-calls.ll`.
+
+## 0011-riscv-branch-to-sspopchk.patch
+
+A RISC-V target feature, `+branch-to-sspopchk`, for running Zicfiss's shadow stacks on QEMU 11.1. Its translation of
+`sspopchk` updates the pc it tracks for its block only on the branch that raises the software check, so after a
+`sspopchk` that passes, the rest of the block runs with the pc taken from the wrong instruction: a pc-relative branch
+or `auipc` after it, or the block's end when it ends without a jump, as at a page boundary, goes to the wrong place,
+like back into the epilogue it just ran (QEMU has since updated the pc on both branches). With the feature, each
+epilogue's `sspopchk` is reached by `beq zero, zero, .+4`, which isn't compressed and always falls through to it, and
+which ends QEMU's block, so the `sspopchk` begins the next one and the pc it tracks is its own. It costs a taken branch
+in each epilogue that pops a shadow stack, so it's for targets that run on that QEMU, and is off by default.
+
+Includes `llvm/test/CodeGen/RISCV/branch-to-sspopchk.ll`.

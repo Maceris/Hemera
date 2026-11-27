@@ -1,0 +1,96 @@
+diff --git a/llvm/lib/Target/RISCV/RISCVFrameLowering.cpp b/llvm/lib/Target/RISCV/RISCVFrameLowering.cpp
+--- a/llvm/lib/Target/RISCV/RISCVFrameLowering.cpp
++++ b/llvm/lib/Target/RISCV/RISCVFrameLowering.cpp
+@@ -2844,10 +2844,20 @@
+   BuildMI(AllocMBB, DL, TII.get(RISCV::ADDI), RISCV::X30)
+       .addReg(RISCV::X30)
+       .addSym(Here, RISCVII::MO_PCREL_LO);
+-  BuildMI(AllocMBB, DL, TII.get(RISCV::PseudoCALL))
+-      .addExternalSymbol(MF.createExternalSymbolName(MorestackSymbol),
+-                         RISCVII::MO_CALL)
+-      .addReg(RISCV::X1, RegState::ImplicitDefine);
++  // With landing pads after calls, one after this one too, as the resume loop
++  // re-enters this frame at the call's continuation as it does any other's
++  if (Fn.hasFnAttribute("landing-pads-after-calls") &&
++      MF.getInfo<RISCVMachineFunctionInfo>()->hasCFProtectionBranch())
++    BuildMI(AllocMBB, DL, TII.get(RISCV::PseudoCALLLpadAlign))
++        .addExternalSymbol(MF.createExternalSymbolName(MorestackSymbol),
++                           RISCVII::MO_CALL)
++        .addImm(0)
++        .addReg(RISCV::X1, RegState::ImplicitDefine);
++  else
++    BuildMI(AllocMBB, DL, TII.get(RISCV::PseudoCALL))
++        .addExternalSymbol(MF.createExternalSymbolName(MorestackSymbol),
++                           RISCVII::MO_CALL)
++        .addReg(RISCV::X1, RegState::ImplicitDefine);
+   BuildMI(AllocMBB, DL, TII.get(RISCV::LD), RISCV::X1)
+       .addReg(RISCV::X2)
+       .addImm(8);
+diff --git a/llvm/lib/Target/RISCV/RISCVISelLowering.cpp b/llvm/lib/Target/RISCV/RISCVISelLowering.cpp
+--- a/llvm/lib/Target/RISCV/RISCVISelLowering.cpp
++++ b/llvm/lib/Target/RISCV/RISCVISelLowering.cpp
+@@ -29656,6 +29656,16 @@
+   bool NeedLpadCall =
+       CLI.CB && CLI.CB->hasFnAttr(Attribute::ReturnsTwice) &&
+       MF.getInfo<RISCVMachineFunctionInfo>()->hasCFProtectionBranch();
++  // A landing pad after every call, for code that's re-entered at a call's
++  // continuation by an indirect jump, as a resumed fiber is (Hemera)
++  if (MF.getFunction().hasFnAttribute("landing-pads-after-calls") &&
++      MF.getInfo<RISCVMachineFunctionInfo>()->hasCFProtectionBranch())
++    NeedLpadCall = true;
++  // A call is indirect, through a register, when its callee is by now neither
++  // a global nor an external symbol: one with no call site, like a library
++  // call, and one to a constant address, which the call site counts as direct
++  const bool IsIndirectCall =
++      !isa<GlobalAddressSDNode>(Callee) && !isa<ExternalSymbolSDNode>(Callee);
+ 
+   if (IsTailCall) {
+     MF.getFrameInfo().setHasTailCall();
+@@ -29674,7 +29684,7 @@
+   // LPAD_CALL for returns_twice calls, breaking LPAD alignment.
+   if (NeedSWGuardedCall)
+     CallOpc = RISCVISD::SW_GUARDED_CALL;
+-  else if (NeedLpadCall && CLI.CB->isIndirectCall())
++  else if (NeedLpadCall && IsIndirectCall)
+     CallOpc = RISCVISD::LPAD_CALL_INDIRECT;
+   else if (NeedLpadCall)
+     CallOpc = RISCVISD::LPAD_CALL;
+diff --git a/llvm/test/CodeGen/RISCV/landing-pads-after-calls.ll b/llvm/test/CodeGen/RISCV/landing-pads-after-calls.ll
+new file mode 100644
+--- /dev/null
++++ b/llvm/test/CodeGen/RISCV/landing-pads-after-calls.ll
+@@ -0,0 +1,34 @@
++; RUN: llc -mtriple=riscv64 -mattr=+c,+experimental-zicfilp < %s | FileCheck %s
++; A landing pad after every call, aligned, in a function with "landing-pads-after-calls" (Hemera): the code after a
++; call is re-entered by an indirect jump, as a resumed fiber is
++
++declare void @callee()
++
++define void @calls(ptr %function) "landing-pads-after-calls" {
++; CHECK-LABEL: calls:
++; CHECK:         lpad 0
++; CHECK:         .p2align 2
++; CHECK-NEXT:    call callee
++; CHECK-NEXT:    lpad 0
++; CHECK:         .p2align 2
++; CHECK-NEXT:    jalr {{.*}}
++; CHECK-NEXT:    lpad 0
++  call void @callee()
++  call void %function()
++  ret void
++}
++
++; Without the attribute, a call has no landing pad after it
++define void @plain() {
++; CHECK-LABEL: plain:
++; CHECK-NOT:     .p2align
++; CHECK:         call callee
++; CHECK-NOT:     lpad
++; CHECK:         ret
++  call void @callee()
++  ret void
++}
++
++!llvm.module.flags = !{!0, !1}
++!0 = !{i32 8, !"cf-protection-branch", i32 1}
++!1 = !{i32 1, !"cf-branch-label-scheme", !"unlabeled"}

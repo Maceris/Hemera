@@ -1367,7 +1367,36 @@ namespace hemera {
 	 */
 	static bool control_flow_integrity(const Options& options) {
 		return options.control_flow_integrity && OSType::Win32 != options.os && OSType::UEFI != options.os
-			&& (ArchType::x86_64 == options.architecture || ArchType::aarch64 == options.architecture);
+			&& (ArchType::x86_64 == options.architecture || ArchType::aarch64 == options.architecture
+				|| ArchType::riscv64 == options.architecture);
+	}
+
+	/*
+	 * RISC-V's landing pad with control-flow integrity: lpad 0, which takes any label, as Hemera's indirect branches set
+	 * none; written as its encoding, auipc zero, 0, so the assembler needn't have Zicfilp. It has to be at a 4-byte
+	 * boundary. Nothing without.
+	 */
+	static std::string_view riscv64_landing_pad(bool cfi) {
+		return cfi ? "\tauipc zero, 0\n" : "";
+	}
+
+	/*
+	 * A call on RISC-V whose continuation an indirect jump may reach, as the resume loop's does, with symbol defined at
+	 * the continuation if it's not empty: with control-flow integrity at a 4-byte boundary and neither compressed nor
+	 * relaxed, so the landing pad after it is at one too.
+	 */
+	static std::string riscv64_call_landing(bool cfi, std::string_view call, std::string_view symbol = {}) {
+		const std::string label = symbol.empty() ? std::string() : std::format("{}:\n", symbol);
+		if (!cfi) {
+			return std::format("\t{}\n{}", call, label);
+		}
+		return std::format("\t.p2align 2\n\t.option push\n\t.option norvc\n\t.option norelax\n\t{}\n\t.option pop\n{}{}", call,
+			label, riscv64_landing_pad(cfi));
+	}
+
+	// Zicfiss's instructions, for the assembler, which isn't given the extension: one, inside its own .option arch
+	static std::string riscv64_shadow_stack(std::string_view instruction) {
+		return std::format("\t.option push\n\t.option arch, +zicfiss\n\t{}\n\t.option pop\n", instruction);
 	}
 
 	// The landing pad an indirect branch may land on, with control-flow integrity: endbr64 or bti; nothing without.
@@ -1572,6 +1601,9 @@ namespace hemera {
 	// sstatus's SUM, which the entry clears so the kernel doesn't reach user memory unless it means to
 	constexpr int RISCV64_SSTATUS_SUM_UPPER = 0x40;
 	constexpr int RISCV64_SSTATUS_SPP = 0x100;
+	// riscv64.TrapScratch's kernel_shadow_stack and user_shadow_stack, after kernel_stack and user_sp
+	constexpr int RISCV64_SCRATCH_KERNEL_SHADOW = 16;
+	constexpr int RISCV64_SCRATCH_USER_SHADOW = 24;
 
 	// x1 and x3 to x31 but those in skip, to or from the frame at base.
 	static std::string riscv64_registers(std::string_view operation, std::string_view base, std::initializer_list<int> skip) {
@@ -1592,6 +1624,9 @@ namespace hemera {
 	 * the frame, the interrupted tp from sscratch, which is cleared, then sepc, sstatus, scause and stval; SUM is
 	 * cleared, s0 and ra too, so stack walks end here, and the body is called with the frame. A body that returns is
 	 * followed by sepc and sstatus restored, sscratch set back to tp when returning to user mode, every register, and sret.
+	 * From user mode, where the TrapScratch has a kernel_shadow_stack, user mode's ssp is kept in its user_shadow_stack
+	 * and ssp starts from the kernel's, and returning to user mode puts user mode's back; ssp is named by its number, as
+	 * the assembler isn't given Zicfiss, and isn't touched without a kernel shadow stack, where it may not exist.
 	 */
 	static std::string entry_assembly_riscv64(std::string_view symbol, std::string_view body, bool returns) {
 		std::string text = std::format("\t.text\n\t.p2align 2\n{}:\n", assembly_name(symbol));
@@ -1603,21 +1638,32 @@ namespace hemera {
 		text += riscv64_registers("sd", "sp", { 4, 5 });
 		text += std::format("\tcsrr t0, sepc\n\tsd t0, {}(sp)\n\tcsrr t0, sstatus\n\tsd t0, {}(sp)\n", RISCV64_FRAME_SEPC, RISCV64_FRAME_SSTATUS);
 		text += std::format("\tcsrr t0, scause\n\tsd t0, {}(sp)\n\tcsrr t0, stval\n\tsd t0, {}(sp)\n", RISCV64_FRAME_SCAUSE, RISCV64_FRAME_STVAL);
+		// From user mode, onto the kernel's shadow stack where there is one
+		text += std::format("\tld t0, {}(sp)\n\tandi t0, t0, {:#x}\n\tbnez t0, 4f\n", RISCV64_FRAME_SSTATUS, RISCV64_SSTATUS_SPP);
+		text += std::format("\tld t0, {}(tp)\n\tbeqz t0, 4f\n\tcsrr t1, 0x11\n\tsd t1, {}(tp)\n\tcsrw 0x11, t0\n4:\n",
+			RISCV64_SCRATCH_KERNEL_SHADOW, RISCV64_SCRATCH_USER_SHADOW);
 		text += std::format("\tlui t0, {:#x}\n\tcsrc sstatus, t0\n", RISCV64_SSTATUS_SUM_UPPER);
 		text += std::format("\tli s0, 0\n\tli ra, 0\n\tmv a0, sp\n\tcall {}\n", assembly_name(body));
 		if (!returns) {
 			return text + "\tunimp\n";
 		}
 		text += std::format("\tld t0, {}(sp)\n\tcsrw sepc, t0\n\tld t0, {}(sp)\n\tcsrw sstatus, t0\n", RISCV64_FRAME_SEPC, RISCV64_FRAME_SSTATUS);
-		text += std::format("\tandi t0, t0, {:#x}\n\tbnez t0, 3f\n\tcsrw sscratch, tp\n3:\n", RISCV64_SSTATUS_SPP);
+		text += std::format("\tandi t0, t0, {:#x}\n\tbnez t0, 3f\n\tcsrw sscratch, tp\n", RISCV64_SSTATUS_SPP);
+		text += std::format("\tld t0, {}(tp)\n\tbeqz t0, 3f\n\tld t0, {}(tp)\n\tcsrw 0x11, t0\n3:\n", RISCV64_SCRATCH_KERNEL_SHADOW,
+			RISCV64_SCRATCH_USER_SHADOW);
 		text += riscv64_registers("ld", "sp", {});
 		text += "\tld sp, 16(sp)\n\tsret\n";
 		return text;
 	}
 
-	// riscv64.return_to_user(frame, scratch): sscratch, sepc and sstatus, then every register, a0 last, then sret.
+	/*
+	 * riscv64.return_to_user(frame, scratch): sscratch, user mode's ssp where scratch has a kernel shadow stack, sepc and
+	 * sstatus, then every register, a0 last, then sret.
+	 */
 	static std::string return_to_user_assembly_riscv64() {
 		std::string text = std::format("\t.text\n\t.p2align 2\n{}:\n\tcsrw sscratch, a1\n", RETURN_TO_USER_SYMBOL);
+		text += std::format("\tld t0, {}(a1)\n\tbeqz t0, 1f\n\tld t0, {}(a1)\n\tcsrw 0x11, t0\n1:\n", RISCV64_SCRATCH_KERNEL_SHADOW,
+			RISCV64_SCRATCH_USER_SHADOW);
 		text += std::format("\tld t0, {}(a0)\n\tcsrw sepc, t0\n\tld t0, {}(a0)\n\tcsrw sstatus, t0\n", RISCV64_FRAME_SEPC, RISCV64_FRAME_SSTATUS);
 		text += "\tld x2, 16(a0)\n";
 		text += riscv64_registers("ld", "a0", { 10 });
@@ -1978,12 +2024,13 @@ namespace hemera {
 	 * while allocating, and with vector, v8 to v23, where vector parameters are.
 	 */
 	static std::string morestack_assembly_riscv64(const MorestackOffsets& o, uint64_t header_and_guard, const std::string& allocate,
-		bool fp, bool vector) {
+		bool fp, bool vector, bool cfi) {
 
 		const size_t limit = o.limit, segment = o.segment, spare = o.spare, cache = o.cache, cache_count = o.cache_count;
 		const size_t segment_size = o.segment_size, next_free = o.next_free;
 		const uint64_t extra = header_and_guard + 32;
-		std::string text = std::format("\t.text\n{}\t.p2align 2\n{}:\n", riscv64_extensions_open(fp, vector), MORESTACK_SYMBOL);
+		std::string text = std::format("\t.text\n{}\t.p2align 2\n{}:\n{}", riscv64_extensions_open(fp, vector), MORESTACK_SYMBOL,
+			riscv64_landing_pad(cfi));
 		text += "\taddi sp, sp, -48\n\tsd ra, 40(sp)\n\tsd s0, 32(sp)\n\taddi s0, sp, 48\n";
 		// The carrier's limit at s0 - 48 and segment at s0 - 40, s1 and s2 at s0 - 32 and s0 - 24
 		text += std::format("\tld t0, {}(s11)\n\tld t1, {}(s11)\n\tsd t0, 0(sp)\n\tsd t1, 8(sp)\n\tsd s1, 16(sp)\n\tsd s2, 24(sp)\n",
@@ -2007,7 +2054,7 @@ namespace hemera {
 		text += "\tadd s1, t6, t0\n\tld s1, 0(s1)\n\tadd s2, t1, t0\n\tsd s1, 0(s2)\n\taddi t0, t0, 8\n\tj 2b\n";
 		text += "4:\n\tld s1, -32(s0)\n\tld s2, -24(s0)\n\tmv sp, t1\n";
 		// Where a body on a new segment returns: stack walks leave this frame out, and the check's too
-		text += std::format("\tjalr t5\n{}:\n", MORESTACK_CONTINUE_SYMBOL);
+		text += riscv64_call_landing(cfi, "jalr t5", MORESTACK_CONTINUE_SYMBOL);
 		// Back: the segment just left is the spare now, and an older spare goes to the cache
 		text += "\taddi sp, s0, -48\n";
 		text += std::format("\tld t0, {}(s11)\n\tld t1, {}(s11)\n\tbeqz t1, 5f\n", segment, spare);
@@ -2104,7 +2151,7 @@ namespace hemera {
 			const bool fp = !feature_turned_off(features, "d") && !feature_turned_off(features, "f");
 			const bool vector = fp && !feature_turned_off(features, "v") && features.find("+v") != std::string::npos;
 			generator.module_assembly.push_back(morestack_assembly_riscv64(o, guard + header->type_value->size,
-				allocate_function.getSymName().str(), fp, vector));
+				allocate_function.getSymName().str(), fp, vector, control_flow_integrity(*generator.options)));
 			return true;
 		}
 		if (aarch64) {
@@ -2399,10 +2446,10 @@ namespace hemera {
 	 * which no parameter or result is in.
 	 */
 	static std::string foreign_shim_assembly_riscv64(const std::string& shim, const std::string& symbol, const ForeignOffsets& o,
-		const std::vector<std::pair<int64_t, int64_t>>& stack_arguments) {
+		const std::vector<std::pair<int64_t, int64_t>>& stack_arguments, bool cfi) {
 
 		const int64_t area = (static_cast<int64_t>(stack_arguments.size()) * 8 + 15) & ~int64_t{ 15 };
-		std::string text = std::format("\t.text\n\t.p2align 2\n{}:\n", assembly_name(shim));
+		std::string text = std::format("\t.text\n\t.p2align 2\n{}:\n{}", assembly_name(shim), riscv64_landing_pad(cfi));
 		text += "\taddi sp, sp, -32\n\tsd ra, 24(sp)\n\tsd s0, 16(sp)\n\taddi s0, sp, 32\n\tsd s1, 8(sp)\n\tsd s2, 0(sp)\n";
 		text += std::format("\tlw t0, {0}(s11)\n\taddi t0, t0, 1\n\tsw t0, {0}(s11)\n", o.foreign_depth);
 		text += std::format("\tld s2, {}(s11)\n\tmv s1, sp\n", o.stack_limit);
@@ -2470,7 +2517,8 @@ namespace hemera {
 				control_flow_integrity(*generator.options));
 		}
 		if (ArchType::riscv64 == generator.options->architecture) {
-			return foreign_shim_assembly_riscv64(shim, symbol, offsets, foreign_stack_arguments_riscv64(type));
+			return foreign_shim_assembly_riscv64(shim, symbol, offsets, foreign_stack_arguments_riscv64(type),
+				control_flow_integrity(*generator.options));
 		}
 		// C's convention on Windows and UEFI is Microsoft's x64 one, with shadow space; elsewhere System V's
 		const bool windows = OSType::Win32 == generator.options->os || OSType::UEFI == generator.options->os;
@@ -6863,8 +6911,15 @@ namespace hemera {
 	 * and with fp, fcsr and fs0 to fs11. A suspended fiber's is suspended_layout's. The loop keeps its state in t3 to t6,
 	 * which no function returns anything in, leaving t2, Zicfilp's label, alone; after a frame returns, the stack
 	 * pointer is at its s0, below everything its caller has live.
+	 *
+	 * With control-flow integrity: landing pads at the switches' entries, and at fiber_entry's continuation, which the
+	 * loop re-enters; and Zicfiss's shadow stack, which, as AArch64's GCS, a call doesn't push onto but each frame's
+	 * prologue does (sspush ra) and its epilogue pops and checks (sspopchk ra). So fiber_reenter pushes the loop's
+	 * return, which the frame returns through, the switches keep ssp as the scheduler switches to a fiber in
+	 * shadow_stack_base, ssrdp's 0 where the thread has no shadow stack, and put it back when they switch back,
+	 * dropping the fiber's entries.
 	 */
-	static std::string fiber_assembly_riscv64(const FiberOffsets& o, std::string_view run, bool fp) {
+	static std::string fiber_assembly_riscv64(const FiberOffsets& o, std::string_view run, bool fp, bool cfi) {
 		const SuspendedLayout layout = suspended_layout(fp, false, true);
 		const size_t scheduler_size = fp ? 240 : 128;
 		const size_t suspended_size = fp ? RISCV64_SUSPENDED_FP_SIZE : RISCV64_SUSPENDED_SIZE;
@@ -6895,10 +6950,13 @@ namespace hemera {
 			o.carrier_segment, o.current_fiber);
 		save_scheduler += floating(128, true);
 		save_scheduler += std::format("\tsd sp, {}(s11)\n", o.scheduler_sp);
-		// No shadow stack is kept here yet (Zicfiss, M19's R6)
-		save_scheduler += std::format("\tsd zero, {}(s11)\n", o.shadow_stack_base);
+		save_scheduler += cfi ? riscv64_shadow_stack("ssrdp t6") + std::format("\tsd t6, {}(s11)\n", o.shadow_stack_base)
+			: std::format("\tsd zero, {}(s11)\n", o.shadow_stack_base);
 		auto back_to_scheduler = [&](int exit) {
-			std::string text = std::format("\tld sp, {}(s11)\n", o.scheduler_sp);
+			// The fiber's entries off the shadow stack, ssp back where it was as the scheduler switched to it
+			std::string text = cfi ? std::format("\tld t6, {}(s11)\n\tbeqz t6, 7f\n\tcsrw 0x11, t6\n7:\n", o.shadow_stack_base)
+				: std::string();
+			text += std::format("\tld sp, {}(s11)\n", o.scheduler_sp);
 			text += floating(128, false);
 			text += std::format("\tld t6, 104(sp)\n\tsd t6, {}(s11)\n\tld t6, 112(sp)\n\tsd t6, {}(s11)\n", o.carrier_segment, o.current_fiber);
 			text += std::format("\tld t6, 96(sp)\n\tsd t6, {}(s11)\n\tld ra, 88(sp)\n\tld s0, 80(sp)\n", o.carrier_limit);
@@ -6908,7 +6966,7 @@ namespace hemera {
 		};
 		std::string text = "\t.text\n" + riscv64_extensions_open(fp, false);
 		// fiber_start(fiber, stack top, stack limit): onto the fiber's first segment, into fiber_entry
-		text += std::format("\t.p2align 2\n{}:\n", FIBER_START_SYMBOL);
+		text += std::format("\t.p2align 2\n{}:\n{}", FIBER_START_SYMBOL, riscv64_landing_pad(cfi));
 		text += save_scheduler;
 		text += std::format("\tsd a0, {}(s11)\n\tsd a2, {}(s11)\n\tsd zero, {}(s11)\n\tsd zero, {}(s11)\n",
 			o.current_fiber, o.carrier_limit, o.carrier_segment, o.resume_frame);
@@ -6917,10 +6975,10 @@ namespace hemera {
 		// fiber_entry: the fiber's bottom frame, calling runtime.fiber_run(fiber); after that, it's finished
 		text += "\t.p2align 2\nhemera.fiber_entry:\n\taddi sp, sp, -16\n\tsd ra, 8(sp)\n\tsd s0, 0(sp)\n\taddi s0, sp, 16\n";
 		// Where the resume loop re-enters this frame, with an indirect jump
-		text += std::format("\tcall {}\n", assembly_name(run));
+		text += riscv64_call_landing(cfi, std::format("call {}", assembly_name(run)));
 		text += back_to_scheduler(1);
 		// fiber_resume(fiber): the carrier's segment and limit back from the fiber's stack, then re-enter its frames, innermost first
-		text += std::format("\t.p2align 2\n{}:\n", FIBER_RESUME_SYMBOL);
+		text += std::format("\t.p2align 2\n{}:\n{}", FIBER_RESUME_SYMBOL, riscv64_landing_pad(cfi));
 		text += save_scheduler;
 		text += std::format("\tsd a0, {}(s11)\n", o.current_fiber);
 		text += set_state_riscv64(o, o.running);
@@ -6942,9 +7000,14 @@ namespace hemera {
 		text += saved(layout.registers, false);
 		text += floating(layout.continuation + 8, false);
 		text += std::format("\taddi sp, sp, {}\n", suspended_size);
-		text += "1:\n\tjr t4\n";
+		text += "1:\n";
+		// The loop's return onto the shadow stack, which the frame's epilogue checks its return against
+		if (cfi) {
+			text += riscv64_shadow_stack("sspush ra");
+		}
+		text += "\tjr t4\n";
 		// fiber_suspend(fiber): its state on its own stack, where it is, and back to the scheduler
-		text += std::format("\t.p2align 2\n{}:\n", FIBER_SUSPEND_SYMBOL);
+		text += std::format("\t.p2align 2\n{}:\n{}", FIBER_SUSPEND_SYMBOL, riscv64_landing_pad(cfi));
 		text += std::format("\taddi sp, sp, -{}\n", suspended_size);
 		text += std::format("\tld t6, {}(s11)\n\tld t5, {}(s11)\n\tsd s0, {}(sp)\n\tsd t6, {}(sp)\n\tsd t5, {}(sp)\n",
 			o.carrier_limit, o.carrier_segment, layout.top_frame, layout.limit, layout.segment);
@@ -7016,7 +7079,8 @@ namespace hemera {
 			if (ArchType::riscv64 == generator.options->architecture) {
 				const std::string features = target_features(*generator.options);
 				const bool fp = !feature_turned_off(features, "d") && !feature_turned_off(features, "f");
-				generator.module_assembly.push_back(fiber_assembly_riscv64(offsets, run_symbol, fp));
+				generator.module_assembly.push_back(fiber_assembly_riscv64(offsets, run_symbol, fp,
+					control_flow_integrity(*generator.options)));
 				fiber_walk_table(generator, offsets, fp);
 			}
 			else if (ArchType::aarch64 == generator.options->architecture) {
@@ -15268,6 +15332,10 @@ namespace hemera {
 		else if (cfi) {
 			result->addModuleFlag(llvm::Module::Min, "cf-protection-branch", 1);
 			result->addModuleFlag(llvm::Module::Min, "cf-protection-return", 1);
+			// RISC-V's landing pads take any label, lpad 0: Hemera's indirect branches set none
+			if (ArchType::riscv64 == options.architecture) {
+				result->addModuleFlag(llvm::Module::Error, "cf-branch-label-scheme", llvm::MDString::get(context, "unlabeled"));
+			}
 		}
 		for (llvm::Function& function : *result) {
 			/*
@@ -15297,6 +15365,10 @@ namespace hemera {
 			 */
 			if (cfi) {
 				function.addFnAttr("landing-pads-after-calls");
+			}
+			// On RISC-V, each function that saves its return address pushes it onto the shadow stack too (Zicfiss)
+			if (cfi && ArchType::riscv64 == options.architecture) {
+				function.addFnAttr("hw-shadow-stack");
 			}
 			if (cfi_aarch64) {
 				function.addFnAttr("branch-target-enforcement");

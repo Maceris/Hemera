@@ -110,6 +110,31 @@ namespace hemera {
 		return std::filesystem::temp_directory_path() / "hemera-cache";
 	}
 
+	/*
+	 * Which linker links a program, as the back end finds it (BackendLLVM::link): the target's own, or ld.lld or
+	 * lld-link on the PATH. Its path, size and modification time, as two linkers on the PATH can give different
+	 * outputs, like an older lld that drops a property note another keeps; empty where none is found.
+	 */
+	static std::string linker_identity(const Options& options) {
+		std::string linker = options.linker;
+		if (linker.empty()) {
+			linker = ObjectFormatType::COFF == options.object_format ? "lld-link" : "ld.lld";
+		}
+		llvm::ErrorOr<std::string> program = std::filesystem::path(linker).is_absolute() ? llvm::ErrorOr<std::string>(linker)
+			: llvm::sys::findProgramByName(linker);
+		if (!program) {
+			return {};
+		}
+		std::error_code error;
+		const std::filesystem::path found(*program);
+		const auto size = std::filesystem::file_size(found, error);
+		const auto written = std::filesystem::last_write_time(found, error);
+		if (error) {
+			return found.generic_string();
+		}
+		return std::format("{} {} {}", found.generic_string(), size, written.time_since_epoch().count());
+	}
+
 	std::string build_cache_key(const Options& options, mlir::ModuleOp module) {
 		const std::string& identity = compiler_identity();
 		if (identity.empty()) {
@@ -154,6 +179,7 @@ namespace hemera {
 		line("valgrind_secrets", options.valgrind_secrets);
 		line("max_frame_size", options.max_frame_size);
 		line("linker", options.linker);
+		line("linker_found", linker_identity(options));
 		line("sysroot", options.sysroot.generic_string());
 		for (const std::filesystem::path& folder : options.library_paths) {
 			line("library_path", folder.generic_string());
