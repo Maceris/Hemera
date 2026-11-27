@@ -6,6 +6,7 @@ import file from "std:os/slop_os/file"
 import file_set from "std:os/slop_os/file_set"
 import files from "std:os/slop_os/files"
 import grant from "std:os/slop_os/grant"
+import query from "std:os/slop_os/query"
 import read_only_dir from "std:os/slop_os/read_only_dir"
 import read_only_file from "std:os/slop_os/read_only_file"
 
@@ -205,6 +206,19 @@ Request :: union {
      * IndexListed, End once none is left, or Failed. Unsupported on a file system without indexes.
      */
     Indexes(u32),
+    /**
+     * The first file beneath this directory, from a cursor, that a predicate over the volume's indexes holds for
+     * (query's Predicate): the files of its indexes' type, in an order of the server's. Answered with Matched, End
+     * once none is left, or Failed: WrongType for a predicate that doesn't hold together or names indexes of more
+     * than one type, NotFound for an index that isn't there. Unsupported on a file system without indexes.
+     */
+    Query(query.Ask),
+    /**
+     * A live query: the files beneath this directory a predicate holds for, then each one added, changed or gone as
+     * the volume's transactions commit, on a new connection (query's Query). Answered with Live, or Failed as Query
+     * is, or NoSpace if the server has as many as it keeps. Unsupported on a file system without indexes.
+     */
+    LiveQuery(query.Predicate),
 }
 
 /** What a directory's server answers. */
@@ -258,6 +272,10 @@ Response :: union {
     Declared(u32),
     /** The answer to Indexes: an index, its field's name in the message's variable-size data, and the cursor after. */
     IndexListed(files.Index),
+    /** The answer to Query: a file, its path in the message's variable-size data, and the cursor after it. */
+    Matched(query.Match),
+    /** The answer to LiveQuery: the live query's connection's end, which the client owns and closes. */
+    Live(os.Channel[query.Query]),
 }
 
 /**
@@ -301,6 +319,8 @@ is_idempotent :: fn(request : ptr[Request]) -> bool {
         case DeclareIndex(_) => true
         case DropIndex(_) => false
         case Indexes(_) => true
+        case Query(_) => true
+        case LiveQuery(_) => true
     }
 }
 
