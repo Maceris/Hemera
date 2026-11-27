@@ -291,7 +291,7 @@ Terminal :: struct {}
  * What the protocol says of itself: its name, which its channels' tag is made from, its major version, and that the
  * terminal pays for its work from its own budget.
  */
-PROTOCOL :: slop_os.Protocol.{name = "terminal", major_version = 1, lending = .Server}
+PROTOCOL :: os.Protocol.{name = "terminal", major_version = 1, lending = .Server}
 
 /** UTF-8 text in runs, which cover it from its start; bytes the runs don't reach take the last run's style. */
 Text :: struct {

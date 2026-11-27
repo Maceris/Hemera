@@ -18,7 +18,7 @@ import tcp_stream from "std:os/slop_os/tcp_stream"
 TcpListener :: struct {}
 
 /** What the protocol says of itself. */
-PROTOCOL :: slop_os.Protocol.{name = "tcp_listener", major_version = 1, lending = .PerConnection}
+PROTOCOL :: os.Protocol.{name = "tcp_listener", major_version = 1, lending = .PerConnection}
 
 /** A connection accepted. */
 Accepted :: struct {

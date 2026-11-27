@@ -17,7 +17,7 @@ StartupBlock :: struct {
     abi_version : u32,
     /**
      * The size of StartupBlock as its writer knew it, in bytes; fields past it weren't written. base's runtime ends a
-     * process whose block is too small to hold cpu_features with EXIT_WRONG_ABI.
+     * process whose block is too small to hold cpu_count with EXIT_WRONG_ABI.
      */
     size : u32,
     /** The process itself, a handle of its own. */
@@ -48,6 +48,18 @@ StartupBlock :: struct {
     seed : u8[32],
     /** What the CPU the process runs on can do, as the kernel found. */
     cpu_features : CpuFeatures,
+    /**
+     * The most bytes one memory object may have (memory_create, dma_memory_create): a multiple of the page size, which
+     * a later kernel may raise, so it's read here rather than built into a program.
+     */
+    max_memory_size : u64,
+    /** The most message-signaled IRQs one device may have (device_msi_create), which a later kernel may raise. */
+    max_device_msis : u32,
+    /**
+     * How many CPUs there are, their indices 0 to cpu_count - 1: a set of CPUs (cpu_budget_set_cpus,
+     * cpu_budget_cpus) needs (cpu_count + 63) / 64 words to name them all.
+     */
+    cpu_count : u32,
 }
 
 /** The most bytes of a grant's label; a shorter label is padded with zeros. */
@@ -264,6 +276,9 @@ find_grant :: fn(block : ptr[StartupBlock], label : string, kind : ObjectKind) -
 #assert offset_of(StartupBlock, grants) == offset_of(runtime.SlopOsStartup, grants)
 #assert offset_of(StartupBlock, seed) == offset_of(runtime.SlopOsStartup, seed)
 #assert offset_of(StartupBlock, cpu_features) == offset_of(runtime.SlopOsStartup, cpu_features)
+#assert offset_of(StartupBlock, max_memory_size) == offset_of(runtime.SlopOsStartup, max_memory_size)
+#assert offset_of(StartupBlock, max_device_msis) == offset_of(runtime.SlopOsStartup, max_device_msis)
+#assert offset_of(StartupBlock, cpu_count) == offset_of(runtime.SlopOsStartup, cpu_count)
 #assert size_of(runtime.SlopOsStartup) == size_of(StartupBlock)
 #assert ARGUMENTS_MAGIC == runtime.SLOP_OS_ARGUMENTS_MAGIC
 #assert size_of(ArgumentsHeader) == size_of(runtime.SlopOsArguments)

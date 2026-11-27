@@ -20,7 +20,7 @@ FileSet :: struct {}
  * What the protocol says of itself: its name, which its channels' tag is made from, its major version, and that the
  * client's budget pays for the server's work, for each of its connections.
  */
-PROTOCOL :: slop_os.Protocol.{name = "file_set", major_version = 1, lending = .PerConnection}
+PROTOCOL :: os.Protocol.{name = "file_set", major_version = 1, lending = .PerConnection}
 
 /** A name in the set, and how OpenFile treats what's there. */
 OpenFile :: struct {

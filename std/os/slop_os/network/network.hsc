@@ -26,7 +26,7 @@ Network :: struct {}
  * What the protocol says of itself: its name, which its channels' tag is made from, its major version, and that the
  * program's budget is lent for each of its connections.
  */
-PROTOCOL :: slop_os.Protocol.{name = "network", major_version = 1, lending = .PerConnection}
+PROTOCOL :: os.Protocol.{name = "network", major_version = 1, lending = .PerConnection}
 
 /**
  * The ring every network connection is made with: 8 KiB, so a Narrow with MAX_RULES of each kind, some 3 KiB with their

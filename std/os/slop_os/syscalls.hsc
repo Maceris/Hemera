@@ -473,9 +473,9 @@ Syscalls :: struct {
      * Make a memory object, its pages zero-filled as they're touched, paid for by a budget.
      *
      * @param budget The memory budget that pays for it.
-     * @param size Its size in bytes: a whole number of pages, at least one, at most MAX_MEMORY_SIZE.
+     * @param size Its size in bytes: a whole number of pages, at least one, at most the startup block's max_memory_size.
      * @return An owning handle to it, with every right.
-     * @error InvalidSize The size isn't a whole number of pages, is 0, or is more than MAX_MEMORY_SIZE.
+     * @error InvalidSize The size isn't a whole number of pages, is 0, or is more than the startup block's max_memory_size.
      */
     memory_create : fn(budget : MemoryBudget, size : u64) -> Result[Memory, MemoryError],
     /**
@@ -698,9 +698,11 @@ Syscalls :: struct {
      * Take the next stop not yet reported.
      *
      * @param intercept The intercept; no right is needed.
-     * @param stop Where the stop is written.
+     * @param stop Where the stop is written, size-prefixed: its size, which the caller sets (StopInfo's default does),
+     *     says how many bytes may be written, and the kernel writes as many of its own StopInfo's as fit, size set to
+     *     how many it wrote. A stop it can't write still counts as reported.
      * @error Empty No stop left to report.
-     * @error BadBuffer The stop isn't memory the caller can write.
+     * @error BadBuffer The stop isn't memory the caller can read and write, or its size is less than 8.
      */
     intercept_next : fn(intercept : Intercept, stop : ptr[mut StopInfo]) -> Result[void, ControlError],
     /**
@@ -828,7 +830,7 @@ Syscalls :: struct {
      * @param budget The memory budget that pays for it.
      * @return An owning handle to the IRQ; irq_message says what the device writes to raise it.
      * @error NoMsi No interrupt controller here takes message-signaled interrupts.
-     * @error TooManyVectors The device has MAX_DEVICE_MSIS of them already.
+     * @error TooManyVectors The device has the startup block's max_device_msis of them already.
      * @error NoFreeInterrupt No CPU has a device interrupt free.
      */
     irq_create_msi : fn(device : Device, budget : MemoryBudget) -> Result[Irq, DeviceError],
@@ -941,13 +943,15 @@ Syscalls :: struct {
      */
     cpu_budget_set : fn(budget : CpuBudget, priority : u32, period : u64, time : u64) -> Result[void, HandleError],
     /**
-     * Describe a CPU budget, as words; cpu_budget_describe gives it as a CpuBudgetInfo.
+     * Describe a CPU budget; cpu_budget_describe gives it as a CpuBudgetInfo. Its CPUs are cpu_budget_cpus's.
      *
      * @param budget The budget; no right is needed.
-     * @param info Where its CpuBudgetInfo goes, as at least CPU_BUDGET_INFO_WORDS words in its fields' order.
-     * @error BadBuffer Fewer than CPU_BUDGET_INFO_WORDS words, or not memory the caller can write.
+     * @param info Where it's written, size-prefixed: its size, which the caller sets (CpuBudgetInfo's default does),
+     *     says how many bytes may be written, and the kernel writes as many of its own CpuBudgetInfo's as fit, size
+     *     set to how many it wrote.
+     * @error BadBuffer info isn't memory the caller can read and write, or its size is less than 8.
      */
-    cpu_budget_info : fn(budget : CpuBudget, info : mut u64[]) -> Result[void, HandleError],
+    cpu_budget_info : fn(budget : CpuBudget, info : ptr[mut CpuBudgetInfo]) -> Result[void, HandleError],
     /**
      * Put a process's threads, now and later, on a CPU budget.
      *
@@ -1004,10 +1008,10 @@ Syscalls :: struct {
      * @param budget The memory budget that pays for it and its pages.
      * @param port The pager's port, which needs RIGHT_PORT_BIND.
      * @param key A wake binding on port.
-     * @param size Its size in bytes: a whole number of pages, at most MAX_MEMORY_SIZE.
+     * @param size Its size in bytes: a whole number of pages, at most the startup block's max_memory_size.
      * @return An owning handle to the memory.
      * @error NoPager The port has no wake binding with that key, or is gone.
-     * @error InvalidSize Not a whole number of pages, none, or more than MAX_MEMORY_SIZE.
+     * @error InvalidSize Not a whole number of pages, none, or more than the startup block's max_memory_size.
      */
     memory_create_paged : fn(budget : MemoryBudget, port : Port, key : u64, size : u64) -> Result[Memory, MemoryError],
     /**
@@ -1066,12 +1070,14 @@ Syscalls :: struct {
      * its parent's; the root's are every CPU. Its threads move at their next tick.
      *
      * @param budget The budget, which needs RIGHT_CPU_BUDGET_SET.
-     * @param cpus A bit per CPU's index: at least one of them online, within its parent's, and over each of its
-     *     children's.
-     * @error InvalidArgument None of the CPUs online.
+     * @param cpus A set of CPUs of any length, CPU n bit n % 64 of cpus[n / 64] (add_cpu), as the startup block's
+     *     cpu_count says how many there are: at least one of them online, within its parent's, and over each of its
+     *     children's. Bits for CPUs the kernel hasn't, in words past its own or not, are ignored.
+     * @error InvalidArgument None of the CPUs online, an empty set among them.
      * @error BudgetExceeded CPUs outside its parent's, or not covering one of its children's.
+     * @error BadBuffer cpus isn't memory the caller can read.
      */
-    cpu_budget_set_cpus : fn(budget : CpuBudget, cpus : u64) -> Result[void, HandleError],
+    cpu_budget_set_cpus : fn(budget : CpuBudget, cpus : u64[]) -> Result[void, HandleError],
     /**
      * Route a message-signaled IRQ to another CPU.
      *
@@ -1407,6 +1413,16 @@ Syscalls :: struct {
      * @error BadAddress value isn't 0 or an address in user memory.
      */
     thread_set_pointer : fn(value : u64) -> Result[void, MemoryError],
+    /**
+     * Tell which CPUs a CPU budget's threads may run on (cpu_budget_set_cpus).
+     *
+     * @param budget The budget; no right is needed.
+     * @param cpus Where the set goes, CPU n bit n % 64 of cpus[n / 64] (has_cpu): as many of the kernel's words as fit,
+     *     and zeros in any past them.
+     * @return How many words the kernel's set has, (cpu_count + 63) / 64, which cpus needs to hold all of it.
+     * @error BadBuffer cpus isn't memory the caller can write.
+     */
+    cpu_budget_cpus : fn(budget : CpuBudget, cpus : mut u64[]) -> Result[u32, HandleError],
 }
 
 // What process_set_control_flow is told a process's code was built for (the SlopOS repository's decisions/0186)
@@ -1470,9 +1486,17 @@ ProcessCpu :: struct {
 MAX_EVICT_SPACES : u32 : 16
 
 /**
- * What cpu_budget_info gives, in the order of its words.
+ * What cpu_budget_info gives: size-prefixed, so a later kernel may append fields, which an older program doesn't ask
+ * for and a newer one finds missing by size.
  */
 CpuBudgetInfo :: struct {
+    /**
+     * Before the call, the bytes the caller has room for, as the default does (CPU_BUDGET_INFO_SIZE); after it, how
+     * many the kernel wrote, at most its own CpuBudgetInfo's.
+     */
+    size : u32 = CPU_BUDGET_INFO_SIZE,
+    /** Unused, zero. */
+    reserved : u32,
     /** Its threads' priority. */
     priority : u64,
     /** How often its time comes back, in nanoseconds. */
@@ -1483,8 +1507,6 @@ CpuBudgetInfo :: struct {
     share : u64,
     /** How much of its share its children have together, in millionths of a CPU, at most share. */
     children_share : u64,
-    /** The CPUs its threads may run on, a bit per CPU's index. */
-    cpus : u64,
     /**
      * The time threads of processes not on it have run on it, lent it, in nanoseconds since it was made: what services
      * did for its processes (the SlopOS repository's decisions/0185).
@@ -1497,30 +1519,52 @@ CpuBudgetInfo :: struct {
     ran : u64,
 }
 
-/** How many words cpu_budget_info writes: one for each of CpuBudgetInfo's fields. */
-CPU_BUDGET_INFO_WORDS : u32 : 8
+/** CpuBudgetInfo's size in this version of the ABI, in bytes, which its size field defaults to. */
+CPU_BUDGET_INFO_SIZE : u32 : 64
+
+#assert size_of(CpuBudgetInfo) == cast[usize](CPU_BUDGET_INFO_SIZE)
 
 /**
- * Describe a CPU budget: cpu_budget_info's words, as a CpuBudgetInfo. Needs no context.
+ * Describe a CPU budget: cpu_budget_info's CpuBudgetInfo. Needs no context.
  *
  * @param budget The budget; no right is needed.
- * @return What the budget is, or null if cpu_budget_info failed: the handle isn't a CPU budget's, or it's gone.
+ * @return What the budget is, as much of it as the kernel has, size saying how much; or null if cpu_budget_info
+ *     failed: the handle isn't a CPU budget's, or it's gone.
  */
 cpu_budget_describe :: fn(budget : CpuBudget) -> CpuBudgetInfo? #no_context {
-    words : u64[CPU_BUDGET_INFO_WORDS]
-    if cpu_budget_info(budget, words) is_error {
+    info := CpuBudgetInfo.{}
+    if cpu_budget_info(budget, &info) is_error {
         return null
     }
-    return CpuBudgetInfo.{
-        priority = words[0],
-        period = words[1],
-        time = words[2],
-        share = words[3],
-        children_share = words[4],
-        cpus = words[5],
-        lent = words[6],
-        ran = words[7],
+    return info
+}
+
+/**
+ * Add a CPU to a set of CPUs, for cpu_budget_set_cpus: bit cpu % 64 of cpus[cpu / 64].
+ *
+ * @param cpus The set, changed in place.
+ * @param cpu The CPU's index; one past the set's words isn't added, and changes nothing.
+ */
+add_cpu :: fn(cpus : mut u64[], cpu : u32) #no_context {
+    index :: cast[usize](cpu / 64)
+    if index < cpus.count {
+        cpus[index] |= cast[u64](1) << cast[u64](cpu % 64)
     }
+}
+
+/**
+ * Tell whether a set of CPUs, as cpu_budget_cpus writes it, has a CPU.
+ *
+ * @param cpus The set, only read.
+ * @param cpu The CPU's index; one past the set's words isn't in it.
+ * @return True if its bit is set.
+ */
+has_cpu :: fn(cpus : u64[], cpu : u32) -> bool #no_context {
+    index :: cast[usize](cpu / 64)
+    if index >= cpus.count {
+        return false
+    }
+    return (cpus[index] >> cast[u64](cpu % 64)) & 1 == 1
 }
 
 /** The most of a line debug_log writes, in bytes; the rest is dropped. */
@@ -1728,17 +1772,32 @@ StopPoint :: enum #backed_by(u32) {
     ThreadStart = 4,
 }
 
-/** One stop, as intercept_next writes it. */
+/**
+ * One stop, as intercept_next writes it: size-prefixed, so a later kernel may append fields, which an older program
+ * doesn't ask for and a newer one finds missing by size.
+ */
 StopInfo :: struct {
-    /** The stopped thread's ID, for intercept_resume. */
-    thread : u64,
+    /**
+     * Before the call, the bytes the caller has room for, as the default does (STOP_INFO_SIZE); after it, how many
+     * the kernel wrote, at most its own StopInfo's.
+     */
+    size : u32 = STOP_INFO_SIZE,
     /** Where it stopped. */
     point : StopPoint,
+    /** The stopped thread's ID, for intercept_resume. */
+    thread : u64,
     /** The system call's number, or for a fault, its kind: one of the FAULT_ constants. */
     number : u32,
+    /** Unused, zero. */
+    reserved : u32,
     /** For a fault: the address it touched. Meaningless otherwise. */
     address : u64,
 }
+
+/** StopInfo's size in this version of the ABI, in bytes, which its size field defaults to. */
+STOP_INFO_SIZE : u32 : 32
+
+#assert size_of(StopInfo) == cast[usize](STOP_INFO_SIZE)
 
 // A fault's kind, StopInfo's number at a fault
 /** A page fault reading memory that isn't mapped, or that its mapping doesn't let it read. */
@@ -1886,15 +1945,64 @@ InterceptAction :: enum #backed_by(u32) {
 #if TARGET_ARCH == .arm64 {
     /** How many registers thread_read_registers and thread_write_registers take: x0 to x30, sp, pc and pstate. */
     THREAD_REGISTERS : u32 : 34
+    /** Where each register is in them: x n at REGISTER_X0 + n, for n from 0 to 30. */
+    REGISTER_X0 : u32 : 0
+    /** x29, the frame pointer. */
+    REGISTER_FP : u32 : 29
+    /** x30, the link register. */
+    REGISTER_LR : u32 : 30
+    REGISTER_SP : u32 : 31
+    REGISTER_PC : u32 : 32
+    /** NZCV and the rest of PSTATE as SPSR_EL1 holds it; writing it changes only NZCV. */
+    REGISTER_PSTATE : u32 : 33
 }
 #else_if TARGET_ARCH == .riscv64 {
     /** How many registers thread_read_registers and thread_write_registers take: x0 to x31, then pc. */
     THREAD_REGISTERS : u32 : 33
+    /** Where each register is in them: x n at REGISTER_X0 + n, for n from 0 to 31; x0 reads as 0. */
+    REGISTER_X0 : u32 : 0
+    /** x1, ra, the return address. */
+    REGISTER_RA : u32 : 1
+    /** x2, sp. */
+    REGISTER_SP : u32 : 2
+    /** x3, gp. */
+    REGISTER_GP : u32 : 3
+    /** x4, tp, the thread pointer. */
+    REGISTER_TP : u32 : 4
+    /** x8, s0, the frame pointer. */
+    REGISTER_FP : u32 : 8
+    /** x10, a0, the first argument and result. */
+    REGISTER_A0 : u32 : 10
+    REGISTER_PC : u32 : 32
 }
 #else {
     /** How many registers thread_read_registers and thread_write_registers take: x86-64's 16, rip and rflags. */
     THREAD_REGISTERS : u32 : 18
+    /** Where each register is in them. */
+    REGISTER_RAX : u32 : 0
+    REGISTER_RBX : u32 : 1
+    REGISTER_RCX : u32 : 2
+    REGISTER_RDX : u32 : 3
+    REGISTER_RSI : u32 : 4
+    REGISTER_RDI : u32 : 5
+    REGISTER_RBP : u32 : 6
+    REGISTER_RSP : u32 : 7
+    /** r n at REGISTER_R8 + n - 8, for n from 8 to 15. */
+    REGISTER_R8 : u32 : 8
+    REGISTER_RIP : u32 : 16
+    /** Writing it changes only its status flags and DF. */
+    REGISTER_RFLAGS : u32 : 17
+    /** rbp, the frame pointer, by the name every architecture has. */
+    REGISTER_FP : u32 : 6
+    REGISTER_SP : u32 : 7
+    REGISTER_PC : u32 : 16
 }
+
+/**
+ * The version of the system calls' calling convention (knowledge/design/system-abi.md §4): which registers carry the
+ * number, arguments and results, and how a call is made. A change to it is a new version, so a description says so.
+ */
+CALLING_CONVENTION_VERSION : u32 : 1
 
 /** For controller_register: the kinds of interrupt controller. */
 ControllerKind :: enum #backed_by(u32) {
@@ -2225,7 +2333,7 @@ MemoryError :: enum #backed_by(u32) {
     NoSuchCall = 7,
     /** Not a page-aligned user address range, or it overlaps a mapping. */
     BadAddress = 18,
-    /** Not a whole number of pages, none at all, more than MAX_MEMORY_SIZE, or past the memory object's end. */
+    /** Not a whole number of pages, none at all, more than the startup block's max_memory_size, or past the memory object's end. */
     InvalidSize = 24,
     /** The budget can't pay for it (decisions/0011). */
     BudgetExceeded = 25,
@@ -2244,9 +2352,6 @@ MemoryError :: enum #backed_by(u32) {
     /** A page mapped in more address spaces than memory_evict takes it from at once. */
     MappedWidely = 53,
 }
-
-/** The largest memory object, 1 GiB, in bytes. */
-MAX_MEMORY_SIZE : u64 : 1 << 30
 
 /**
  * What coverage_take can fail with (the SlopOS repository's decisions/0186). Tags shared with the others mean the same.
@@ -2339,7 +2444,7 @@ DeviceError :: enum #backed_by(u32) {
     NotDmaMemory = 38,
     /** No interrupt controller here takes message-signaled interrupts, or the IRQ isn't message-signaled. */
     NoMsi = 39,
-    /** The device has as many message-signaled IRQs as it can (MAX_DEVICE_MSIS). */
+    /** The device has as many message-signaled IRQs as it can (the startup block's max_device_msis). */
     TooManyVectors = 40,
     /** Another device has that address, or, where the interrupt controller uses sources, that MSI source. */
     DeviceExists = 41,
@@ -2370,9 +2475,6 @@ PowerAction :: enum #backed_by(u32) {
     Restart = 3,
 }
 
-/** The most message-signaled IRQs one device has at once. */
-MAX_DEVICE_MSIS : u32 : 32
-
 /**
  * Variable-size data in a protocol's message (the SlopOS repository's decisions 0040, 0071): count Ts after the
  * message's fixed part, at offset bytes from the message's start, aligned for T. A message's generated validator
@@ -2392,24 +2494,3 @@ Relative :: struct[T] {
 /** A handle field of a message as it travels: its index in the message's batch, or this for none. */
 NO_HANDLE_INDEX : u32 : 0xffffffff
 
-/**
- * What a protocol package says of itself, as its PROTOCOL (decisions/0040).
- */
-Protocol :: struct {
-    /** The protocol's name. */
-    name : string,
-    /** Its major version: a new one for any change that isn't only appending. */
-    major_version : u32,
-    /** Who pays for the server's work (decisions/0037). */
-    lending : Lending,
-}
-
-/** Who pays for a server's work on a protocol's connections (decisions/0037). */
-Lending :: enum #backed_by(u32) {
-    /** The client's budget, lent for each of its connections. */
-    PerConnection,
-    /** The server's own. */
-    Server,
-}
-
-#assert size_of(Protocol) == 24

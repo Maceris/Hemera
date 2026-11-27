@@ -14,7 +14,7 @@ import net_address from "std:os/slop_os/net_address"
 Datagrams :: struct {}
 
 /** What the protocol says of itself. */
-PROTOCOL :: slop_os.Protocol.{name = "datagrams", major_version = 1, lending = .PerConnection}
+PROTOCOL :: os.Protocol.{name = "datagrams", major_version = 1, lending = .PerConnection}
 
 /** The most bytes a datagram carries: an Ethernet MTU less IPv4's and UDP's headers. */
 MAX_DATAGRAM :: 1472

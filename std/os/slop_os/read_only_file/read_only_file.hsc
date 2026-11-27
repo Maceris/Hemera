@@ -17,7 +17,7 @@ ReadOnlyFile :: struct {}
  * What the protocol says of itself: its name, which its channels' tag is made from, its major version, and that the
  * client's budget pays for the server's work, for each of its connections.
  */
-PROTOCOL :: slop_os.Protocol.{name = "read_only_file", major_version = 1, lending = .PerConnection}
+PROTOCOL :: os.Protocol.{name = "read_only_file", major_version = 1, lending = .PerConnection}
 
 /** What a client asks of a file it may only read. */
 Request :: union {

@@ -17,7 +17,7 @@ Grant :: struct {}
  * What the protocol says of itself: its name, which its channels' tag is made from, its major version, and that the
  * client's budget pays for the server's work, for each of its connections.
  */
-PROTOCOL :: slop_os.Protocol.{name = "grant", major_version = 1, lending = .PerConnection}
+PROTOCOL :: os.Protocol.{name = "grant", major_version = 1, lending = .PerConnection}
 
 /**
  * What a claim gives: the volume the grant is from, by its container and ID, a ticket for its one link, and whether

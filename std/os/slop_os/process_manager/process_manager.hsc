@@ -23,7 +23,7 @@ ProcessManager :: struct {}
  * What the protocol says of itself: its name, which its channels' tag is made from, its major version, and that the
  * client's budget pays for the server's work, for each of its connections.
  */
-PROTOCOL :: slop_os.Protocol.{name = "process_manager", major_version = 4, lending = .PerConnection}
+PROTOCOL :: os.Protocol.{name = "process_manager", major_version = 4, lending = .PerConnection}
 
 /**
  * The bytes of each of the rings a connection to the manager needs, each way, so a Load fits in one message

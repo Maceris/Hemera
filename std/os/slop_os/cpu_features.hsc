@@ -6,7 +6,9 @@ package slop_os
  *
  * Each architecture's features have their own names here; a program only ever sees its own architecture's features
  * set. The values are part of the system ABI, each one a feature's bit index in CpuFeatures, so new features are only
- * ever appended, never renumbered: x86-64's take 0 to 63, AArch64's 64 to 127, RISC-V's 128 to 191.
+ * ever appended, never renumbered: x86-64's take 0 to 255, AArch64's 256 to 511, RISC-V's 512 to 767, and 768 to
+ * 1023 are kept for another architecture. Only what the CPU can do is a feature; what firmware gives, like RISC-V's
+ * debug triggers, is found by the calls that use it.
  */
 CpuFeature :: enum #backed_by(u16) {
     // x86-64-v2
@@ -64,106 +66,105 @@ CpuFeature :: enum #backed_by(u16) {
     X86Ibt = 45, /**< CET indirect branch tracking (CET_IBT). */
 
     // AArch64 (ID_AA64PFR0_EL1, ID_AA64ISAR0_EL1 and ID_AA64ISAR1_EL1): floating point and Advanced SIMD
-    Aarch64Fp = 64, /**< Floating point. */
-    Aarch64AdvSimd = 65, /**< Advanced SIMD (NEON). */
+    Aarch64Fp = 256, /**< Floating point. */
+    Aarch64AdvSimd = 257, /**< Advanced SIMD (NEON). */
     // ARMv8.1-A
-    Aarch64Atomics = 66, /**< The LSE atomic instructions. */
-    Aarch64Rdm = 67, /**< The rounding doubling multiply-accumulate instructions (SQRDMLAH, SQRDMLSH). */
+    Aarch64Atomics = 258, /**< The LSE atomic instructions. */
+    Aarch64Rdm = 259, /**< The rounding doubling multiply-accumulate instructions (SQRDMLAH, SQRDMLSH). */
     // ARMv8.2-A and later
-    Aarch64DotProduct = 68, /**< The dot product instructions (SDOT, UDOT). */
-    Aarch64Fp16 = 69, /**< Half precision floating point arithmetic. */
-    Aarch64Sve = 70, /**< The Scalable Vector Extension. */
+    Aarch64DotProduct = 260, /**< The dot product instructions (SDOT, UDOT). */
+    Aarch64Fp16 = 261, /**< Half precision floating point arithmetic. */
+    Aarch64Sve = 262, /**< The Scalable Vector Extension. */
     // Cryptography
-    Aarch64Aes    = 71, /**< The AES instructions. */
-    Aarch64Pmull  = 72, /**< PMULL, polynomial multiplication of 64-bit values. */
-    Aarch64Sha1   = 73, /**< The SHA-1 instructions. */
-    Aarch64Sha256 = 74, /**< The SHA-256 instructions. */
-    Aarch64Sha512 = 75, /**< The SHA-512 instructions. */
-    Aarch64Sha3   = 76, /**< The SHA-3 instructions. */
-    Aarch64Crc32  = 77, /**< The CRC32 instructions. */
+    Aarch64Aes    = 263, /**< The AES instructions. */
+    Aarch64Pmull  = 264, /**< PMULL, polynomial multiplication of 64-bit values. */
+    Aarch64Sha1   = 265, /**< The SHA-1 instructions. */
+    Aarch64Sha256 = 266, /**< The SHA-256 instructions. */
+    Aarch64Sha512 = 267, /**< The SHA-512 instructions. */
+    Aarch64Sha3   = 268, /**< The SHA-3 instructions. */
+    Aarch64Crc32  = 269, /**< The CRC32 instructions. */
     // Random numbers
-    Aarch64Rng = 78, /**< RNDR and RNDRRS, random numbers from the hardware generator. */
+    Aarch64Rng = 270, /**< RNDR and RNDRRS, random numbers from the hardware generator. */
     // Control-flow integrity
-    Aarch64PointerAuthentication = 79, /**< Pointer authentication. */
-    Aarch64Bti = 80, /**< Branch target identification. */
+    Aarch64PointerAuthentication = 271, /**< Pointer authentication. */
+    Aarch64Bti = 272, /**< Branch target identification. */
     // System features, which only the kernel uses
-    Aarch64Pan                = 81, /**< Privileged Access Never. */
-    Aarch64Asid16             = 82, /**< 16-bit address space identifiers. */
-    Aarch64Pages1G            = 83, /**< 1 GiB blocks with 4 KiB pages. */
-    Aarch64HardwareAccessFlag = 84, /**< The access flag kept by the hardware (FEAT_HAFDBS). */
+    Aarch64Pan                = 273, /**< Privileged Access Never. */
+    Aarch64Asid16             = 274, /**< 16-bit address space identifiers. */
+    Aarch64Pages1G            = 275, /**< 1 GiB blocks with 4 KiB pages. */
+    Aarch64HardwareAccessFlag = 276, /**< The access flag kept by the hardware (FEAT_HAFDBS). */
     // Control-flow integrity, numbered after the rest (the SlopOS repository's decisions/0186)
-    Aarch64Gcs = 85, /**< The Guarded Control Stack (FEAT_GCS), a shadow stack. */
+    Aarch64Gcs = 277, /**< The Guarded Control Stack (FEAT_GCS), a shadow stack. */
 
     // RISC-V, from the device tree's riscv,isa-extensions or riscv,isa: the single-letter extensions
-    RiscvM = 128, /**< M, integer multiplication and division. */
-    RiscvA = 129, /**< A, atomics: load-reserved and store-conditional, and the AMOs. */
-    RiscvF = 130, /**< F, single precision floating point. */
-    RiscvD = 131, /**< D, double precision floating point. */
-    RiscvC = 132, /**< C, compressed instructions. */
-    RiscvV = 133, /**< V, the vector extension, with vectors of at least 128 bits. */
+    RiscvM = 512, /**< M, integer multiplication and division. */
+    RiscvA = 513, /**< A, atomics: load-reserved and store-conditional, and the AMOs. */
+    RiscvF = 514, /**< F, single precision floating point. */
+    RiscvD = 515, /**< D, double precision floating point. */
+    RiscvC = 516, /**< C, compressed instructions. */
+    RiscvV = 517, /**< V, the vector extension, with vectors of at least 128 bits. */
     // Bit manipulation and the other instructions RVA23U64 has
-    RiscvZba         = 134, /**< Zba, address generation: sh1add, sh2add, sh3add and their .uw forms. */
-    RiscvZbb         = 135, /**< Zbb, basic bit manipulation: clz, ctz, cpop, min, max, rotations, rev8 and others. */
-    RiscvZbs         = 136, /**< Zbs, single-bit instructions: bset, bclr, binv, bext. */
-    RiscvZicond      = 137, /**< Zicond, conditional zeroing: czero.eqz and czero.nez. */
-    RiscvZcb         = 138, /**< Zcb, more compressed instructions. */
-    RiscvZfa         = 139, /**< Zfa, more floating point instructions: fli, fminm, fround and others. */
-    RiscvZfhmin      = 140, /**< Zfhmin, half precision floating point loads, stores and conversions. */
-    RiscvZicboz      = 141, /**< Zicboz, cbo.zero, zeroing a cache block. */
-    RiscvZihintpause = 142, /**< Zihintpause, pause, a hint that a spin loop waits. */
-    RiscvZawrs       = 143, /**< Zawrs, wrs.nto and wrs.sto, waiting on a reservation set. */
-    RiscvZimop       = 144, /**< Zimop, the may-be-operations, which shadow stack instructions are where Zicfiss is off. */
+    RiscvZba         = 518, /**< Zba, address generation: sh1add, sh2add, sh3add and their .uw forms. */
+    RiscvZbb         = 519, /**< Zbb, basic bit manipulation: clz, ctz, cpop, min, max, rotations, rev8 and others. */
+    RiscvZbs         = 520, /**< Zbs, single-bit instructions: bset, bclr, binv, bext. */
+    RiscvZicond      = 521, /**< Zicond, conditional zeroing: czero.eqz and czero.nez. */
+    RiscvZcb         = 522, /**< Zcb, more compressed instructions. */
+    RiscvZfa         = 523, /**< Zfa, more floating point instructions: fli, fminm, fround and others. */
+    RiscvZfhmin      = 524, /**< Zfhmin, half precision floating point loads, stores and conversions. */
+    RiscvZicboz      = 525, /**< Zicboz, cbo.zero, zeroing a cache block. */
+    RiscvZihintpause = 526, /**< Zihintpause, pause, a hint that a spin loop waits. */
+    RiscvZawrs       = 527, /**< Zawrs, wrs.nto and wrs.sto, waiting on a reservation set. */
+    RiscvZimop       = 528, /**< Zimop, the may-be-operations, which shadow stack instructions are where Zicfiss is off. */
     // Atomics past A
-    RiscvZacas = 145, /**< Zacas, atomic compare and swap, amocas. */
+    RiscvZacas = 529, /**< Zacas, atomic compare and swap, amocas. */
     // Cryptography
-    RiscvZbc    = 146, /**< Zbc, carry-less multiplication: clmul, clmulh, clmulr. */
-    RiscvZbkb   = 147, /**< Zbkb, bit manipulation for cryptography: pack, brev8, zip, unzip. */
-    RiscvZknd   = 148, /**< Zknd, the AES decryption instructions on scalar registers. */
-    RiscvZkne   = 149, /**< Zkne, the AES encryption instructions on scalar registers. */
-    RiscvZknh   = 150, /**< Zknh, the SHA-256 and SHA-512 instructions on scalar registers. */
-    RiscvZvbb   = 151, /**< Zvbb, vector bit manipulation. */
-    RiscvZvbc   = 152, /**< Zvbc, vector carry-less multiplication. */
-    RiscvZvkned = 153, /**< Zvkned, the AES instructions on vectors. */
-    RiscvZvknhb = 154, /**< Zvknhb, the SHA-256 and SHA-512 instructions on vectors. */
-    RiscvZvkg   = 155, /**< Zvkg, GHASH on vectors, for AES-GCM. */
-    RiscvZkt    = 156, /**< Zkt, instructions whose time doesn't depend on the data they're given. */
+    RiscvZbc    = 530, /**< Zbc, carry-less multiplication: clmul, clmulh, clmulr. */
+    RiscvZbkb   = 531, /**< Zbkb, bit manipulation for cryptography: pack, brev8, zip, unzip. */
+    RiscvZknd   = 532, /**< Zknd, the AES decryption instructions on scalar registers. */
+    RiscvZkne   = 533, /**< Zkne, the AES encryption instructions on scalar registers. */
+    RiscvZknh   = 534, /**< Zknh, the SHA-256 and SHA-512 instructions on scalar registers. */
+    RiscvZvbb   = 535, /**< Zvbb, vector bit manipulation. */
+    RiscvZvbc   = 536, /**< Zvbc, vector carry-less multiplication. */
+    RiscvZvkned = 537, /**< Zvkned, the AES instructions on vectors. */
+    RiscvZvknhb = 538, /**< Zvknhb, the SHA-256 and SHA-512 instructions on vectors. */
+    RiscvZvkg   = 539, /**< Zvkg, GHASH on vectors, for AES-GCM. */
+    RiscvZkt    = 540, /**< Zkt, instructions whose time doesn't depend on the data they're given. */
     // Random numbers
-    RiscvZkr = 157, /**< Zkr, the seed CSR, seeds straight from the hardware entropy source. */
+    RiscvZkr = 541, /**< Zkr, the seed CSR, seeds straight from the hardware entropy source. */
     // Control-flow integrity (the SlopOS repository's decisions/0186)
-    RiscvZicfilp = 158, /**< Zicfilp, landing pads: lpad, and indirect branches that must land on one. */
-    RiscvZicfiss = 159, /**< Zicfiss, shadow stacks. */
+    RiscvZicfilp = 542, /**< Zicfilp, landing pads: lpad, and indirect branches that must land on one. */
+    RiscvZicfiss = 543, /**< Zicfiss, shadow stacks. */
     // System features, which only the kernel uses
-    RiscvSv48     = 160, /**< Sv48, four levels of page tables, 48-bit virtual addresses. */
-    RiscvSv57     = 161, /**< Sv57, five levels of page tables, 57-bit virtual addresses. */
-    RiscvSvpbmt   = 162, /**< Svpbmt, a page's memory type in its page table entry. */
-    RiscvSvnapot  = 163, /**< Svnapot, naturally aligned 64 KiB pages made of 4 KiB entries. */
-    RiscvSvinval  = 164, /**< Svinval, sfence.vma split into finer-grained instructions. */
-    RiscvSvadu    = 165, /**< Svadu, the accessed and dirty bits kept by the hardware rather than faulting. */
-    RiscvSstc     = 166, /**< Sstc, the supervisor's own timer compare register, stimecmp. */
-    RiscvSscofpmf = 167, /**< Sscofpmf, counter overflow interrupts and mode filtering. */
-    RiscvSsaia    = 168, /**< Ssaia, the supervisor's part of the Advanced Interrupt Architecture (the IMSIC). */
-    /** Sdtrig's triggers, as the SBI's debug triggers extension gives them: hardware breakpoints, watchpoints, a step. */
-    RiscvSdtrig   = 169,
+    RiscvSv48     = 544, /**< Sv48, four levels of page tables, 48-bit virtual addresses. */
+    RiscvSv57     = 545, /**< Sv57, five levels of page tables, 57-bit virtual addresses. */
+    RiscvSvpbmt   = 546, /**< Svpbmt, a page's memory type in its page table entry. */
+    RiscvSvnapot  = 547, /**< Svnapot, naturally aligned 64 KiB pages made of 4 KiB entries. */
+    RiscvSvinval  = 548, /**< Svinval, sfence.vma split into finer-grained instructions. */
+    RiscvSvadu    = 549, /**< Svadu, the accessed and dirty bits kept by the hardware rather than faulting. */
+    RiscvSstc     = 550, /**< Sstc, the supervisor's own timer compare register, stimecmp. */
+    RiscvSscofpmf = 551, /**< Sscofpmf, counter overflow interrupts and mode filtering. */
+    RiscvSsaia    = 552, /**< Ssaia, the supervisor's part of the Advanced Interrupt Architecture (the IMSIC). */
 }
 
 /**
- * A set of CpuFeature values, as the startup block reports it: 256 bits, one for each possible feature.
+ * A set of CpuFeature values, as the startup block reports it: 1024 bits, one for each possible feature, 256 for each
+ * architecture.
  *
- * Its layout is part of the system ABI, so it stays 32 bytes.
+ * Its layout is part of the system ABI, so it stays 128 bytes.
  */
 CpuFeatures :: struct {
     /** The set's bits: feature n is bit n % 64 of bits[n / 64], set when the CPU has it. */
-    bits : u64[4],
+    bits : u64[16],
 }
 
-#assert size_of(CpuFeatures) == 32
+#assert size_of(CpuFeatures) == 128
 
 /**
  * Tell whether a set of features has one.
  *
  * @param features The set to look in, only read.
  * @param feature The feature to look for. A feature of another architecture than the one running is never set, nor
- *     one whose value is past the set's 256 bits.
+ *     one whose value is past the set's 1024 bits.
  * @return True if the set has the feature, false if it doesn't.
  */
 has_feature :: fn(features : ptr[CpuFeatures], feature : CpuFeature) -> bool {
@@ -178,7 +179,7 @@ has_feature :: fn(features : ptr[CpuFeatures], feature : CpuFeature) -> bool {
  * Add a feature to a set; adding one it already has changes nothing.
  *
  * @param features The set to add to, changed in place.
- * @param feature The feature to add; one whose value is past the set's 256 bits isn't, and changes nothing.
+ * @param feature The feature to add; one whose value is past the set's 1024 bits isn't, and changes nothing.
  */
 add_feature :: fn(features : ptr[mut CpuFeatures], feature : CpuFeature) {
     index :: cast[usize](cast[u16](feature))

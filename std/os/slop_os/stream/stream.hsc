@@ -41,7 +41,7 @@ package stream
      * What the protocol says of itself: its name, which its channels' tag is made from, its major version, and that
      * the server, here the reader, pays for its work from its own budget.
      */
-    PROTOCOL :: slop_os.Protocol.{name = "Stream", major_version = 1, lending = .Server}
+    PROTOCOL :: os.Protocol.{name = "Stream", major_version = 1, lending = .Server}
 
     /** How big a stream's ring is, in bytes, unless it's asked to be bigger: 64 KiB. */
     RING_BYTES : u64 : 64 * 1024

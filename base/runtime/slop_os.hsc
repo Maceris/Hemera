@@ -102,15 +102,15 @@ SLOP_OS_KIND_DEBUG_LOG : u32 : 14
 SLOP_OS_KIND_DEVICE : u32 : 15
 /*
  * How a process ends before its entry runs: started by a kernel of an earlier ABI version, or without a
- * grant its entry needs (os_entry_grant)
+ * grant its entry needs (os_entry_grant). Both are above 255, so no C program's own exit status is taken for them
  */
 /** The exit code of a process started with a startup block of an earlier ABI version, or one too small to read. */
-SLOP_OS_EXIT_WRONG_ABI : u32 : 125
+SLOP_OS_EXIT_WRONG_ABI : u32 : 256
 /**
  * The exit code of a process without a grant or value its entry requires, or with one of the wrong kind, protocol
  * or type (os_entry_grant, os_entry_value).
  */
-SLOP_OS_EXIT_MISSING_GRANT : u32 : 126
+SLOP_OS_EXIT_MISSING_GRANT : u32 : 257
 /**
  * The exit code of a program whose entry gave back a Result's Error (os_entry_result); its value is in the grant
  * "result", for a launcher that gave one.
@@ -144,7 +144,7 @@ SlopOsResultHeader :: struct {
 SlopOsStartup :: struct {
     /** The block's ABI version, which has to be SLOP_OS_ABI_VERSION or later for the rest to be read. */
     abi_version : u32,
-    /** The block's size in bytes, at least this struct's, through cpu_features, for it to be read. */
+    /** The block's size in bytes, at least this struct's, through cpu_count, for it to be read. */
     size : u32,
     /** A handle to the process itself. */
     process : u32,
@@ -167,10 +167,16 @@ SlopOsStartup :: struct {
     /** A random seed for the process, which SYSTEM_RANDOM's bytes come from; all zeros means there's none. */
     seed : u8[32],
     /**
-     * The CPU's features, 256 bits, a feature n bit n % 64 of word n / 64, which the runtime doesn't read itself but
+     * The CPU's features, 1024 bits, a feature n bit n % 64 of word n / 64, which the runtime doesn't read itself but
      * std's has_feature does, so a block has to be big enough to hold them.
      */
-    cpu_features : u64[4],
+    cpu_features : u64[16],
+    /** The most bytes one memory object may have, a limit of the kernel's, which the runtime doesn't read. */
+    max_memory_size : u64,
+    /** The most message-signaled IRQs one device may have. */
+    max_device_msis : u32,
+    /** How many CPUs there are, by index from 0, which a set of CPUs' bits stand for. */
+    cpu_count : u32,
 }
 
 /**

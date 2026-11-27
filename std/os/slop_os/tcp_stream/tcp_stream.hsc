@@ -28,7 +28,7 @@ TcpStream :: struct {}
  * What the protocol says of itself: its name, which its channels' tag is made from, its major version, and that the
  * program's budget is lent for each of its connections, which pays for the service's work on it.
  */
-PROTOCOL :: slop_os.Protocol.{name = "tcp_stream", major_version = 1, lending = .PerConnection}
+PROTOCOL :: os.Protocol.{name = "tcp_stream", major_version = 1, lending = .PerConnection}
 
 /** Why a connection ended. */
 Ending :: enum #backed_by(u8) {

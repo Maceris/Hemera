@@ -2,7 +2,7 @@ package os
 
 /*
  * SlopOS's protocols (the SlopOS repository's decisions 0040, 0071, 0177): a protocol is a package with a Request and
- * a Response union, a type named after the protocol for os.Channel[P], its PROTOCOL (slop_os.Protocol), and, at its
+ * a Response union, a type named after the protocol for os.Channel[P], its PROTOCOL (os.Protocol), and, at its
  * top level,
  *
  *     #insert os.protocol_code(Request, Response)
@@ -37,10 +37,31 @@ package os
  * It builds on every OS, so a protocol's validators can be tested and fuzzed hosted, as SlopOS's are; sending and
  * receiving only work on SlopOS.
  */
+
 import compiler from "base:compiler"
 import intrinsics from "base:intrinsics"
 import runtime from "base:runtime"
 import slop_os from "std:os/slop_os"
+
+/**
+ * What a protocol package says of itself, as its PROTOCOL (the SlopOS repository's decisions/0040).
+ */
+Protocol :: struct {
+    /** The protocol's name. */
+    name : string,
+    /** Its major version: a new one for any change that isn't only appending. */
+    major_version : u32,
+    /** Who pays for the server's work (the SlopOS repository's decisions/0037). */
+    lending : Lending,
+}
+
+/** Who pays for a server's work on a protocol's connections (the SlopOS repository's decisions/0037). */
+Lending :: enum #backed_by(u32) {
+    /** The client's budget, lent for each of its connections. */
+    PerConnection,
+    /** The server's own. */
+    Server,
+}
 
 /**
  * The most a message has here, in 8-byte words: 512, 4096 bytes, what fits a ring of 8 KiB or more (a message is
