@@ -597,7 +597,9 @@ With control-flow integrity ([compilation.md](compilation.md#control-flow-integr
   pushes the loop's return address, which it stores at `frame - 8`, before jumping into the frame. As on AArch64, the
   switches keep `ssp` as the scheduler switches to a fiber, in `shadow_stack_base` (`ssrdp`, which gives 0 where the
   thread has no shadow stack), and put it back when they switch back, dropping the fiber's entries; `ssp` is written
-  only where it was read as something other than 0.
+  only where it was read as something other than 0. `fiber_start` and `fiber_resume` push their own return first, so
+  it's the top entry at `shadow_stack_base`, which the switch back checks before returning to the scheduler; morestack
+  and the small frame that calls it push and check theirs too, which the loop's pushes replace when it re-enters them.
 * **Landing pads (Zicfilp).** `lpad 0` after every call, where the loop's `jr` lands, each call aligned so the landing
   pad after it is at a 4-byte boundary, and at the switches' entries. The loop's jump and morestack's call of the body
   go through `t4` and `t5`, not `ra`, `t0` or `t2`, which Zicfilp exempts, so they're checked.

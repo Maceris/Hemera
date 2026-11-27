@@ -1,0 +1,90 @@
+diff --git a/llvm/lib/Target/RISCV/RISCVFrameLowering.cpp b/llvm/lib/Target/RISCV/RISCVFrameLowering.cpp
+--- a/llvm/lib/Target/RISCV/RISCVFrameLowering.cpp
++++ b/llvm/lib/Target/RISCV/RISCVFrameLowering.cpp
+@@ -2837,6 +2837,15 @@ void RISCVFrameLowering::adjustForSegmentedStacks(
+ 
+   PrologueMBB.setMachineBlockAddressTaken();
+   PrologueMBB.setLabelMustBeEmitted();
++  // With a hardware shadow stack, this small frame pushes and checks its
++  // return as the function's own prologue and epilogue do, since it returns
++  // through the address it saves, which the resume loop also replaces and
++  // pushes when it re-enters the frame
++  const bool HardwareShadowStack =
++      RVFI->getShadowStackKind(MF) ==
++      RISCVMachineFunctionInfo::ShadowStackKind::Hardware;
++  if (HardwareShadowStack)
++    BuildMI(AllocMBB, DL, TII.get(RISCV::SSPUSH)).addReg(RISCV::X1);
+   BuildMI(AllocMBB, DL, TII.get(RISCV::ADDI), RISCV::X2)
+       .addReg(RISCV::X2)
+       .addImm(-16);
+@@ -2886,6 +2895,11 @@ void RISCVFrameLowering::adjustForSegmentedStacks(
+   BuildMI(AllocMBB, DL, TII.get(RISCV::ADDI), RISCV::X2)
+       .addReg(RISCV::X2)
+       .addImm(16);
++  if (HardwareShadowStack) {
++    if (STI.branchToSSPopChk())
++      emitBranchToSSPopChk(*AllocMBB, AllocMBB->end(), DL, &TII);
++    BuildMI(AllocMBB, DL, TII.get(RISCV::SSPOPCHK)).addReg(RISCV::X1);
++  }
+   BuildMI(AllocMBB, DL, TII.get(RISCV::PseudoRET));
+ }
+ 
+diff --git a/llvm/test/CodeGen/RISCV/segmented-stacks-shadow-stack.ll b/llvm/test/CodeGen/RISCV/segmented-stacks-shadow-stack.ll
+new file mode 100644
+--- /dev/null
++++ b/llvm/test/CodeGen/RISCV/segmented-stacks-shadow-stack.ll
+@@ -0,0 +1,54 @@
++; RUN: llc < %s -mtriple=riscv64-unknown-elf -mattr=+reserve-x27,+zicfiss -verify-machineinstrs | FileCheck %s
++; RUN: llc < %s -mtriple=riscv64-unknown-elf -mattr=+reserve-x27,+zicfiss,+branch-to-sspopchk -verify-machineinstrs | FileCheck %s --check-prefix=BRANCH
++; RUN: llc < %s -mtriple=riscv64-unknown-elf -mattr=+reserve-x27,+zicfiss -verify-machineinstrs | FileCheck %s --check-prefix=PLAIN
++
++; With a hardware shadow stack, the small frame that calls the morestack
++; symbol pushes its return and checks it before returning, as the function's
++; own prologue and epilogue do; with branch-to-sspopchk, reached by a branch.
++
++declare void @use(ptr)
++
++define void @grows() "split-stack" "split-stack-limit-register"="x27" "split-stack-morestack"="hemera.morestack" "hw-shadow-stack" {
++; CHECK-LABEL: grows:
++; CHECK:       sspopchk ra
++; CHECK-NEXT:  ret
++; CHECK:       sspush ra
++; CHECK-NEXT:  addi sp, sp, -16
++; CHECK:       call hemera.morestack
++; CHECK-NEXT:  ld ra, 8(sp)
++; CHECK-NEXT:  ld s0, 0(sp)
++; CHECK-NEXT:  addi sp, sp, 16
++; CHECK-NEXT:  sspopchk ra
++; CHECK-NEXT:  ret
++; BRANCH-LABEL: grows:
++; BRANCH:       sspopchk ra
++; BRANCH-NEXT:  ret
++; BRANCH:       sspush ra
++; BRANCH-NEXT:  addi sp, sp, -16
++; BRANCH:       call hemera.morestack
++; BRANCH-NEXT:  ld ra, 8(sp)
++; BRANCH-NEXT:  ld s0, 0(sp)
++; BRANCH-NEXT:  addi sp, sp, 16
++; BRANCH-NEXT:  #APP
++; BRANCH-NEXT:  [[HERE:.Ltmp[0-9]+]]:
++; BRANCH-NEXT:  beq zero, zero, [[HERE]]+4
++; BRANCH-NEXT:  #NO_APP
++; BRANCH-NEXT:  sspopchk ra
++; BRANCH-NEXT:  ret
++  %buf = alloca [1024 x i8]
++  call void @use(ptr %buf)
++  ret void
++}
++
++define void @plain() "split-stack" "split-stack-limit-register"="x27" "split-stack-morestack"="hemera.morestack" {
++; PLAIN-LABEL: plain:
++; PLAIN-NOT:   sspush
++; PLAIN:       call hemera.morestack
++; PLAIN-NEXT:  ld ra, 8(sp)
++; PLAIN-NEXT:  ld s0, 0(sp)
++; PLAIN-NEXT:  addi sp, sp, 16
++; PLAIN-NEXT:  ret
++  %buf = alloca [1024 x i8]
++  call void @use(ptr %buf)
++  ret void
++}

@@ -199,7 +199,19 @@ A RISC-V target feature, `+branch-to-sspopchk`, for running Zicfiss's shadow sta
 or `auipc` after it, or the block's end when it ends without a jump, as at a page boundary, goes to the wrong place,
 like back into the epilogue it just ran (QEMU has since updated the pc on both branches). With the feature, each
 epilogue's `sspopchk` is reached by `beq zero, zero, .+4`, which isn't compressed and always falls through to it, and
-which ends QEMU's block, so the `sspopchk` begins the next one and the pc it tracks is its own. It costs a taken branch
-in each epilogue that pops a shadow stack, so it's for targets that run on that QEMU, and is off by default.
+which ends QEMU's block, so the `sspopchk` begins the next one and the pc it tracks is its own. The branch is inline
+assembly, as a `BEQ` instruction would be taken for the block's terminator, with the `sspopchk` after it. It costs a
+taken branch in each epilogue that pops a shadow stack, so it's for targets that run on that QEMU, and is off by
+default.
 
 Includes `llvm/test/CodeGen/RISCV/branch-to-sspopchk.ll`.
+
+## 0012-riscv-split-stack-shadow-stack.patch
+
+0007's prologue stack check with a hardware shadow stack (`"hw-shadow-stack"`): the small frame that calls the
+morestack symbol pushes its return onto the shadow stack (`sspush ra`) and checks it before returning (`sspopchk ra`,
+reached by a branch with 0011's feature), as the function's own prologue and epilogue do. RISC-V's shadow stack checks
+only the returns that say so, and this frame returns through the address it saved on the ordinary stack, which Hemera's
+resume loop also replaces, pushing its own return, when it re-enters the frame. Apply it after 0011.
+
+Includes `llvm/test/CodeGen/RISCV/segmented-stacks-shadow-stack.ll`.

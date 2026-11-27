@@ -1100,7 +1100,9 @@ call, and on AArch64 every frame keeps its frame record at the top, so the loop 
 the frame's prologue signed the one it replaces (calling_convention.md, Resuming); both come from Hemera's LLVM
 patches. The hand-written sequences (the fiber switches, morestack, the foreign shims, and on x86-64 the entry
 functions' stubs and SYSCALL's entry, which interrupt delivery and SYSCALL reach under indirect branch tracking) have
-their landing pads too. Stack traces strip return addresses' authentication codes, for a 48-bit address space.
+their landing pads too, and on RISC-V, whose shadow stack checks only the returns that say so, the ones that return
+push their return at entry and check it before returning, as morestack's small frame in each function does (LLVM
+patch 0012). Stack traces strip return addresses' authentication codes, for a 48-bit address space.
 
 The note is the linker's to merge, keeping a feature only where every object has it. An lld that doesn't know
 RISC-V's, as lld 19 doesn't, leaves it out, and the program then runs without either, as its operating system reads

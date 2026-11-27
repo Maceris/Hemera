@@ -28,7 +28,11 @@ ProcessState :: struct {
     uefi_image : rawptr,
     /** On UEFI, the system table the entry was given (uefi.hsc). Null elsewhere. */
     uefi_system_table : rawptr,
-    /** On UEFI, 1 once the program has written to the console (os_write), atomically; 0 before, and elsewhere. */
+    /**
+     * On UEFI, 1 once the program has written to the console (os_write); 0 before, and elsewhere. A plain store, as
+     * boot services run on one processor, and an atomic could be an instruction the CPU lacks before the program has
+     * said so.
+     */
     uefi_console_written : u32,
     /** On SlopOS, the startup block the entry was given. Null elsewhere, or when there was none. */
     startup_block : rawptr,

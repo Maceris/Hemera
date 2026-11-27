@@ -222,8 +222,8 @@ import intrinsics from "base:intrinsics"
      *
      * The program's first write to the console starts on a line of its own: if the firmware's cursor isn't at column 0,
      * as its own messages may leave it, a line break comes first, so the program's first line isn't wrapped short. It's
-     * the
-     * console's cursor that's asked, whichever stream is written, as standard error's mode may not follow the device's.
+     * the console's cursor that's asked, whichever stream is written, as standard error's mode may not follow the
+     * device's.
      *
      * @param stream OUTPUT for the console; anything else for standard error.
      * @param bytes The first byte, UTF-8, which only has to stay valid for the call.
@@ -240,8 +240,13 @@ import intrinsics from "base:intrinsics"
         }
         state :: intrinsics.process_state()
         // The console's own cursor: standard error's mode may not track it, though it's the same device
-        if intrinsics.interlocked_exchange_u32(&state.uefi_console_written, 1) == 0
-            && cast[rawptr](table.console_out) != null {
+        /*
+         * Not an atomic: boot services run on one processor, and a program refusing a CPU says so here, where an atomic
+         * could be an instruction it lacks, like LSE's on ARMv8.0
+         */
+        first :: state.uefi_console_written == 0
+        state.uefi_console_written = 1
+        if first && cast[rawptr](table.console_out) != null {
             match table.console_out.mode {
                 case Some(mode) => {
                     if mode.cursor_column != 0 {

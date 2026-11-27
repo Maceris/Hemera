@@ -1399,6 +1399,14 @@ namespace hemera {
 		return std::format("\t.option push\n\t.option arch, +zicfiss\n\t{}\n\t.option pop\n", instruction);
 	}
 
+	/*
+	 * A hand-written return's check against the shadow stack, sspopchk ra, as LLVM's epilogues have; with the target's
+	 * +branch-to-sspopchk (Hemera's LLVM patch 0011), reached by a branch to it as theirs are.
+	 */
+	static std::string riscv64_shadow_pop(bool branch) {
+		return std::string(branch ? "\tbeq zero, zero, .+4\n" : "") + riscv64_shadow_stack("sspopchk ra");
+	}
+
 	// The landing pad an indirect branch may land on, with control-flow integrity: endbr64 or bti; nothing without.
 	static std::string_view landing_pad(bool cfi, bool aarch64, bool call = true) {
 		if (!cfi) {
@@ -1598,8 +1606,13 @@ namespace hemera {
 	constexpr int RISCV64_FRAME_SSTATUS = 264;
 	constexpr int RISCV64_FRAME_SCAUSE = 272;
 	constexpr int RISCV64_FRAME_STVAL = 280;
-	// sstatus's SUM, which the entry clears so the kernel doesn't reach user memory unless it means to
-	constexpr int RISCV64_SSTATUS_SUM_UPPER = 0x40;
+	/*
+	 * sstatus's SUM and SDT, bits 18 and 24, as lui's upper immediate, which the entry clears: SUM so the kernel doesn't
+	 * reach user memory unless it means to, and SDT (Ssdbltrp), which a trap sets where the firmware turned double-trap
+	 * detection on, so a trap the kernel takes after isn't a double trap to machine mode; without Ssdbltrp the bit is
+	 * WPRI, read as 0 and kept so
+	 */
+	constexpr int RISCV64_SSTATUS_SUM_UPPER = 0x1040;
 	constexpr int RISCV64_SSTATUS_SPP = 0x100;
 	// riscv64.TrapScratch's kernel_shadow_stack and user_shadow_stack, after kernel_stack and user_sp
 	constexpr int RISCV64_SCRATCH_KERNEL_SHADOW = 16;
@@ -1621,8 +1634,10 @@ namespace hemera {
 	 * A RISC-V entry function's code, which stvec points at directly. tp and sscratch are swapped: from user mode tp is
 	 * then the TrapScratch, whose kernel_stack the frame goes on, user mode's stack pointer kept in it for a moment; from
 	 * supervisor mode it's 0, and the frame goes below the interrupted stack pointer, tp put back. Every register goes in
-	 * the frame, the interrupted tp from sscratch, which is cleared, then sepc, sstatus, scause and stval; SUM is
-	 * cleared, s0 and ra too, so stack walks end here, and the body is called with the frame. A body that returns is
+	 * the frame, the interrupted tp from sscratch, which is cleared, then sepc, sstatus, scause and stval; SUM and SDT are
+	 * cleared, s0 and ra too, so stack walks end here, and the body is called with the frame. Until sscratch is cleared,
+	 * a trap would take it as the TrapScratch, which from user mode is user mode's tp: nothing before that may fault, as
+	 * nothing does, its stores only to the TrapScratch and the kernel stack's top, always mapped. A body that returns is
 	 * followed by sepc and sstatus restored, sscratch set back to tp when returning to user mode, every register, and sret.
 	 * From user mode, where the TrapScratch has a kernel_shadow_stack, user mode's ssp is kept in its user_shadow_stack
 	 * and ssp starts from the kernel's, and returning to user mode puts user mode's back; ssp is named by its number, as
@@ -2000,6 +2015,20 @@ namespace hemera {
 		return fp ? "\t.option pop\n" : "";
 	}
 
+	// Whether a target turns a feature on, "+name" among its comma-separated features.
+	static bool feature_turned_on(std::string_view features, std::string_view name) {
+		size_t start = 0;
+		while (start <= features.size()) {
+			const size_t end = std::min(features.find(',', start), features.size());
+			const std::string_view feature = features.substr(start, end - start);
+			if (feature.size() == name.size() + 1 && feature[0] == '+' && feature.substr(1) == name) {
+				return true;
+			}
+			start = end + 1;
+		}
+		return false;
+	}
+
 	// Whether a target turns a feature off, "-name" among its comma-separated features.
 	static bool feature_turned_off(std::string_view features, std::string_view name) {
 		size_t start = 0;
@@ -2021,16 +2050,21 @@ namespace hemera {
 	 * entry. morestack's own frame record is the same, and below it the carrier's limit and segment and s1 and s2,
 	 * which it uses like x19 and x20; until the body runs it only changes t0, t1 and t6 besides those, which no
 	 * parameter is in, and after, nothing a result is in. Without memory it runs ebreak. With fp, it keeps fa0 to fa7
-	 * while allocating, and with vector, v8 to v23, where vector parameters are.
+	 * while allocating, and with vector, v8 to v23, where vector parameters are. With control-flow integrity it pushes
+	 * its return onto the shadow stack and checks it before returning, as a function's own prologue and epilogue do,
+	 * since it returns through the address in its frame record, which the resume loop also replaces and pushes.
 	 */
 	static std::string morestack_assembly_riscv64(const MorestackOffsets& o, uint64_t header_and_guard, const std::string& allocate,
-		bool fp, bool vector, bool cfi) {
+		bool fp, bool vector, bool cfi, bool branch_to_pop) {
 
 		const size_t limit = o.limit, segment = o.segment, spare = o.spare, cache = o.cache, cache_count = o.cache_count;
 		const size_t segment_size = o.segment_size, next_free = o.next_free;
 		const uint64_t extra = header_and_guard + 32;
 		std::string text = std::format("\t.text\n{}\t.p2align 2\n{}:\n{}", riscv64_extensions_open(fp, vector), MORESTACK_SYMBOL,
 			riscv64_landing_pad(cfi));
+		if (cfi) {
+			text += riscv64_shadow_stack("sspush ra");
+		}
 		text += "\taddi sp, sp, -48\n\tsd ra, 40(sp)\n\tsd s0, 32(sp)\n\taddi s0, sp, 48\n";
 		// The carrier's limit at s0 - 48 and segment at s0 - 40, s1 and s2 at s0 - 32 and s0 - 24
 		text += std::format("\tld t0, {}(s11)\n\tld t1, {}(s11)\n\tsd t0, 0(sp)\n\tsd t1, 8(sp)\n\tsd s1, 16(sp)\n\tsd s2, 24(sp)\n",
@@ -2062,7 +2096,11 @@ namespace hemera {
 		text += std::format("\tlw t6, {0}(s11)\n\taddi t6, t6, 1\n\tsw t6, {0}(s11)\n", cache_count);
 		text += std::format("5:\n\tsd t0, {}(s11)\n", spare);
 		text += std::format("\tld t0, 0(sp)\n\tld t1, 8(sp)\n\tsd t0, {}(s11)\n\tsd t1, {}(s11)\n", limit, segment);
-		text += "\tld ra, 40(sp)\n\tld s0, 32(sp)\n\taddi sp, sp, 48\n\tret\n";
+		text += "\tld ra, 40(sp)\n\tld s0, 32(sp)\n\taddi sp, sp, 48\n";
+		if (cfi) {
+			text += riscv64_shadow_pop(branch_to_pop);
+		}
+		text += "\tret\n";
 		// None big enough: one from allocate, on the native stack, with the arguments and the body kept there
 		text += "9:\n\tmv s2, sp\n\tmv t0, sp\n";
 		text += std::format("\tlw t1, {}(s11)\n\tbnez t1, 7f\n", o.foreign_depth);
@@ -2151,7 +2189,8 @@ namespace hemera {
 			const bool fp = !feature_turned_off(features, "d") && !feature_turned_off(features, "f");
 			const bool vector = fp && !feature_turned_off(features, "v") && features.find("+v") != std::string::npos;
 			generator.module_assembly.push_back(morestack_assembly_riscv64(o, guard + header->type_value->size,
-				allocate_function.getSymName().str(), fp, vector, control_flow_integrity(*generator.options)));
+				allocate_function.getSymName().str(), fp, vector, control_flow_integrity(*generator.options),
+				feature_turned_on(features, "branch-to-sspopchk")));
 			return true;
 		}
 		if (aarch64) {
@@ -5978,7 +6017,9 @@ namespace hemera {
 		 * A thread's floating-point and vector registers, for a kernel switching threads: D and V turned on for these
 		 * instructions alone, as a kernel is built without them. The area is a0's; the temporaries they use are clobbered.
 		 * Floating point: f0 to f31, then fcsr at 256. Vectors: v0 to v31, vlenb bytes each, by whole groups of eight,
-		 * then vstart, vtype, vl and vcsr, which a restore puts back last, vsetvl first.
+		 * then vstart, vtype, vl and vcsr, which a restore puts back last, vsetvl first. vstart is 0 for the whole-register
+		 * stores and loads, which skip the bytes below it: a save of a thread trapped mid-instruction would lose them, and
+		 * a restore would leave whatever the hart's last thread had in them.
 		 */
 		if (name == "save_floating" || name == "restore_floating") {
 			const bool save = name == "save_floating";
@@ -6002,6 +6043,7 @@ namespace hemera {
 			if (save) {
 				text += "csrr t0, vl\n\tcsrr t1, vtype\n\tcsrr t2, vstart\n\tcsrr t3, vcsr\n\t";
 			}
+			text += "csrw vstart, zero\n\t";
 			for (int group = 0; group < 4; ++group) {
 				text += std::format("{} v{}, (t5)\n\tadd t5, t5, t4\n\t", save ? "vs8r.v" : "vl8re8.v", group * 8);
 			}
@@ -6917,9 +6959,10 @@ namespace hemera {
 	 * prologue does (sspush ra) and its epilogue pops and checks (sspopchk ra). So fiber_reenter pushes the loop's
 	 * return, which the frame returns through, the switches keep ssp as the scheduler switches to a fiber in
 	 * shadow_stack_base, ssrdp's 0 where the thread has no shadow stack, and put it back when they switch back,
-	 * dropping the fiber's entries.
+	 * dropping the fiber's entries. fiber_start and fiber_resume push their own return first, which the switch back
+	 * checks before returning to the scheduler, as a function's prologue and epilogue would.
 	 */
-	static std::string fiber_assembly_riscv64(const FiberOffsets& o, std::string_view run, bool fp, bool cfi) {
+	static std::string fiber_assembly_riscv64(const FiberOffsets& o, std::string_view run, bool fp, bool cfi, bool branch_to_pop) {
 		const SuspendedLayout layout = suspended_layout(fp, false, true);
 		const size_t scheduler_size = fp ? 240 : 128;
 		const size_t suspended_size = fp ? RISCV64_SUSPENDED_FP_SIZE : RISCV64_SUSPENDED_SIZE;
@@ -6961,12 +7004,19 @@ namespace hemera {
 			text += std::format("\tld t6, 104(sp)\n\tsd t6, {}(s11)\n\tld t6, 112(sp)\n\tsd t6, {}(s11)\n", o.carrier_segment, o.current_fiber);
 			text += std::format("\tld t6, 96(sp)\n\tsd t6, {}(s11)\n\tld ra, 88(sp)\n\tld s0, 80(sp)\n", o.carrier_limit);
 			text += saved(0, false);
-			text += std::format("\taddi sp, sp, {}\n\tli a0, {}\n\tret\n", scheduler_size, exit);
+			text += std::format("\taddi sp, sp, {}\n\tli a0, {}\n", scheduler_size, exit);
+			if (cfi) {
+				text += riscv64_shadow_pop(branch_to_pop);
+			}
+			text += "\tret\n";
 			return text;
 		};
+		// A switch's own return, onto the shadow stack before ssrdp takes its base
+		const std::string push_return = cfi ? riscv64_shadow_stack("sspush ra") : std::string();
 		std::string text = "\t.text\n" + riscv64_extensions_open(fp, false);
 		// fiber_start(fiber, stack top, stack limit): onto the fiber's first segment, into fiber_entry
 		text += std::format("\t.p2align 2\n{}:\n{}", FIBER_START_SYMBOL, riscv64_landing_pad(cfi));
+		text += push_return;
 		text += save_scheduler;
 		text += std::format("\tsd a0, {}(s11)\n\tsd a2, {}(s11)\n\tsd zero, {}(s11)\n\tsd zero, {}(s11)\n",
 			o.current_fiber, o.carrier_limit, o.carrier_segment, o.resume_frame);
@@ -6979,6 +7029,7 @@ namespace hemera {
 		text += back_to_scheduler(1);
 		// fiber_resume(fiber): the carrier's segment and limit back from the fiber's stack, then re-enter its frames, innermost first
 		text += std::format("\t.p2align 2\n{}:\n{}", FIBER_RESUME_SYMBOL, riscv64_landing_pad(cfi));
+		text += push_return;
 		text += save_scheduler;
 		text += std::format("\tsd a0, {}(s11)\n", o.current_fiber);
 		text += set_state_riscv64(o, o.running);
@@ -7080,7 +7131,7 @@ namespace hemera {
 				const std::string features = target_features(*generator.options);
 				const bool fp = !feature_turned_off(features, "d") && !feature_turned_off(features, "f");
 				generator.module_assembly.push_back(fiber_assembly_riscv64(offsets, run_symbol, fp,
-					control_flow_integrity(*generator.options)));
+					control_flow_integrity(*generator.options), feature_turned_on(features, "branch-to-sspopchk")));
 				fiber_walk_table(generator, offsets, fp);
 			}
 			else if (ArchType::aarch64 == generator.options->architecture) {
