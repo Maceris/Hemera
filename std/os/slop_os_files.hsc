@@ -101,6 +101,7 @@ package os
             case .IsALink => OsError.Other
             case .NoMemory => OsError.OutOfMemory
             case .WrongType => OsError.WrongType
+            case .NotVolumeRoot => OsError.AccessDenied
         }
     }
 

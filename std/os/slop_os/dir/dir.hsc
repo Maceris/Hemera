@@ -193,21 +193,20 @@ Request :: union {
      * is in all of its type's indexes or none, so one whose value doesn't hold the new field drops out of the type's
      * others. Declaring one there is already gives it again. Only the volume's root may: answered with Declared, or
      * Failed: WrongType for a schema or field it can't be of, NoSpace for a volume with as many indexes as it keeps,
-     * NoMemory, or ReadOnly on a connection that isn't to the volume's root, is read only, or was reached through a
-     * stored link. Unsupported on a file system without indexes, and on a transaction.
+     * NoMemory, NotVolumeRoot on a connection to a directory beneath the root, or ReadOnly on one that's read only or
+     * was reached through a stored link. Unsupported on a file system without indexes, and on a transaction.
      */
     DeclareIndex(files.IndexOf),
     /**
      * The index with this number taken out of this directory's volume, the type's files indexed again by its other
-     * indexes. Only the volume's root may: answered with Done, or Failed: NotFound for no such index, ReadOnly as
-     * DeclareIndex is. Unsupported on a file system without indexes, and on a transaction.
+     * indexes. Only the volume's root may: answered with Done, or Failed: NotFound for no such index, NotVolumeRoot or
+     * ReadOnly as DeclareIndex is. Unsupported on a file system without indexes, and on a transaction.
      */
     DropIndex(u32),
     /**
-     * The volume's index at or after a cursor: 0 for the first, then each IndexListed's next. Only the volume's root
-     * may list them, as they say what's kept of every directory's files: answered with IndexListed, End once none is
-     * left, or Failed: ReadOnly as DeclareIndex is. Unsupported on a file system without indexes, and on a
-     * transaction.
+     * The directory's volume's index at or after a cursor: 0 for the first, then each IndexListed's next. Any directory
+     * of the volume may list them, as a query beneath it names them: answered with IndexListed, or End once none is
+     * left. Unsupported on a file system without indexes, and on a transaction.
      */
     Indexes(u32),
     /**

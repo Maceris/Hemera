@@ -441,6 +441,44 @@ refuses_a_schema_cut_short_or_with_more_after #test :: fn(t: ptr[mut testing.T])
     return .Ok
 }
 
+try_parse_gives_back_running_out_of_memory #test :: fn(t: ptr[mut testing.T]) -> testing.Outcome {
+    // try_parse with each of its allocations failing in turn: OutOfMemory, nothing kept; then with none, the schema
+    bytes : u8[..]
+    defer runtime.array_free(&bytes)
+    schema.write(type_info_of(Entry), &bytes)
+    fail_at : u64 = 1
+    loop {
+        made :: memory.make_failing(fail_at)
+        failing :: testing.require_some(t, made, "a failing allocator can be made")?
+        parsed : Result[schema.Schema, schema.ParseError] = .Error(.NotASchema)
+        push_context failing_context (allocator = memory.failing_allocator(failing)) {
+            parsed = schema.try_parse(bytes)
+            match parsed {
+                case Ok(read) => {
+                    read_back := read
+                    schema.free(&read_back)
+                }
+                case Error(error) => {}
+            }
+        }
+        failed :: failing.failed
+        live :: failing.live
+        memory.free_failing(failing)
+        out_of_memory :: match parsed {
+            case Error(error) => error == .OutOfMemory
+            case Ok(read) => false
+        }
+        testing.require(t, failed == out_of_memory, "OutOfMemory is given exactly when an allocation failed")?
+        testing.require(t, failed || (parsed is_ok), "with no allocation failing, the schema reads")?
+        testing.require_eq(t, live, 0, "nothing allocated is kept, failing or not")?
+        if !failed {
+            return .Ok
+        }
+        fail_at += 1
+        testing.require_le(t, fail_at, 1000, "reading needs fewer than 1000 allocations, so it ends without failing")?
+    }
+}
+
 leaves_output_alone_when_memory_runs_out #test :: fn(t: ptr[mut testing.T]) -> testing.Outcome {
     // try_write and try_write_value with each of their allocations failing in turn, then with none failing
     first := Item.{id = 7, name = "first"}

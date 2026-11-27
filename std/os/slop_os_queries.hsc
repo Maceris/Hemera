@@ -13,8 +13,8 @@ package os
  *     found :: os.query_in(directory, &predicate) or_return 1
  *     defer os.free_matches(&found)
  *
- * An index is declared, dropped and found on a connection to its volume's root, which the indexes are of; a query is
- * asked beneath any directory.
+ * An index is declared and dropped on a connection to its volume's root, which the indexes are of; it's found, and a
+ * query asked, beneath any directory of the volume.
  */
 #if OS == .SlopOS {
     import runtime from "base:runtime"
@@ -82,7 +82,8 @@ package os
      * @param field The name of one of T's own fields: an integer, a bool, or text (a Relative of bytes).
      * @return The index's number; the same number if it's declared already.
      * @error WrongType The field isn't one of T's, or isn't of a type an index can be of.
-     * @error AccessDenied The directory isn't its volume's root, is read only, or was reached through a stored link.
+     * @error AccessDenied The directory isn't its volume's root (NotVolumeRoot), is read only, or was reached through a
+     *     stored link.
      * @error OutOfMemory The schema couldn't be written, or the server hadn't the memory.
      * @error Other The volume keeps as many indexes as it can, keeps none, or the server didn't answer.
      */
@@ -109,15 +110,15 @@ package os
     }
 
     /**
-     * Find the index of a field of T's on the volume a directory is the root of.
+     * Find the index of a field of T's on a directory's volume.
      *
      * @tparam T The files' value's type.
-     * @param directory The open directory, which stays the caller's: its volume's root, as only it lists the indexes.
+     * @param directory The open directory, which stays the caller's: any directory of the volume.
      * @param field The field's name.
      * @return The index's number and kind.
      * @error NotFound No index of the field is declared.
-     * @error AccessDenied The directory isn't its volume's root, is read only, or was reached through a stored link.
-     * @error Other The indexes couldn't be listed: the file system keeps none, or the server didn't answer.
+     * @error Other The indexes couldn't be listed: the file system keeps none, the directory is a transaction's, or
+     *     the server didn't answer.
      */
     index_of :: fn[T](directory : Directory, field : string) -> Result[IndexFound, OsError] {
         hash :: schema_hash_of[T]()
@@ -152,8 +153,8 @@ package os
      * Add a comparison of a field of T's with a number to a predicate, finding the field's index.
      *
      * @tparam T The files' value's type, whose index of field has to be declared.
-     * @param directory The open directory whose volume's indexes are asked, which stays the caller's: its volume's
-     *     root, as index_of says.
+     * @param directory The open directory whose volume's indexes are asked, which stays the caller's: any directory
+     *     of the volume, as index_of says.
      * @param predicate The predicate, which the comparison is pushed on.
      * @param field The field's name: an integer or a bool's.
      * @param comparison How the field is compared with value.
@@ -185,12 +186,11 @@ package os
      * Add a comparison of a text field of T's with a text to a predicate, finding the field's index.
      *
      * @tparam T The files' value's type, whose index of field has to be declared.
-     * @param directory The open directory whose volume's indexes are asked, which stays the caller's: its volume's
-     *     root, as index_of says.
+     * @param directory The open directory whose volume's indexes are asked, which stays the caller's: any directory
+     *     of the volume, as index_of says.
      * @param predicate The predicate, which the comparison is pushed on.
      * @param field The text field's name.
-     * @param comparison How the field is compared with text, byte by byte; a server may compare only a text's first
-     *     bytes, as many as its index keeps, and refuse an = or ≠ of a longer constant when the query's asked.
+     * @param comparison How the field is compared with text, byte by byte, by its whole value.
      * @param text The constant, UTF-8.
      * @return Null once it's added; NotFound if no index of the field is declared, WrongType for a field that isn't
      *     text, or index_of's error.
@@ -222,7 +222,8 @@ package os
      *     a stored link.
      * @param index The index's number, as declare_index or index_of give it.
      * @return Null once it's dropped; NotFound for no such index, AccessDenied for a directory that isn't the root
-     *     (as declare_index says), or Other if the file system keeps no indexes or the server didn't answer.
+     *     (NotVolumeRoot), is read only or was reached through a stored link, or Other if the file system keeps no
+     *     indexes or the server didn't answer.
      */
     drop_index :: fn(directory : Directory, index : u32) -> OsError? {
         out := Outgoing.{}

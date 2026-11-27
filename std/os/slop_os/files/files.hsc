@@ -64,6 +64,8 @@ FileError :: enum #backed_by(u32) {
      * 0108).
      */
     WrongType = 17,
+    /** Only a connection to the volume's root may: declaring or dropping an index of the whole volume. */
+    NotVolumeRoot = 18,
 }
 
 /** How OpenFile treats what's at its path. */

@@ -20,6 +20,11 @@ Schema :: struct {
     bytes : u8[..],
     /** Each type it describes, in its place: the first is the one the schema is of. */
     types : Type[..],
+    /**
+     * Whether reading it ran short of memory for a list, which try_parse answers as OutOfMemory; false in every
+     * schema parse or try_parse gives back.
+     */
+    short_of_memory : bool,
 }
 
 /** One type a schema describes, with what its kind has; what other kinds have is left zero, or NOWHERE for places. */
@@ -158,23 +163,75 @@ MAX_TYPES : usize : 65536
 /**
  * Read bytes as a schema, checking them as it goes, so bytes from elsewhere can be given.
  *
- * Without the memory for its copy or its types, calls context.assertion_handler, as array_add does.
+ * Without the memory for its copy or its types, calls context.assertion_handler, as array_add does; try_parse is for
+ * code that handles running out.
  *
  * @param bytes What schema.write wrote, or bytes claiming to be; they're copied, so they needn't outlast the call.
+ * @param location Where the call is, given to the assertion handler; the caller's location by default.
  * @return The schema, which free gives back; null if they aren't one: not "HSCH" and this version, no types or more
  *     than MAX_TYPES, a type of a kind there isn't or cut short, a place that isn't one of its types, or anything
  *     after its last type.
  */
-parse :: fn(bytes : u8[]) -> Schema? {
+parse :: fn(bytes : u8[], location := #caller_location) -> Schema? {
+    match try_parse(bytes) {
+        case Ok(schema) => return schema
+        case Error(error) => {
+            if error == .OutOfMemory {
+                context.assertion_handler(location, "out of memory")
+            }
+            return null
+        }
+    }
+}
+
+/** Why try_parse gave no schema. */
+ParseError :: enum {
+    /** The bytes aren't a schema, as parse says. */
+    NotASchema,
+    /** There wasn't the memory for the copy of the bytes, or for a list of what's read. */
+    OutOfMemory,
+}
+
+/**
+ * Read bytes as a schema, as parse does, but give back the error when there isn't the memory.
+ *
+ * @param bytes What schema.write wrote, or bytes claiming to be; they're copied, so they needn't outlast the call.
+ * @return The schema, which free gives back; NotASchema for bytes parse would give null for; OutOfMemory without the
+ *     memory, what was read given back.
+ */
+try_parse :: fn(bytes : u8[]) -> Result[Schema, ParseError] {
     schema := Schema.{}
+    if bytes.count > 0 && runtime.array_try_reserve(&schema.bytes, bytes.count) != null {
+        return .Error(.OutOfMemory)
+    }
     for byte in bytes {
         runtime.array_add(&schema.bytes, byte)
     }
-    if !read_types(&schema) {
+    read :: read_types(&schema)
+    if schema.short_of_memory {
         free(&schema)
-        return null
+        return .Error(.OutOfMemory)
     }
-    return schema
+    if !read {
+        free(&schema)
+        return .Error(.NotASchema)
+    }
+    return .Ok(schema)
+}
+
+/**
+ * Add a value to one of a schema's lists as it's read; without the memory, the schema's short_of_memory is set and the
+ * list is left as it was.
+ *
+ * @tparam T The list's elements.
+ * @param schema The schema being read.
+ * @param list The list, grown with context.allocator.
+ * @param value What's added.
+ */
+add_read :: fn[T](schema : ptr[mut Schema], list : ptr[mut T[..]], value #escaping : T) {
+    if runtime.array_try_add(list, value) != null {
+        schema.short_of_memory = true
+    }
 }
 
 /**
@@ -184,19 +241,28 @@ parse :: fn(bytes : u8[]) -> Schema? {
  */
 free :: fn(schema : ptr[mut Schema]) {
     for &type in schema.types {
-        runtime.array_free(&type.members)
-        runtime.array_free(&type.inputs)
-        runtime.array_free(&type.outputs)
-        runtime.array_free(&type.constants)
-        for &variant in type.variants {
-            runtime.array_free(&variant.held)
-        }
-        runtime.array_free(&type.variants)
-        runtime.array_free(&type.dimensions)
-        runtime.array_free(&type.references)
+        free_type(type)
     }
     runtime.array_free(&schema.types)
     runtime.array_free(&schema.bytes)
+}
+
+/**
+ * Give back what one type read holds: its lists, and its variants'.
+ *
+ * @param type The type; its lists are empty after.
+ */
+free_type :: fn(type : ptr[mut Type]) {
+    runtime.array_free(&type.members)
+    runtime.array_free(&type.inputs)
+    runtime.array_free(&type.outputs)
+    runtime.array_free(&type.constants)
+    for &variant in type.variants {
+        runtime.array_free(&variant.held)
+    }
+    runtime.array_free(&type.variants)
+    runtime.array_free(&type.dimensions)
+    runtime.array_free(&type.references)
 }
 
 /**
@@ -398,7 +464,12 @@ read_types :: fn(schema : ptr[mut Schema]) -> bool {
         made := Type.{base = NOWHERE, tag = NOWHERE, at = at}
         at = read_type(schema, &made, at, count)
         made.end = at
-        runtime.array_add(&schema.types, made)
+        if runtime.array_try_add(&schema.types, made) != null {
+            // Not among the types, so free doesn't give back its lists
+            free_type(&made)
+            schema.short_of_memory = true
+            return false
+        }
         if at == NOWHERE {
             return false
         }
@@ -446,7 +517,8 @@ read_type :: fn(schema : ptr[mut Schema], made : ptr[mut Type], start : usize, c
             if dimension_kind < 1 || dimension_kind > 3 {
                 return NOWHERE
             }
-            runtime.array_add(
+            add_read(
+                schema,
                 &made.dimensions,
                 Dimension.{
                     kind = cast[DimensionKind](cast[u8](dimension_kind)),
@@ -467,7 +539,7 @@ read_type :: fn(schema : ptr[mut Schema], made : ptr[mut Type], start : usize, c
             name :: name_at(schema, &at)
             low :: number_at(bytes, &at, 8)
             high :: number_at(bytes, &at, 8)
-            runtime.array_add(&made.constants, Constant.{name = name, value = low, high = high})
+            add_read(schema, &made.constants, Constant.{name = name, value = low, high = high})
         }
     }
     else if made.kind == .Float {
@@ -483,7 +555,8 @@ read_type :: fn(schema : ptr[mut Schema], made : ptr[mut Type], start : usize, c
             type :: reference_at(schema, made, &at, count)
             varargs :: number_at(bytes, &at, 1) != 0
             escaping :: number_at(bytes, &at, 1) != 0
-            runtime.array_add(
+            add_read(
+                schema,
                 &made.inputs,
                 Input.{name = name, type = type, is_varargs = varargs, is_escaping = escaping}
             )
@@ -493,7 +566,7 @@ read_type :: fn(schema : ptr[mut Schema], made : ptr[mut Type], start : usize, c
             if at == NOWHERE {
                 break
             }
-            runtime.array_add(&made.outputs, reference_at(schema, made, &at, count))
+            add_read(schema, &made.outputs, reference_at(schema, made, &at, count))
         }
         made.never_returns = number_at(bytes, &at, 1) != 0
     }
@@ -525,7 +598,7 @@ read_type :: fn(schema : ptr[mut Schema], made : ptr[mut Type], start : usize, c
             type :: reference_at(schema, made, &at, count)
             offset :: number_at(bytes, &at, 8)
             uses :: number_at(bytes, &at, 1) != 0
-            runtime.array_add(&made.members, Member.{name = name, type = type, offset = offset, is_using = uses})
+            add_read(schema, &made.members, Member.{name = name, type = type, offset = offset, is_using = uses})
         }
     }
     else if made.kind == .Union {
@@ -547,9 +620,13 @@ read_type :: fn(schema : ptr[mut Schema], made : ptr[mut Type], start : usize, c
                 }
                 type :: reference_at(schema, made, &at, count)
                 offset :: number_at(bytes, &at, 8)
-                runtime.array_add(&variant.held, Held.{type = type, offset = offset})
+                add_read(schema, &variant.held, Held.{type = type, offset = offset})
             }
-            runtime.array_add(&made.variants, variant)
+            if runtime.array_try_add(&made.variants, variant) != null {
+                // Not among the variants, so its held list is given back here
+                runtime.array_free(&variant.held)
+                schema.short_of_memory = true
+            }
         }
     }
     else if made.kind == .Vector {
@@ -612,12 +689,12 @@ name_at :: fn(schema : ptr[Schema], at : ptr[mut usize]) -> string {
  *
  * @param schema The schema whose bytes it's in.
  * @param made The type it's part of; the place's position is added to its references, with context.allocator, and
- *     without the memory, calls context.assertion_handler.
+ *     without the memory, the schema's short_of_memory is set.
  * @param at Where it is, moved past it; set to NOWHERE if it's cut short or past count.
  * @param count How many types the schema has.
  * @return The place, less than count; NOWHERE if it's cut short or isn't one of the types.
  */
-reference_at :: fn(schema : ptr[Schema], made : ptr[mut Type], at : ptr[mut usize], count : usize) -> usize {
+reference_at :: fn(schema : ptr[mut Schema], made : ptr[mut Type], at : ptr[mut usize], count : usize) -> usize {
     position :: at^
     place :: cast[usize](number_at(schema.bytes, at, 4))
     if at^ == NOWHERE {
@@ -627,6 +704,6 @@ reference_at :: fn(schema : ptr[Schema], made : ptr[mut Type], at : ptr[mut usiz
         at^ = NOWHERE
         return NOWHERE
     }
-    runtime.array_add(&made.references, position)
+    add_read(schema, &made.references, position)
     return place
 }

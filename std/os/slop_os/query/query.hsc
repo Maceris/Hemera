@@ -81,8 +81,8 @@ Predicate :: struct {
     /** The terms, in postfix order, 1 to MAX_TERMS. */
     terms : slop_os.Relative[Term],
     /**
-     * The text constants' bytes, UTF-8, each term's at its text_offset; a server may compare only a text's first
-     * bytes, as many as its index keeps.
+     * The text constants' bytes, UTF-8, each term's at its text_offset, each compared with a field by its whole
+     * value; a server may refuse a query whose long constants are past what it keeps (WrongType).
      */
     texts : slop_os.Relative[u8],
 }

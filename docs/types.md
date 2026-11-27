@@ -188,7 +188,8 @@ written. A pointer comes back as `<pointer>`, its address gone.
 
 `schema.parse` reads a schema's bytes back into its types, for code that meets a type only as it runs: each type's
 kind, size and name, its members, parameters, enum members, union variants or array dimensions, and the places among
-the types it refers to. `schema.hash_rooted` gives the hash of any one of them as `schema.hash` would, so a value can be
+the types it refers to; `schema.try_parse` does the same, giving back OutOfMemory rather than ending the program
+without the memory. `schema.hash_rooted` gives the hash of any one of them as `schema.hash` would, so a value can be
 written for a reader that checks it.
 
 ## Arrays
