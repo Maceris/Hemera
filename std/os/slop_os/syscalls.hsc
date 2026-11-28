@@ -12,8 +12,9 @@ package slop_os
 /**
  * The version of the system ABI this package describes. The startup block carries the kernel's, and a program built
  * against a later one than its kernel's refuses to start (base's runtime, EXIT_WRONG_ABI); a later kernel starts it.
+ * 16 is ABI v1: from it, system calls are only appended, and layouts grow only where they're size-prefixed.
  */
-ABI_VERSION : u32 : 15
+ABI_VERSION : u32 : 16
 
 /**
  * A handle as user space sees it: opaque, chosen by the kernel, and good only in the process whose table it's in.
